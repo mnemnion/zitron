@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) void {
     ) orelse &[0][]const u8{};
 
     const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
+        .root_source_file = b.path("src/lemon.zig"),
         .target = target,
         .optimize = optimize,
         .filters = test_filters,
