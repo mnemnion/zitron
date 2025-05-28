@@ -18,6 +18,8 @@ const Allocator = std.mem.Allocator;
 const MemoryPool = std.heap.MemoryPool;
 const ArrayList = std.ArrayListUnmanaged;
 
+const assert = std.debug.assert;
+
 // Definition of `int`.  This should help me figure out which should
 // be unsigned, optional, or both, and which should in fact be an
 // i32 (if any).  All type references to `int` should disappear.
@@ -434,23 +436,27 @@ const Lemon = struct {
 /// Action to take on the given lookahead
 const LookaheadAction = struct {
     /// Value of the lookahead token
-    lookahead: ?u31,
+    lookahead: i32,
     /// Action to take on the given lookahead
-    action: ?u31,
+    action: i32,
+
+    pub const empty: LookaheadAction = .{ .lookahead = -1, .action = -1 };
 };
 
 const ActTable = struct {
     allocator: Allocator,
     /// The yyaction[] table under construction
     aAction: ArrayList(LookaheadAction) = .empty,
+    /// Number of aAction slots in actual use
+    nAction: usize = 0,
     /// A single new transaction set
     aLookahead: ArrayList(LookaheadAction) = .empty,
     /// Minimum aLookahead[].lookahead
-    mnLookahead: int = 0,
+    mnLookahead: i32 = 0,
     /// Action associated with mnLookahead
-    mnAction: int = 0,
+    mnAction: i32 = 0,
     /// Maximum aLookahead[].lookahead
-    mxLookahead: int = 0,
+    mxLookahead: i32 = 0,
     /// Number of terminal symbols
     nterminal: usize = 0,
     /// total number of symbols
@@ -477,12 +483,12 @@ const ActTable = struct {
     }
 
     /// The value for the N-th entry in yy_action
-    pub inline fn yyaction(tab: *const ActTable, n: usize) ?u31 {
+    pub inline fn yyaction(tab: *const ActTable, n: usize) i32 {
         return tab.aAction.items[n].action;
     }
 
     /// The value for the N-th entry in yy_lookahead
-    pub inline fn yylookahead(tab: *const ActTable, n: usize) ?u31 {
+    pub inline fn yylookahead(tab: *const ActTable, n: usize) i32 {
         return tab.aAction.items[n].lookahead;
     }
 
@@ -491,7 +497,10 @@ const ActTable = struct {
     ///
     /// This routine is called once for each lookahead for a particular
     /// state.
-    pub fn action(tab: *ActTable, lookahead: u31, an_action: u31) !void {
+    pub fn action(tab: *ActTable, lookahead: i32, an_action: i32) !void {
+        if (tab.aLookahead.items.len >= tab.aLookahead.capacity) {
+            try tab.aLookahead.ensureUnusedCapacity(tab.allocator, 25);
+        }
         if (tab.aLookahead.items.len == 0) {
             tab.mxLookahead = lookahead;
             tab.mnLookahead = lookahead;
@@ -503,10 +512,13 @@ const ActTable = struct {
                 tab.mnAction = an_action;
             }
         }
-        try tab.aLookahead.append(tab.allocator, .{ .lookahead = lookahead, .action = an_action });
+        tab.aLookahead.appendAssumeCapacity(
+            tab.allocator,
+            .{ .lookahead = lookahead, .action = an_action },
+        );
     }
 
-    ///
+    // [683]
     /// Add the transaction set built up with prior calls to acttab_action()
     /// into the current action table.  Then reset the transaction set back
     /// to an empty set in preparation for a new round of acttab_action() calls.
@@ -521,8 +533,94 @@ const ActTable = struct {
     /// a smaller table.  For non-terminal symbols, which are never syntax errors,
     /// makeItSafe can be false.
     ///
-    pub fn insert(tab: *ActTable, makeItSafe: bool) !void {
-        _ = .{ tab, makeItSafe };
+    pub fn insert(p: *ActTable, makeItSafe: bool) !void {
+        //  Make sure we have enough space to hold the expanded action table
+        // in the worst case.  The worst case occurs if the transaction set
+        // must be appended to the current action table.
+        assert(p.aLookahead.items.len > 0);
+        {
+            const n = p.nsymbol + 1;
+            if (p.nAction + n >= p.aAction.items.len) {
+                const new_cap = p.nAction + p.aAction.items.len + 20;
+                const new_slice = try p.aAction.addManyAsSlice(p.allocator, new_cap);
+                @memset(new_slice, LookaheadAction.empty);
+            }
+        }
+        const end = if (makeItSafe) p.mnLookahead else 0;
+        // Since we're done allocating, these pointers are stable:
+        const act_items = p.aAction.items;
+        const look_items = p.aLookahead.items;
+        var i: usize = p.nAction - 1;
+        i_loop: while (i >= end) : (i -= 1) {
+            if (act_items[i].lookahead == p.mnLookahead) {
+                // All lookaheads and actions in the aLookahead[] transaction
+                // must match against the candidate aAction[i] entry.
+                if (act_items[i].action != p.mnAction) continue :i_loop;
+                var j: usize = 0;
+                j_loop: while (j < look_items.len) : (j += 1) {
+                    const k = look_items[j].lookahead - p.mnLookahead + i;
+                    if (k < 0 or k > p.nAction) break :j_loop;
+                    if (look_items[j].lookahead != act_items[k].lookahead) break :j_loop;
+                    if (look_items[j].action != act_items[k].action) break :j_loop;
+                }
+                if (j < look_items.len) continue :i_loop;
+
+                // No possible lookahead value that is not in the aLookahead[]
+                // transaction is allowed to match aAction[i]
+                var n: i32 = 0;
+                j = 0;
+                j_check: while (j < p.nAction) : (j += 1) {
+                    if (act_items[j].lookahead < 0) continue :j_check;
+                    if (act_items[j].lookahead == j + p.mnLookahead + i) n += 1;
+                }
+
+                if (n == look_items.len) {
+                    break :i_loop; //An exact match is found at offset i
+                }
+            }
+        }
+        // If no existing offsets exactly match the current transaction, find an
+        // an empty offset in the aAction[] table in which we can add the
+        // aLookahead[] transaction.
+        if (i < end) {
+            // Look for holes in the aAction[] table that fit the current
+            // aLookahead[] transaction.  Leave i set to the offset of the hole.
+            // If no holes are found, i is left at p->nAction, which means the
+            // transaction will be appended.
+            i = if (makeItSafe) p.mnLookahead else 0; // Isn't this 'end'? -Sam
+            i_loop: while (i < act_items.len - p.mxLookahead) : (i += 1) {
+                if (act_items[i].lookahead < 0) {
+                    var j: usize = 0;
+                    j_loop: while (j < look_items.len) : (j += 1) {
+                        const k = look_items[i].lookahead - p.mxLookahead + i;
+                        if (k < 0) break :j_loop;
+                        if (act_items[k].lookahead >= 0) break :j_loop;
+                    }
+                    if (j < look_items.len) continue :i_loop;
+                    j = 0;
+                    j_check: while (j < act_items.len) : (j += 1) {
+                        if (act_items[j].lookahead == j + p.mnLookahead - i) break :j_check;
+                    }
+                    if (j == act_items.len) {
+                        break :i_loop; // Fits in empty slots
+                    }
+                }
+            }
+        }
+        // Insert transaction set at index i.
+        for (0..look_items.len) |j| {
+            const k = look_items[j] - p.mnLookahead + i;
+            act_items[k] = look_items[j];
+            if (k > p.nAction) p.nAction = k + 1;
+        }
+
+        if (makeItSafe and i + p.nterminal >= p.nAction) p.nAction = i + p.nterminal + 1;
+
+        p.aLookahead.clearRetainingCapacity();
+
+        // Return the offset that is added to the lookahead in order to get the
+        // index into yy_action of the action
+        return i - p.mnLookahead;
     }
 };
 
