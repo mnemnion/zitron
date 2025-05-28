@@ -14,6 +14,9 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const Allocator = std.mem.Allocator;
+const MemoryPool = std.heap.MemoryPool;
+const ArrayList = std.ArrayListUnmanaged;
 
 // Definition of `int`.  This should help me figure out which should
 // be unsigned, optional, or both, and which should in fact be an
@@ -53,7 +56,7 @@ threadlocal var showPrecendenceConflict: bool = false;
 //|   as "dbl" below, but these are easy to refactor after the fact,
 //|   and it's easier to use the same literal terms as the source code.
 
-const OptionType = enum {
+const OptionType = enum(u8) {
     flag = 1,
     int,
     dbl,
@@ -69,7 +72,7 @@ const OptionType = enum {
 // point.
 
 const S_Options = struct {
-    .@"type": OptionType,
+    type: OptionType,
     label: []const u8,
     arg: []u8,
     message: []const u8,
@@ -77,11 +80,10 @@ const S_Options = struct {
 
 //| [203-238] More forward declarations
 
-
 //| [239] This defines `LEMON_FALSE` and `LEMON_TRUE` as `Boolean`.  That,
 //|   we can fairly skip.
 
-//| [241- ]
+//| [241-430] Fundamental data types
 
 const SymbolType = enum {
     terminal,
@@ -96,7 +98,6 @@ const E_Assoc = enum {
     unk, // aka `unknown`
 };
 
-
 /// Symbols (terminals and nonterminals) of the grammar are stored in the following:
 const Symbol = struct {
     /// Name of the symbol
@@ -104,7 +105,7 @@ const Symbol = struct {
     /// Index number for this symbol
     index: int,
     /// Symbols are all either terminal or nonterminal
-    @"type": SymbolType,
+    type: SymbolType,
     /// Linked list of rules of this (if an NT)
     rule: ?*Rule,
     /// fallback token in case this token doesn't parse
@@ -112,7 +113,7 @@ const Symbol = struct {
     /// Precedence if defined (-1 otherwise)
     prec: int, // Should be ?u16 probably
     /// Associativity if precedence is defined
-    assoc: E_Assoc
+    assoc: E_Assoc,
     /// First-set for all rules of this symbol
     firstset: []u8, // NOTE: golemon has map[int] bool here
     /// True if NT and can generate an empty string
@@ -131,7 +132,7 @@ const Symbol = struct {
     /// The data type number.  In the parser, the value
     /// stack is a union.  The .yy%d element of this
     /// union is the correct data type for this object.
-    dtnum: int,  // No idea what the above means yet ¯\_(ツ)_/¯
+    dtnum: int, // No idea what the above means yet ¯\_(ツ)_/¯
     /// True if this symbol ever carries content - if
     /// it is ever more than just syntax
     bContent: bool,
@@ -220,7 +221,7 @@ const Config = struct {
     bp: ?*Config,
 };
 
-const E_Action = enum {
+const E_Action = enum(u4) {
     shift,
     accept,
     reduce,
@@ -239,61 +240,91 @@ const E_Action = enum {
     not_used,
     /// Shift first, then reduce
     shiftreduce,
+    /// Was not initialized (sanity check)
+    _not_initialized,
 };
 
-// TODO: We replace the x down there with a tagged union, once we
-// figure out which of the E_Action states has a pointer.
+/// NOTE: This union is deduc'ed from the code at [3380]
+const ActUnion = union(E_Action) {
+    shift: *State,
+    accept,
+    reduce: *Rule,
+    @"error",
+    ssconflict: *State,
+    srconflict: *Rule,
+    rrconflict: *Rule,
+    sh_resolved: *State,
+    rd_resolved: *Rule,
+    not_used,
+    shiftreduce: *Rule,
+    _not_initialized,
+};
+
+const ActionAllocator = MemoryPool(Action);
+threadlocal var action_allocator: ActionAllocator = undefined; // init in main
+threadlocal var action_age: usize = 0;
 
 /// Every shift or reduce operation is stored as one of the following
 const Action = struct {
     /// The look-ahead symbol
-    sp: *Symbol,
-    /// Determines the union
-    @"type": E_Action,
-    x:  extern union {
-        /// The new state, if a shift
-        stp: ?*State,
-        /// The rule, if a reduce
-        rp ?*Rule,
-    },
+    sp: *Symbol = undefined,
+    x: ActUnion = ._not_initialized,
     /// SHIFTREDUCE optimization to this symbol
-    spOpt: *Symbol,
+    spOpt: ?*Symbol = null,
     /// Next action for this state
-    next: ?*Action,
+    next: ?*Action = null,
     /// Next action with the same hash
-    collide: ?*Action,
+    collide: ?*Action = null,
+    /// Tie-breaker in sorting
+    age: usize,
+
+    // [490]
+    pub fn new() !*Action {
+        var act = try action_allocator.create();
+        act.age = action_age;
+        action_age += 1;
+        return act;
+    }
+
+    //
 };
 
 /// Each state of the generated parser's finite state machine
 /// is encoded as an instance of the following structure.
-const State = struct{
+const State = struct {
     /// The basis configurations for this state
     pb: *Config,
     /// All configurations in this set
-    cfp *Config,
+    cfp: *Config,
     /// Sequential number for this state
     statenum: int,
     /// List of actions for this state
     ap: *Action,
     /// Number of actions on terminals
-    nTknAct: int,
+    nTknAct: u32,
     /// Number of actions on nonterminals
-    nNtAct: int,
+    nNtAct: u32,
     /// yy_action[] offset for terminals
-    iTnkOfst: int,
+    iTnkOfst: ?u32,
     /// yy_action[] offset for nonterminals
-    iNtOfst: int,
+    iNtOfst: ?u32,
     /// Default action is to REDUCE by this rule
     iDfltReduce: int,
     /// The default REDUCE rule.
-    pDefltReduce: *Rule,
+    pDefltReduce: ?*Rule,
     /// True if this is an auto-reduce state
     autoreduce: bool,
+
+    // [541]
+    pub fn addAction(st: *State, sym: *Symbol, act_u: ActUnion) void {
+        var newaction = Action.new();
+        newaction.next = st.ap;
+        st.ap = newaction;
+        newaction.sp = sym;
+        newaction.spOpt = null;
+        newaction.x = act_u;
+    }
 };
-
-// TODO: Obviously some of those offsets are nullable:
-
-const NO_OFFSET: int = -2147483647;
 
 /// A followset propagation link indicates that the contents of one
 /// configuration followset should be propagated to another whenever
@@ -340,7 +371,7 @@ const Lemon = struct {
     minReduce: int,
     /// Maximum action value of any kind
     maxAction: int,
-// TODO: Fill in the rest of these, I am fatigued
+    // TODO: Fill in the rest of these, I am fatigued
     symbols: []*Symbol,
 
     errorcnt: int,
@@ -375,25 +406,129 @@ const Lemon = struct {
     argv: [][]u8,
 };
 
+//| [324] Action stuff
 
+// Some of this got distributed to struct namespaces
 
+//|
+//| The state of the yy_action table under construction is an instance of
+//| the following structure.
+//|
+//| The yy_action table maps the pair (state_number, lookahead) into an
+//| action_number.  The table is an array of integers pairs.  The state_number
+//| determines an initial offset into the yy_action array.  The lookahead
+//| value is then added to this initial offset to get an index X into the
+//| yy_action array. If the aAction[X].lookahead equals the value of the
+//| of the lookahead input, then the value of the action_number output is
+//| aAction[X].action.  If the lookaheads do not match then the
+//| default action for the state_number is returned.
+//|
+//| All actions associated with a single state_number are first entered
+//| into aLookahead[] using multiple calls to acttab_action().  Then the
+//| actions for that single state_number are placed into the aAction[]
+//| array with a single call to acttab_insert().  The acttab_insert() call
+//| also resets the aLookahead[] array in preparation for the next
+//| state number.
 
+/// Value of the lookahead token
+/// Action to take on the given lookahead
+const LookaheadAction = struct {
+    /// Value of the lookahead token
+    lookahead: ?u31,
+    /// Action to take on the given lookahead
+    action: ?u31,
+};
 
+const ActTable = struct {
+    allocator: Allocator,
+    /// The yyaction[] table under construction
+    aAction: ArrayList(LookaheadAction) = .empty,
+    /// A single new transaction set
+    aLookahead: ArrayList(LookaheadAction) = .empty,
+    /// Minimum aLookahead[].lookahead
+    mnLookahead: int = 0,
+    /// Action associated with mnLookahead
+    mnAction: int = 0,
+    /// Maximum aLookahead[].lookahead
+    mxLookahead: int = 0,
+    /// Number of terminal symbols
+    nterminal: usize = 0,
+    /// total number of symbols
+    nsymbol: usize = 0,
 
+    pub fn create(allocator: Allocator, nsymbol: usize, nterminal: usize) !*ActTable {
+        var tab = try allocator.create(ActTable);
+        tab.* = .{};
+        tab.nsymbol = nsymbol;
+        tab.nterminal = nterminal;
+        tab.allocator = allocator;
+        return tab;
+    }
 
+    pub fn destroy(tab: *ActTable) void {
+        tab.aAction.deinit(tab.allocator);
+        tab.aLookahead.deinit(tab.allocator);
+        tab.allocator.destroy(tab);
+    }
 
+    /// Return the number of entries in the yy_action table
+    pub inline fn lookaheadSize(x: *const ActTable) usize {
+        return x.aAction.items.len;
+    }
 
+    /// The value for the N-th entry in yy_action
+    pub inline fn yyaction(tab: *const ActTable, n: usize) ?u31 {
+        return tab.aAction.items[n].action;
+    }
 
+    /// The value for the N-th entry in yy_lookahead
+    pub inline fn yylookahead(tab: *const ActTable, n: usize) ?u31 {
+        return tab.aAction.items[n].lookahead;
+    }
 
+    // [639]
+    /// Add a new action to the current transaction set.
+    ///
+    /// This routine is called once for each lookahead for a particular
+    /// state.
+    pub fn action(tab: *ActTable, lookahead: u31, an_action: u31) !void {
+        if (tab.aLookahead.items.len == 0) {
+            tab.mxLookahead = lookahead;
+            tab.mnLookahead = lookahead;
+            tab.mnAction = an_action;
+        } else {
+            if (tab.mxLookahead < lookahead) tab.mxLookahead = lookahead;
+            if (tab.mnLookahead > lookahead) {
+                tab.mnLookahead = lookahead;
+                tab.mnAction = an_action;
+            }
+        }
+        try tab.aLookahead.append(tab.allocator, .{ .lookahead = lookahead, .action = an_action });
+    }
 
-
-
-
-
-
-
+    ///
+    /// Add the transaction set built up with prior calls to acttab_action()
+    /// into the current action table.  Then reset the transaction set back
+    /// to an empty set in preparation for a new round of acttab_action() calls.
+    ///
+    /// Return the offset into the action table of the new transaction.
+    ///
+    /// If the makeItSafe parameter is true, then the offset is chosen so that
+    /// it is impossible to overread the yy_lookaside[] table regardless of
+    /// the lookaside token.  This is done for the terminal symbols, as they
+    /// come from external inputs and can contain syntax errors.  When makeItSafe
+    /// is false, there is more flexibility in selecting offsets, resulting in
+    /// a smaller table.  For non-terminal symbols, which are never syntax errors,
+    /// makeItSafe can be false.
+    ///
+    pub fn insert(tab: *ActTable, makeItSafe: bool) !void {
+        _ = .{ tab, makeItSafe };
+    }
+};
 
 pub fn main() void {
+    action_allocator = ActionAllocator.init(std.heap.page_allocator);
+    defer action_allocator.reset();
     std.debug.print("lemon for great justice!\n", .{});
     std.process.exit(0);
 }
@@ -401,4 +536,3 @@ pub fn main() void {
 test "exe mentioned" {
     std.debug.print("hello from lemon main\n", .{});
 }
-

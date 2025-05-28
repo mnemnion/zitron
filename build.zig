@@ -42,6 +42,9 @@ pub fn build(b: *std.Build) void {
 
     test_step.dependOn(&run_exe_unit_tests.step);
 
+    const run_step = b.step("run", "Run lemon");
+    run_step.dependOn(&run_cmd.step);
+
     const run_kcov = b.addSystemCommand(&.{
         "kcov",
         "--clean",
