@@ -127,7 +127,7 @@ const Symbol = struct {
     /// Index number for this symbol
     index: int,
     /// Symbols are all either terminal or nonterminal
-    type: SymbolType,
+    type: SymbolType = .terminal,
     /// Linked list of rules of this (if an NT)
     rule: ?*Rule,
     /// fallback token in case this token doesn't parse
@@ -135,7 +135,7 @@ const Symbol = struct {
     /// Precedence if defined (-1 otherwise)
     prec: int, // Should be ?u16 probably
     /// Associativity if precedence is defined
-    assoc: E_Assoc,
+    assoc: E_Assoc = .unk,
     /// First-set for all rules of this symbol
     firstset: []bool,
     /// True if NT and can generate an empty string
@@ -164,6 +164,8 @@ const Symbol = struct {
     nsubsym: int, // Probably redundant with this slice:
     /// Array (slice) of constituent symbols
     subsym: []*Symbol,
+
+    pub const empty: Symbol = std.mem.zeroInit(Symbol, .{});
 };
 
 /// Each production rule in the grammar is stored in the following structure.
@@ -721,7 +723,7 @@ fn Configlist_add(rp: *Rule, dot: int) !*Config {
     var cfp = try newconfig();
     cfp.* = .{};
     cfp.rp = rp;
-    cfp.model = dot;
+    cfp.dot = dot;
     cfp.fws = try cfgl.allocator.alloc(bool, set_size);
     @memset(cfp.fws, false);
     cfgl.currentend.* = cfp;
@@ -739,7 +741,7 @@ fn Configlist_addbasis(rp: *Rule, dot: int) !void {
     var cfp = try newconfig();
     cfp.* = .{};
     cfp.rp = rp;
-    cfp.model = dot;
+    cfp.dot = dot;
     cfp.fws = try cfgl.allocator.alloc(bool, set_size);
     @memset(cfp.fws, false);
     cfgl.currentend.* = cfp;
@@ -795,6 +797,7 @@ const E_State = enum {
 };
 
 pub const PState = struct {
+    allocator: Allocator,
     /// Name of the input file
     filename: []const u8,
     /// Line number at which current token starts
@@ -938,6 +941,100 @@ fn parseonetoken(psp: *PState) !void {
                 psp.errorcnt += 1;
             }
             psp.state = .waiting_for_decl_or_rule;
+        },
+        .waiting_for_arrow => {
+            if (x.len >= 3 and x[0] == ':' and x[1] == ':' and x[2] == '=') {
+                psp.state = .in_rhs;
+            } else if (x[0] == '(') {
+                psp.state = .lhs_alias_1;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Expected to see a \":\" following the LHS symbol \"%s\".", .{});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
+        },
+        .lhs_alias_1 => {
+            if (isAlpha(x[0])) {
+                psp.lhsalias = x;
+                psp.state = .lhs_alias_2;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "\"%s\" is not a valid alias for the LHS \"%s\"\n", .{});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
+        },
+        .lhs_alias_2 => {
+            if (x[0] == ')') {
+                psp.state = .lhs_alias_3;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Missing \")\" following LHS alias name \"{s}\".", .{psp.lhsalias});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
+        },
+        .lhs_alias_3 => {
+            if (x.len >= 3 and x[0] == ':' and x[1] == ':' and x[2] == '=') {
+                psp.state = .in_rhs;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Missing \"::=\" following: \"{s}({s})\".", //
+                    .{ psp.lhs.name, psp.lhsalias });
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
+        },
+        .in_rhs => {
+            if (x[0] == '.') {
+                // This is really complex setup which I don't want to do yet
+                // TODO: rest of the owl.
+
+            } else if (isAlpha(x[0])) {
+                //
+                if (psp.nrhs >= MAXRHS) {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Too many symbols on RHS of rule beginning at \"{s}\".", .{x});
+                    psp.errorcnt += 1;
+                    psp.state = .resync_after_rule_error;
+                } else {
+                    psp.rhs[psp.nrhs] = Symbol_new(x);
+                    psp.alias[psp.nrhs] = "";
+                    psp.nrhs += 1;
+                }
+            } else if ((x[0] == '|' or x[0] == '/') and psp.nrhs > 0 and x.len > 0 and isUpper(x[1])) {
+                const msp = psp.rhs[psp.nrhs - 1];
+                if (msp.type != .multiterminal) {
+                    const origmsp = msp;
+                    msp = try psp.allocator.create(Symbol);
+                    msp.* = .empty;
+                    msp.type = .multiterminal;
+                    msp.nsubsym = 1;
+                    msp.subsym = try psp.allocator.alloc(*Symbol, 1);
+                    msp.subsym[0] = origmsp;
+                    msp.name = origmsp.name;
+                    psp.rhs[psp.nrhs - 1] = msp;
+                }
+                // TODO: This assumes there is a symbol after the pipe. That's probably true but we
+                // should check the tokenizer at some point.
+                msp.nsubsym += 1;
+                msp.subsym = try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
+                msp.subsym[msp.nsubsym - 1] = Symbol_new(x[1..]);
+                if (isLower(x[1]) || isLower(msp.subsym[0].name[0])) {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Cannot form a compound containing a non-terminal", .{});
+                    psp.errorcnt += 1;
+                    psp.state = .resync_after_rule_error;
+                }
+            } else if (x[0] == '(' and psp.nrhs == 0) {
+                psp.state = .rhs_alias_1;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Illegal character on RHS of rule: \"{s}\".", .{});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
         },
     }
 }
