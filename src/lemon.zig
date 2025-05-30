@@ -15,10 +15,15 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
+const ArrayHashMap = std.ArrayHashMapUnmanaged;
 const MemoryPool = std.heap.MemoryPool;
 const ArrayList = std.ArrayListUnmanaged;
 
 const assert = std.debug.assert;
+
+inline fn cast(T: type, val: anytype) T {
+    return @as(T, @intCast(val));
+}
 
 // Definition of `int`.  This should help me figure out which should
 // be unsigned, optional, or both, and which should in fact be an
@@ -210,17 +215,32 @@ const Config = struct {
     /// Follow-set for this configuration only
     fws: []u8, // Another map[int]bool
     /// Follow-set forward propagation links
-    fplp: *PLink,
+    fplp: ?*PLink = null,
     /// Follow-set backwards propagation links
-    bplp: *PLink,
+    bplp: ?*PLink = null,
     /// Pointer to state which contains this
-    stp: *State,
+    stp: ?*State = null,
     /// used during followset and shift computations
-    status: ConfigStatus,
+    status: ConfigStatus = .incomplete,
     /// Next configuration in the state
-    next: ?*Config,
+    next: ?*Config = null,
     /// The next basis configuration
-    bp: ?*Config,
+    bp: ?*Config = null,
+};
+
+const ConfigContext = struct {
+    pub fn eql(_: ConfigContext, c1: *Config, c2: *Config, _: usize) bool {
+        return c1.rp.index == c2.rp.index and c1.dot == c2.dot;
+    }
+
+    // [5822]
+    pub fn hash(_: ConfigContext, c: *Config) u32 {
+        // This is where I brag just a little, having spotted an error
+        // of no practical significance in lemon.c as it was when I
+        // began this:  https://sqlite.org/forum/forumpost/686cb52ae2
+        //
+        return @intCast(c.rp.index * 37 + c.dot);
+    }
 };
 
 const E_Action = enum(u4) {
@@ -462,6 +482,7 @@ const ActTable = struct {
     /// total number of symbols
     nsymbol: usize = 0,
 
+    // [541] Action_add
     pub fn create(allocator: Allocator, nsymbol: usize, nterminal: usize) !*ActTable {
         var tab = try allocator.create(ActTable);
         tab.* = .{};
@@ -533,7 +554,7 @@ const ActTable = struct {
     /// a smaller table.  For non-terminal symbols, which are never syntax errors,
     /// makeItSafe can be false.
     ///
-    pub fn insert(p: *ActTable, makeItSafe: bool) !void {
+    pub fn insert(p: *ActTable, makeItSafe: bool) !i32 {
         //  Make sure we have enough space to hold the expanded action table
         // in the worst case.  The worst case occurs if the transaction set
         // must be appended to the current action table.
@@ -541,6 +562,7 @@ const ActTable = struct {
         {
             const n = p.nsymbol + 1;
             if (p.nAction + n >= p.aAction.items.len) {
+                // TODO: This value is probably excessive.
                 const new_cap = p.nAction + p.aAction.items.len + 20;
                 const new_slice = try p.aAction.addManyAsSlice(p.allocator, new_cap);
                 @memset(new_slice, LookaheadAction.empty);
@@ -550,8 +572,9 @@ const ActTable = struct {
         // Since we're done allocating, these pointers are stable:
         const act_items = p.aAction.items;
         const look_items = p.aLookahead.items;
-        var i: usize = p.nAction - 1;
-        i_loop: while (i >= end) : (i -= 1) {
+        var ii: isize = p.nAction - 1;
+        i_loop: while (ii >= end) : (ii -= 1) {
+            const i: usize = @intCast(ii);
             if (act_items[i].lookahead == p.mnLookahead) {
                 // All lookaheads and actions in the aLookahead[] transaction
                 // must match against the candidate aAction[i] entry.
@@ -582,12 +605,12 @@ const ActTable = struct {
         // If no existing offsets exactly match the current transaction, find an
         // an empty offset in the aAction[] table in which we can add the
         // aLookahead[] transaction.
-        if (i < end) {
+        if (ii < end) {
             // Look for holes in the aAction[] table that fit the current
             // aLookahead[] transaction.  Leave i set to the offset of the hole.
             // If no holes are found, i is left at p->nAction, which means the
             // transaction will be appended.
-            i = if (makeItSafe) p.mnLookahead else 0; // Isn't this 'end'? -Sam
+            var i: usize = if (makeItSafe) @intCast(p.mnLookahead) else 0; // Isn't this 'end'? -Sam
             i_loop: while (i < act_items.len - p.mxLookahead) : (i += 1) {
                 if (act_items[i].lookahead < 0) {
                     var j: usize = 0;
@@ -609,24 +632,160 @@ const ActTable = struct {
         }
         // Insert transaction set at index i.
         for (0..look_items.len) |j| {
-            const k = look_items[j] - p.mnLookahead + i;
-            act_items[k] = look_items[j];
+            const k = look_items[j] - p.mnLookahead + ii;
+            act_items[cast(usize, k)] = look_items[j];
             if (k > p.nAction) p.nAction = k + 1;
         }
 
-        if (makeItSafe and i + p.nterminal >= p.nAction) p.nAction = i + p.nterminal + 1;
+        if (makeItSafe and ii + p.nterminal >= p.nAction) p.nAction = ii + p.nterminal + 1;
 
         p.aLookahead.clearRetainingCapacity();
 
         // Return the offset that is added to the lookahead in order to get the
         // index into yy_action of the action
-        return i - p.mnLookahead;
+        return ii - p.mnLookahead;
+    }
+
+    // [792]
+    /// Return the size of the action table without the trailing syntax error entries.
+    pub fn actionSize(acttab: *ActTable) usize {
+        var n = acttab.nAction;
+        while (n > 0 and acttab.aAction.items[n].lookahead < 0) : (n -= 1) {}
+        return n;
     }
 };
 
+//| [1300] configlist.c
+//|
+//| This is one of the places where the Lemon generator uses global state.
+//| No sin in that, not in an application, but we're going to package it up
+//| into:
+
+pub const ConfigLists = struct {
+    allocator: Allocator,
+    pool: MemoryPool(Config),
+    current: ?*Config,
+    currentend: *?*Config,
+    basis: ?*Config,
+    basisend: *?*Config,
+    config_table: ArrayHashMap(*Config, void, ConfigContext, false),
+};
+
+//| ... but we'll make it 'global' for now:
+var cfgl: ConfigLists = undefined;
+
+fn newconfig() !*Config {
+    return cfgl.pool.create();
+}
+
+fn ConfigList_init(allocator: Allocator, pool: MemoryPool(Config)) void {
+    cfgl.allocator = allocator;
+    cfgl.pool = pool;
+    cfgl.current = null;
+    cfgl.currentend = &cfgl.current;
+    cfgl.basis = null;
+    cfgl.basisend = &cfgl.basis;
+    cfgl.config_table = .empty;
+}
+
+fn ConfigList_reset() void {
+    cfgl.current = null;
+    cfgl.currentend = &cfgl.current;
+    cfgl.basis = null;
+    cfgl.basisend = &cfgl.basis;
+    cfgl.config_table.clearRetainingCapacity();
+}
+
+/// Add another configuration to the configuration list
+fn Configlist_add(rp: *Rule, dot: int) !*Config {
+    var model: Config = undefined;
+    model.rp = rp;
+    model.dot = dot;
+    const maybe_cfp = cfgl.config_table.getKey(&model);
+    if (maybe_cfp) |cfp| return cfp;
+    var cfp = try newconfig();
+    cfp.* = .{};
+    cfp.rp = rp;
+    cfp.model = dot;
+    cfp.fws = ""; // XXX: SetNew() (this is a hashmap set)
+    cfgl.currentend.* = cfp;
+    cfgl.currentend = &cfp.next;
+    cfgl.config_table.put(cfgl.allocator, cfp, {});
+    return cfp;
+}
+
+fn Configlist_addbasis(rp: *Rule, dot: int) !void {
+    var model: Config = undefined;
+    model.rp = rp;
+    model.dot = dot;
+    const maybe_cfp = cfgl.config_table.getKey(&model);
+    if (maybe_cfp) |cfp| return cfp;
+    var cfp = try newconfig();
+    cfp.* = .{};
+    cfp.rp = rp;
+    cfp.model = dot;
+    cfp.fws = ""; // XXX: SetNew() (this is a hashmap set)
+    cfgl.currentend.* = cfp;
+    cfgl.currentend = cfp.next;
+    cfgl.basisend.* = cfp;
+    cfgl.basisend = &cfp.bp;
+    cfgl.config_table.put(cfgl.allocator, cfp, {});
+    return cfp;
+}
+
+// TODO: Configlist_closure(lemp: *Lemon) void {}
+// Configlist_sort
+// Configlist_sortbasis
+// Configlist_return
+// Configlist_basis
+// Configlist_eat
+
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+
 pub fn main() void {
+    var dbga: std.heap.DebugAllocator(.{}) = .init;
+    defer {
+        _ = dbga.detectLeaks();
+        assert(.ok == dbga.deinit());
+    }
+    const allocator = dbga.allocator();
     action_allocator = ActionAllocator.init(std.heap.page_allocator);
     defer action_allocator.reset();
+    ConfigList_init(allocator, .init(std.heap.page_allocator));
+    defer cfgl.pool.reset();
+    cfgl.allocator = allocator;
+
     std.debug.print("lemon for great justice!\n", .{});
     std.process.exit(0);
 }
