@@ -18,8 +18,23 @@ const Allocator = std.mem.Allocator;
 const ArrayHashMap = std.ArrayHashMapUnmanaged;
 const MemoryPool = std.heap.MemoryPool;
 const ArrayList = std.ArrayListUnmanaged;
+const StringArrayHashMap = std.StringArrayHashMapUnmanaged;
+
+const isLower = std.ascii.isLower;
+const isUpper = std.ascii.isUpper;
+const isAlnum = std.ascii.isAlphanumeric;
+const isAlpha = std.ascii.isAlphabetic;
+const isSpace = std.ascii.isWhitespace;
 
 const assert = std.debug.assert;
+
+// NOTE: This is not, in fact, how strcmp works.  If it turns out
+// I need anything other than != 0 and == 0 from strcmp, which I doubt,
+// I can decide how to handle that then.
+
+fn strcmp(a: []const u8, b: []const u8) bool {
+    return std.mem.eql(u8, a, b);
+}
 
 inline fn cast(T: type, val: anytype) T {
     return @as(T, @intCast(val));
@@ -741,6 +756,196 @@ fn Configlist_addbasis(rp: *Rule, dot: int) !void {
 // Configlist_return
 // Configlist_basis
 // Configlist_eat
+
+//| [1500] ErrorMsg
+
+fn ErrorMsg(filename: []const u8, lineno: usize, comptime fmt: []const u8, args: anytype) !void {
+    std.debug.print("{s}:{d}", .{ filename, lineno });
+    std.debug.print(fmt, args);
+    std.debug.print("{s}", .{"\n"});
+}
+
+//| [2211] From parse.c
+
+/// The state of the parser
+const E_State = enum {
+    initialize,
+    waiting_for_decl_or_rule,
+    waiting_for_decl_keyword,
+    waiting_for_decl_arg,
+    waiting_for_precedence_symbol,
+    waiting_for_arrow,
+    in_rhs,
+    lhs_alias_1,
+    lhs_alias_2,
+    lhs_alias_3,
+    rhs_alias_1,
+    rhs_alias_2,
+    precedence_mark_1,
+    precedence_mark_2,
+    resync_after_rule_error,
+    resync_after_decl_error,
+    waiting_for_destructor_symbol,
+    waiting_for_datatype_symbol,
+    waiting_for_fallback_id,
+    waiting_for_wildcard_id,
+    waiting_for_class_id,
+    waiting_for_class_token,
+    waiting_for_token_name,
+};
+
+pub const PState = struct {
+    /// Name of the input file
+    filename: []const u8,
+    /// Line number at which current token starts
+    tokenlineno: int,
+    /// Number of errors so far
+    errorcnt: int,
+    /// Text of current token
+    tokenstart: []const u8,
+    /// Global state vector
+    gp: *Lemon,
+    /// The state of the parser
+    state: E_State,
+    /// The fallback token
+    fallback: *Symbol,
+    /// Token class symbol
+    tkclass: *Symbol,
+    /// Left-hand side of current rule
+    lhs: *Symbol,
+    /// Alias for the LHS
+    lhsalias: []const u8,
+    /// Number of right-hand side symbols seen
+    nrhs: int,
+    /// RHS symbols
+    rhs: []*Symbol,
+    /// Aliases for each RHS symbol (or null)
+    alias: [][]const u8, // We'll use empty slices as per usual
+    /// Previous rule parsed
+    prevrule: ?*Rule,
+    /// Keyword of a declaration
+    declkeyword: []const u8,
+    /// Where the declaration argument should be put
+    declargslot: []u8,
+    /// Add `#line` before declaration insert
+    insertLineMacro: int,
+    /// Where to write declaration line number
+    decllinenoslot: *int,
+    /// Assign this association to decl arguments
+    declassoc: E_Assoc,
+    /// Assign this precedence to decl arguments
+    preccounter: int,
+    /// Pointer to first rule in the grammar
+    firstrule: ?*Rule,
+    /// Pointer to the most recently parsed rule
+    lastrule: ?*Rule,
+    /// String intern pool
+    strsafe: StrSafe,
+};
+
+const StrSafe = struct {
+    safe: StringArrayHashMap(void),
+    allocator: Allocator,
+
+    pub fn init(allocator: Allocator) StrSafe {
+        return .{ .allocator = allocator, .safe = .empty };
+    }
+
+    pub fn intern(strsafe: *StrSafe, k: []const u8) ![]const u8 {
+        if (strsafe.safe.getKey(k)) |key| {
+            return key;
+        }
+        const dupe = try strsafe.allocator.dupe(u8, k);
+        try strsafe.safe.put(strsafe.allocator, dupe, {});
+        return dupe;
+    }
+};
+
+fn parseonetoken(psp: *PState) !void {
+    const x = try psp.strsafe.intern(psp.tokenstart);
+    // This seems to be presumed (?)
+    assert(x.len != 0);
+    state: switch (psp.state) {
+        .initialize => { // TODO: Probably just do this first yeah
+            psp.prevrule = null;
+            psp.prevcounter = 0;
+            psp.firstrule, psp.lastrule = .{ null, null };
+            psp.gp.nrule = 0;
+            continue :state .waiting_for_decl_keyword;
+        },
+        .waiting_for_decl_or_rule => {
+            if (x[0] == '%') {
+                psp.state = .waiting_for_decl_keyword;
+            } else if (isLower(x[0])) {
+                // psp.lhs = Symbol_new(x);
+                psp.nrhs = 0;
+                psp.lhsalias = "";
+                psp.state = .waiting_for_arrow;
+            } else if (x[0] == '{') {
+                if (psp.prevrule) |prev| {
+                    if (prev.code.len != 0) {
+                        ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                            "Code fragment beginning on this line is not the first " ++
+                            "to follow the previous rule.", .{});
+                        psp.errorcnt += 1;
+                    } else if (strcmp(x, "{NEVER-REDUCE")) {
+                        // TODO: only appearance of NEVER-REDUCE in lemon or lempar. Impossibru?
+                        prev.neverReduce = true;
+                    } else {
+                        prev.line = psp.tokenlineno;
+                        prev.code = x[1..]; // Code lacks outer braces
+                        prev.noCode = false;
+                    }
+                } else {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "There is no prior rule upon which to attach the code " ++
+                        "fragment which begins on this line", .{});
+                    psp.errorcnt += 1;
+                }
+            } else if (x[0] == '[') {
+                psp.state = .precedence_mark_1;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Token {s} should be either \"%\" or a nonterminal name.", .{x});
+                psp.errorcnt += 1;
+            }
+        },
+        .precedence_mark_1 => {
+            if (!isUpper(x[0])) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "The precedence symbol must be a terminal.", .{});
+                psp.errorcnt += 1;
+            } else if (psp.prevrule) |prev| {
+                if (prev.precsym) |_| {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Precedence mark on this line is not the first " ++
+                        "to follow the previous rule.", .{});
+                    psp.errorcnt += 1;
+                } else {
+                    prev.precsym = try Symbol_new(x);
+                }
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "There is no prior rule to assign precedence \"{s}\".", .{x});
+                psp.errorcnt += 1;
+            }
+            psp.state = .precedence_mark_2;
+        },
+        .precedence_mark_2 => {
+            if (x[0] != ']') {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Missing \"]\" on precedence mark.", .{});
+                psp.errorcnt += 1;
+            }
+            psp.state = .waiting_for_decl_or_rule;
+        },
+    }
+}
+
+fn Symbol_new(str: []const u8) !*Symbol {
+    _ = str;
+    return .{}; // XXX: write this
+}
 
 //| [5230] Set manipulation
 //|
