@@ -122,7 +122,7 @@ const Symbol = struct {
     /// Associativity if precedence is defined
     assoc: E_Assoc,
     /// First-set for all rules of this symbol
-    firstset: []u8, // NOTE: golemon has map[int] bool here
+    firstset: []bool,
     /// True if NT and can generate an empty string
     lambda: bool,
     /// Number of times used
@@ -213,7 +213,7 @@ const Config = struct {
     /// The parse point
     dot: int,
     /// Follow-set for this configuration only
-    fws: []u8, // Another map[int]bool
+    fws: []bool,
     /// Follow-set forward propagation links
     fplp: ?*PLink = null,
     /// Follow-set backwards propagation links
@@ -672,7 +672,7 @@ pub const ConfigLists = struct {
 };
 
 //| ... but we'll make it 'global' for now:
-var cfgl: ConfigLists = undefined;
+threadlocal var cfgl: ConfigLists = undefined;
 
 fn newconfig() !*Config {
     return cfgl.pool.create();
@@ -707,7 +707,8 @@ fn Configlist_add(rp: *Rule, dot: int) !*Config {
     cfp.* = .{};
     cfp.rp = rp;
     cfp.model = dot;
-    cfp.fws = ""; // XXX: SetNew() (this is a hashmap set)
+    cfp.fws = try cfgl.allocator.alloc(bool, set_size);
+    @memset(cfp.fws, false);
     cfgl.currentend.* = cfp;
     cfgl.currentend = &cfp.next;
     cfgl.config_table.put(cfgl.allocator, cfp, {});
@@ -724,7 +725,8 @@ fn Configlist_addbasis(rp: *Rule, dot: int) !void {
     cfp.* = .{};
     cfp.rp = rp;
     cfp.model = dot;
-    cfp.fws = ""; // XXX: SetNew() (this is a hashmap set)
+    cfp.fws = try cfgl.allocator.alloc(bool, set_size);
+    @memset(cfp.fws, false);
     cfgl.currentend.* = cfp;
     cfgl.currentend = cfp.next;
     cfgl.basisend.* = cfp;
@@ -739,6 +741,47 @@ fn Configlist_addbasis(rp: *Rule, dot: int) !void {
 // Configlist_return
 // Configlist_basis
 // Configlist_eat
+
+//| [5230] Set manipulation
+//|
+//| This is actually pretty straightforward, we use a []bool instead of a
+//| *char but same same.  It can probably be refined later but honestly
+//| space efficiency is not a big deal (in that I DEFINITELY DO NOT need
+//| to beat lemon.c there), and byte booleans are going to be faster than
+//| bitsets, if anything.  Then again, I would get union for free, not that
+//| it's an especially recondite algorithm...
+
+threadlocal var set_size: usize = 0;
+
+fn SetSize(n: usize) void {
+    set_size = n + 1;
+}
+
+//| SetNew is just allocating []bool, SetFree needs the allocator so we
+//| take care of it when destroying things with sets on them.
+
+// Add a new element to the set.  Return `true` if the element was added
+// and `false` if it was already there.
+fn SetAdd(set: []bool, n: usize) bool {
+    const was = set[n];
+    assert(n < set_size);
+    set[n] = true;
+    return !was;
+}
+
+/// Add every element of s2 to s1.  Return `true` if s1 changes.
+fn SetUnion(s1: []bool, s2: []bool) bool {
+    assert(s1.len == s2.len);
+    var changed = false;
+    for (0..s1.len) |i| {
+        if (!s2[i]) continue;
+        if (!s1[i]) {
+            changed = true;
+            s1[i] = true;
+        }
+    }
+    return changed;
+}
 
 //
 //
