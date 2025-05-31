@@ -418,27 +418,46 @@ const Lemon = struct {
     // TODO: Fill in the rest of these, I am fatigued
     symbols: []*Symbol,
 
-    errorcnt: int,
-    errsym: *Symbol,
-    wildcard: *Symbol,
+    /// Name of the generated parser
     name: []u8,
+    /// Declaration of the 3rd argument to parser
     arg: []u8,
+    /// Declaration of 2nd argument to constructor
+    ctx: []u8,
+    /// Type of terminal symbols in the parser stack
     tokentype: []u8,
+    /// The default type of non-terminal symbols
     vartype: []u8,
+    /// Name of the start symbol for the grammar
     start: []u8,
+    /// Size of the parser stack
     stacksize: []u8,
+    /// Code to put at the start of the C file
     include: []u8,
+    /// Code to execute when an error is seen
     @"error": []u8,
+    /// Code to execute on a stack overflow
     overflow: []u8,
+    /// Code to execute on parser failure
     failure: []u8,
+    /// Code to execute when the parser excepts
     accept: []u8,
+    /// Code appended to the generated file
     extracode: []u8,
+    /// Code to execute to destroy token data
     tokendest: []u8,
+    /// Code for the default non-terminal destructor
     vardest: []u8,
+    /// Name of the input file
     filename: []u8,
+    /// Name of the current output file
     outname: []u8,
+    /// A prefix added to token names in the .h file
     tokenprefix: []u8,
-
+    /// Function to use to allocate stack space
+    reallocFunc: []u8,
+    /// Function to use to free stack space
+    freeFunc: []u8,
     nconflict: int,
     nactiontab: int,
     nlookaheadtab: int,
@@ -816,7 +835,7 @@ pub const PState = struct {
     /// The state of the parser
     state: E_State,
     /// The fallback token
-    fallback: *Symbol,
+    fallback: ?*Symbol,
     /// Token class symbol
     tkclass: *Symbol,
     /// Left-hand side of current rule
@@ -836,9 +855,9 @@ pub const PState = struct {
     /// Where the declaration argument should be put
     declargslot: []u8,
     /// Add `#line` before declaration insert
-    insertLineMacro: int,
+    insertLineMacro: bool,
     /// Where to write declaration line number
-    decllinenoslot: *int,
+    decllinenoslot: ?*int,
     /// Assign this association to decl arguments
     declassoc: E_Assoc,
     /// Assign this precedence to decl arguments
@@ -1022,7 +1041,6 @@ fn parseonetoken(psp: *PState) !void {
                 psp.prevrule = rp;
                 psp.state = .waiting_for_decl_or_rule;
             } else if (isAlpha(x[0])) {
-                //
                 if (psp.nrhs >= MAXRHS) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Too many symbols on RHS of rule beginning at \"{s}\".", .{x});
@@ -1090,9 +1108,188 @@ fn parseonetoken(psp: *PState) !void {
         },
         .waiting_for_decl_keyword => {
             // This I'm doing with an enum, a StaticStringMap, and a switch.
+            const decl = declarations.get(x) orelse {
+                if (isAlpha(x[0])) {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Unknown declaration keyword: \"%{s}\".", .{x});
+                } else {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Illegal declaration keyword: \"%{s}\".", .{x});
+                }
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+                break :state;
+            };
+            psp.declkeyword = x;
+            psp.declargslot = &.{};
+            psp.decllinenoslot = null;
+            psp.insertLineMacro = true;
+            psp.state = .waiting_for_decl_arg;
+            switch (decl) {
+                .name => {
+                    psp.declargslot = psp.gp.name;
+                    psp.insertLineMacro = 0;
+                },
+                .include => {
+                    psp.declargslot = psp.gp.include;
+                },
+                .code => {
+                    psp.declargslot = psp.gp.extracode;
+                },
+                .token_destructor => {
+                    psp.declargslot = psp.gp.tokendest;
+                },
+                .default_destructor => {
+                    psp.declargslot = psp.gp.vardest;
+                },
+                .token_prefix => {
+                    psp.declargslot = psp.gp.tokenprefix;
+                    psp.insertLineMacro = false;
+                },
+                .syntax_error => {
+                    psp.declargslot = psp.gp.@"error";
+                },
+                .parse_accept => {
+                    psp.declargslot = psp.gp.accept;
+                },
+                .parse_failure => {
+                    psp.declargslot = psp.gp.failure;
+                },
+                .stack_overflow => {
+                    psp.declargslot = psp.gp.overflow;
+                },
+                .extra_argument => {
+                    psp.declargslot = psp.gp.arg;
+                    psp.insertLineMacro = false;
+                },
+                .extra_context => {
+                    psp.declargslot = psp.gp.ctx;
+                    psp.insertLineMacro = false;
+                },
+                .token_type => {
+                    psp.declargslot = psp.gp.tokentype;
+                    psp.insertLineMacro = false;
+                },
+                .default_type => {
+                    psp.declargslot = psp.gp.vartype;
+                    psp.insertLineMacro = false;
+                },
+                .realloc => {
+                    psp.declargslot = psp.gp.reallocFunc;
+                    psp.insertLineMacro = false;
+                },
+                .free => {
+                    psp.declargslot = psp.gp.freeFunc;
+                    psp.insertLineMacro = false;
+                },
+                .stack_size => {
+                    psp.declargslot = psp.gp.stacksize;
+                    psp.insertLineMacro = false;
+                },
+                .start_symbol => {
+                    psp.declargslot = psp.gp.start;
+                    psp.insertLineMacro = false;
+                },
+                .left => {
+                    psp.preccounter += 1;
+                    psp.declassoc = .left;
+                    psp.state = .waiting_for_precedence_symbol;
+                },
+                .right => {
+                    psp.preccounter += 1;
+                    psp.declassoc = .right;
+                    psp.state = .waiting_for_precedence_symbol;
+                },
+                .nonassoc => {
+                    psp.preccounter += 1;
+                    psp.declassoc = .none;
+                    psp.state = .waiting_for_precedence_symbol;
+                },
+                .destructor => {
+                    psp.state = .waiting_for_destructor_symbol;
+                },
+                .type => {
+                    psp.state = .waiting_for_datatype_symbol;
+                },
+                .fallback => {
+                    psp.fallback = null;
+                    psp.state = .waiting_for_fallback_id;
+                },
+                .token => {
+                    psp.state = .waiting_for_token_name;
+                },
+                .wildcard => {
+                    psp.state = .waiting_for_wildcard_id;
+                },
+                .token_class => {
+                    psp.state = .waiting_for_class_id;
+                },
+            }
         },
     }
 }
+
+const Declaration = enum {
+    name,
+    include,
+    code,
+    token_destructor,
+    default_destructor,
+    token_prefix,
+    syntax_error,
+    parse_accept,
+    parse_failure,
+    stack_overflow,
+    extra_argument,
+    extra_context,
+    token_type,
+    default_type,
+    realloc,
+    free,
+    stack_size,
+    start_symbol,
+    left,
+    right,
+    nonassoc,
+    destructor,
+    type,
+    fallback,
+    token,
+    wildcard,
+    token_class,
+};
+
+const directive_list = [_]struct { []const u8, Declaration }{
+    .{ "name", .name },
+    .{ "include", .include },
+    .{ "code", .code },
+    .{ "token_destructor", .token_destructor },
+    .{ "default_destructor", .default_destructor },
+    .{ "token_prefix", .token_prefix },
+    .{ "syntax_error", .syntax_error },
+    .{ "parse_accept", .parse_accept },
+    .{ "parse_failure", .parse_failure },
+    .{ "stack_overflow", .stack_overflow },
+    .{ "extra_argument", .extra_argument },
+    .{ "extra_context", .extra_context },
+    .{ "token_type", .token_type },
+    .{ "default_type", .default_type },
+    .{ "realloc", .realloc },
+    .{ "free", .free },
+    .{ "stack_size", .stack_size },
+    .{ "start_symbol", .start_symbol },
+    .{ "left", .left },
+    .{ "right", .right },
+    .{ "nonassoc", .nonassoc },
+    .{ "destructor", .destructor },
+    .{ "type", .type },
+    .{ "fallback", .fallback },
+    .{ "token", .token },
+    .{ "wildcard", .wildcard },
+    .{ "token_class", .token_class },
+};
+
+const declarations = std.StaticStringMap(Declaration).initComptime(directive_list);
 
 fn Symbol_new(str: []const u8) !*Symbol {
     _ = str;
