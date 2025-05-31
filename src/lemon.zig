@@ -415,9 +415,14 @@ const Lemon = struct {
     minReduce: int,
     /// Maximum action value of any kind
     maxAction: int,
-    // TODO: Fill in the rest of these, I am fatigued
+    /// Sorted array of pointers to symbols
     symbols: []*Symbol,
-
+    /// Number of errors
+    errorcnt: usize,
+    /// The error symbol
+    errorsym: ?*Symbol,
+    ///  Token that matches anything
+    wildcard: ?*Symbol,
     /// Name of the generated parser
     name: []u8,
     /// Declaration of the 3rd argument to parser
@@ -1352,9 +1357,9 @@ fn parseonetoken(psp: *PState) !void {
                 // Finally, we can put a cap on declargslot:
                 declargslot.* = zBuf[0..zIdx];
                 // Let's check if that spurious 20 actually comes into play:
-                if (zIdx != n - 20) {
+                if (zIdx != cast(isize, n) - 20) {
                     // TODO: Remove the extra bytes once this pans out.
-                    std.debug.print("zIdx is {d} less than n, not 20\n", .{n - zIdx});
+                    std.debug.print("zIdx is {d} less than n, not 20\n", .{cast(isize, n) - zIdx});
                 }
                 // I think we need this, otherwise why zOld?
                 psp.declargslot = declargslot;
@@ -1367,24 +1372,104 @@ fn parseonetoken(psp: *PState) !void {
             }
         },
         .waiting_for_fallback_id => {
-            //
+            if (x[0] == '.') {
+                psp.state = .waiting_for_decl_or_rule;
+            } else if (!isUpper(x[0])) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "%fallback argument \"{s}\" should be a token", .{x});
+                psp.errorcnt += 1;
+                // TODO: no resync here, is that right?
+            } else {
+                const sp = try Symbol_new(x);
+                if (psp.fallback == null) {
+                    psp.fallback = sp;
+                } else if (sp.fallback) {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "More than one fallback assigned to token {s}", .{sp.name});
+                    psp.errorcnt += 1;
+                    // TODO: no resync here, is that right?
+                } else {
+                    sp.fallback = psp.fallback;
+                    psp.gp.has_fallback = true;
+                }
+            }
         },
         .waiting_for_token_name => {
+            // Tokens do not have to be declared before use.  But they can be
+            // in order to control their assigned integer number.  The number for
+            // each token is assigned when it is first seen.  So by including
             //
+            //     %token ONE TWO THREE.
+            //
+            // early in the grammar file, that assigns small consecutive values
+            // to each of the tokens ONE TWO and THREE.
+            //
+            if (x[0] == '.') {
+                psp.state = .waiting_for_decl_or_rule;
+            } else if (!isUpper(x[0])) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "%token argument \"{s}\" should be a token", .{x});
+                psp.errorcnt += 1;
+            } else {
+                _ = try Symbol_new(x);
+            }
         },
         .waiting_for_wildcard_id => {
-            //
+            if (x[0] == '.') {
+                psp.state = .waiting_for_decl_or_rule;
+            } else if (!isUpper(x[0])) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "%wildcard argument \"{s}\" should be a token", .{x});
+                psp.errorcnt += 1;
+            } else {
+                const sp = try Symbol_new(x);
+                if (psp.gp.wildcard == null) {
+                    psp.gp.wildcard = sp;
+                } else {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Extra wildcard to token: {s}", .{x});
+                    psp.errorcnt += 1;
+                }
+            }
         },
         .waiting_for_class_id => {
-            //
+            if (!isLower(x[0])) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "%token_class must be followed by an identifier: {s}", .{x});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+            } else if (Symbol_find(x)) |_| {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Symbol \"{s}\" already used", .{x});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+            } else {
+                psp.tkclass = try Symbol_new(x);
+                psp.tkclass.type = .multiterminal;
+                psp.state = .waiting_for_class_token;
+            }
         },
         .waiting_for_class_token => {
-            //
+            if (x[0] == '.') {
+                psp.state = .waiting_for_decl_or_rule;
+            } else if (isUpper(x[0]) or ((x[0] == '|' or x[0] == '/') and isUpper(x[1]))) {
+                const msp = psp.tkclass;
+                msp.nsubsym += 1;
+                msp.subsym = try psp.allocator.realloc(msp.subsym, msp.nsubsym);
+                msp.subsym[msp.nsubsym.nsubsym - 1] = try Symbol_new(if (!isUpper(x[0])) x else x[1..]);
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "%token_class argument \"{s}\" should be a token", .{x});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+            }
         },
+        // TODO: These don't need to be separate states
         .resync_after_rule_error,
         .resync_after_decl_error,
         => {
-            //
+            if (x[0] == '.') psp.state = .waiting_for_decl_or_rule;
+            if (x[0] == '%') psp.state = .waiting_for_decl_keyword;
         },
     }
 }
