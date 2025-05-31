@@ -132,8 +132,8 @@ const Symbol = struct {
     rule: ?*Rule,
     /// fallback token in case this token doesn't parse
     fallback: ?*Symbol,
-    /// Precedence if defined (-1 otherwise)
-    prec: int, // Should be ?u16 probably
+    /// Precedence if defined (`null` otherwise)
+    prec: ?u16 = null,
     /// Associativity if precedence is defined
     assoc: E_Assoc = .unk,
     /// First-set for all rules of this symbol
@@ -853,7 +853,7 @@ pub const PState = struct {
     /// Keyword of a declaration
     declkeyword: []const u8,
     /// Where the declaration argument should be put
-    declargslot: []u8,
+    declargslot: ?*[]u8,
     /// Add `#line` before declaration insert
     insertLineMacro: bool,
     /// Where to write declaration line number
@@ -861,7 +861,7 @@ pub const PState = struct {
     /// Assign this association to decl arguments
     declassoc: E_Assoc,
     /// Assign this precedence to decl arguments
-    preccounter: int,
+    preccounter: u16,
     /// Pointer to first rule in the grammar
     firstrule: ?*Rule,
     /// Pointer to the most recently parsed rule
@@ -1120,74 +1120,75 @@ fn parseonetoken(psp: *PState) !void {
                 psp.state = .resync_after_decl_error;
                 break :state;
             };
+            // Defaults:
             psp.declkeyword = x;
-            psp.declargslot = &.{};
+            psp.declargslot = null;
             psp.decllinenoslot = null;
             psp.insertLineMacro = true;
             psp.state = .waiting_for_decl_arg;
             switch (decl) {
                 .name => {
-                    psp.declargslot = psp.gp.name;
+                    psp.declargslot = &psp.gp.name;
                     psp.insertLineMacro = 0;
                 },
                 .include => {
-                    psp.declargslot = psp.gp.include;
+                    psp.declargslot = &psp.gp.include;
                 },
                 .code => {
-                    psp.declargslot = psp.gp.extracode;
+                    psp.declargslot = &psp.gp.extracode;
                 },
                 .token_destructor => {
-                    psp.declargslot = psp.gp.tokendest;
+                    psp.declargslot = &psp.gp.tokendest;
                 },
                 .default_destructor => {
-                    psp.declargslot = psp.gp.vardest;
+                    psp.declargslot = &psp.gp.vardest;
                 },
                 .token_prefix => {
-                    psp.declargslot = psp.gp.tokenprefix;
+                    psp.declargslot = &psp.gp.tokenprefix;
                     psp.insertLineMacro = false;
                 },
                 .syntax_error => {
-                    psp.declargslot = psp.gp.@"error";
+                    psp.declargslot = &psp.gp.@"error";
                 },
                 .parse_accept => {
-                    psp.declargslot = psp.gp.accept;
+                    psp.declargslot = &psp.gp.accept;
                 },
                 .parse_failure => {
-                    psp.declargslot = psp.gp.failure;
+                    psp.declargslot = &psp.gp.failure;
                 },
                 .stack_overflow => {
-                    psp.declargslot = psp.gp.overflow;
+                    psp.declargslot = &psp.gp.overflow;
                 },
                 .extra_argument => {
-                    psp.declargslot = psp.gp.arg;
+                    psp.declargslot = &psp.gp.arg;
                     psp.insertLineMacro = false;
                 },
                 .extra_context => {
-                    psp.declargslot = psp.gp.ctx;
+                    psp.declargslot = &psp.gp.ctx;
                     psp.insertLineMacro = false;
                 },
                 .token_type => {
-                    psp.declargslot = psp.gp.tokentype;
+                    psp.declargslot = &psp.gp.tokentype;
                     psp.insertLineMacro = false;
                 },
                 .default_type => {
-                    psp.declargslot = psp.gp.vartype;
+                    psp.declargslot = &psp.gp.vartype;
                     psp.insertLineMacro = false;
                 },
                 .realloc => {
-                    psp.declargslot = psp.gp.reallocFunc;
+                    psp.declargslot = &psp.gp.reallocFunc;
                     psp.insertLineMacro = false;
                 },
                 .free => {
-                    psp.declargslot = psp.gp.freeFunc;
+                    psp.declargslot = &psp.gp.freeFunc;
                     psp.insertLineMacro = false;
                 },
                 .stack_size => {
-                    psp.declargslot = psp.gp.stacksize;
+                    psp.declargslot = &psp.gp.stacksize;
                     psp.insertLineMacro = false;
                 },
                 .start_symbol => {
-                    psp.declargslot = psp.gp.start;
+                    psp.declargslot = &psp.gp.start;
                     psp.insertLineMacro = false;
                 },
                 .left => {
@@ -1225,6 +1226,165 @@ fn parseonetoken(psp: *PState) !void {
                     psp.state = .waiting_for_class_id;
                 },
             }
+        },
+        .waiting_for_destructor_symbol => {
+            if (!isAlpha(x[0])) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Symbol name missing after %destructor keyword", .{});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+                break :state;
+            }
+            const sp = try Symbol_new(x);
+            psp.declargslot = &sp.destructor;
+            psp.decllinenoslot = &sp.destLineno;
+            psp.insertLineMacro = true;
+            psp.state = .waiting_for_decl_arg;
+        },
+        .waiting_for_datatype_symbol => {
+            if (!isAlpha(x[0])) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Symbol name missing after %type keyword", .{});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+                break :state;
+            }
+            const sp = Symbol_find(x) orelse try Symbol_new(x);
+            if (sp.datatype.len != 0) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Symbol %type \"{s}\" already defined", .{});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+            } else {
+                psp.declargslot = &sp.datatype;
+                psp.insertLineMacro = false;
+                psp.state = .waiting_for_decl_arg;
+            }
+        },
+        .waiting_for_precedence_symbol => {
+            if (x[0] == '.') {
+                psp.state = .waiting_for_decl_or_rule;
+            } else if (isUpper(x[0])) {
+                const sp = try Symbol_new(x);
+                if (sp.prec) |_| {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Symbol \"{s}\" has already be given a precedence.", .{x});
+                    psp.errorcnt += 1;
+                    // No new state assigned here (?)
+                } else {
+                    sp.prec = psp.preccounter;
+                    sp.assoc = psp.declassoc;
+                }
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Can't assign a precedence to \"{s}\".", .{x});
+                psp.errorcnt += 1;
+            }
+        },
+        .waiting_for_decl_arg => {
+            if (x[0] == '{' or x[0] == '"' or isAlnum(x[0])) {
+                // NOTE: This is a difficult translation, because we eschew two
+                // Cisms: the null sentinel, and (consequently) bare char *. So
+                // idiomatic Zig looks quite different.
+                var zBuffer: [50]u8 = undefined;
+                // The code assumes declargslot is pointing at something, so null should be
+                // unreachable here:
+                const declargslot = psp.declargslot.?;
+                const zOld: []const u8 = declargslot.*;
+                const zNew = if (x[0] == '"' or x[0] == '{') x[1..] else x;
+                var zLine: []u8 = zBuffer[0..0];
+                // To close the slice, we have to track bytes written:
+                var zIdx: usize = 0;
+                // The original code leaves some buffer here, for some reason, so n
+                // is not, and will not become, the valid length of declargslot.*
+                var n = zOld.len + zNew.len + 20; // For...?
+                // Do we need a line macro?
+                const addLineMacro = !psp.gp.nolineosflag and
+                    psp.insertLineMacro and
+                    psp.tokenlineno > 1 and
+                    (psp.decllinenoslot == null or psp.decllinenoslot.?.* != 0);
+                if (addLineMacro) {
+                    const nBack = std.mem.count(u8, psp.filename, "\\");
+                    zLine = std.fmt.bufPrint(zBuffer, "#line {d} ", .{psp.tokenlineno}) catch |err| {
+                        // Should be literally impossible but ¯\_(ツ)_/¯
+                        ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                            "Buffer overflow on #line directive print: {s}", .{@errorName(err)});
+                        psp.errorcnt += 1;
+                        // NOTE: This will leave zLine empty, which is good, but
+                        // there has been talk of error catching 'poisoning'
+                        // the old result, because I'm doing this deliberately
+                        // but it's often a mistake.  That would be a compile
+                        // error and can be corrected by resetting zLine to
+                        // zBuf[0..0];
+                    };
+                    n += psp.filename.len + nBack;
+                }
+                // We put this back on declargslot and PSP once we know how long the
+                // slice actually should be.
+                const zBuf = try psp.allocator.realloc(declargslot.*, n);
+                @memcpy(zBuf[0..zOld.len], zOld);
+                zIdx += zOld.len;
+                if (addLineMacro) {
+                    if (zIdx > 0 and zBuf[zIdx - 1] != '\n') {
+                        zBuf[zIdx] = '\n';
+                        zIdx += 1;
+                    }
+                    @memcpy(zBuf[zIdx..][0..zLine.len], zLine);
+                    zIdx += zLine.len + 1;
+                    zBuf[zIdx - 1] = '"';
+                    for (0..psp.filename.len) |i| {
+                        if (psp.filename[i] == '\\') {
+                            zBuf[zIdx] = '\\';
+                            zIdx += 1;
+                        }
+                        zBuf[zIdx] = psp.filename[i];
+                        zIdx += 1;
+                    }
+                    zBuf[zIdx] = '"';
+                    zBuf[zIdx + 1] = '\n';
+                    zIdx += 2;
+                }
+                if (psp.decllinenoslot != null and psp.decllinenoslot.* == 0) {
+                    psp.decllinenoslot.?.* = psp.tokenlineno;
+                }
+                @memcpy(zBuf[zIdx..][0..zNew.len], zNew);
+                zIdx += zNew.len;
+                // Finally, we can put a cap on declargslot:
+                declargslot.* = zBuf[0..zIdx];
+                // Let's check if that spurious 20 actually comes into play:
+                if (zIdx != n - 20) {
+                    // TODO: Remove the extra bytes once this pans out.
+                    std.debug.print("zIdx is {d} less than n, not 20\n", .{n - zIdx});
+                }
+                // I think we need this, otherwise why zOld?
+                psp.declargslot = declargslot;
+                psp.state = .waiting_for_decl_or_rule;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Illegal argument to %{s}: {s}", .{ psp.declkeyword, x });
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+            }
+        },
+        .waiting_for_fallback_id => {
+            //
+        },
+        .waiting_for_token_name => {
+            //
+        },
+        .waiting_for_wildcard_id => {
+            //
+        },
+        .waiting_for_class_id => {
+            //
+        },
+        .waiting_for_class_token => {
+            //
+        },
+        .resync_after_rule_error,
+        .resync_after_decl_error,
+        => {
+            //
         },
     }
 }
@@ -1294,6 +1454,10 @@ const declarations = std.StaticStringMap(Declaration).initComptime(directive_lis
 fn Symbol_new(str: []const u8) !*Symbol {
     _ = str;
     return .{}; // XXX: write this
+}
+
+fn Symbol_find(str: []const u8) ?*Symbol {
+    return Symbol_new(str) catch unreachable; // XXX: write this as well
 }
 
 //| [5230] Set manipulation
