@@ -180,6 +180,9 @@ const Rule = struct {
     ruleline: int, // Unsigned, duh
     /// The RHS symbols
     rhs: []*Symbol,
+    /// Number of RHS symbols
+    nrhs: usize, // NOTE: This should use rule.rhs.len, eventually.
+
     /// An alias for each RHS symbol (empty if none)
     rhsalias: [][]u8, // Const?
     /// Line number at which code begins
@@ -191,7 +194,7 @@ const Rule = struct {
     /// Breakdown code after code[] above
     codeSuffix: []const u8,
     /// Precedence symbol for this rule
-    precsym: *Symbol,
+    precsym: ?*Symbol,
     /// An index number for this rule
     index: int,
     /// Rule number as used in the generated tables
@@ -208,9 +211,11 @@ const Rule = struct {
     /// by actions or other outside implementation
     neverReduce: bool,
     /// Next rule with the same LHS
-    nextlhs: *Rule,
+    nextlhs: ?*Rule,
     /// Next rule in the global list
-    next: *Rule,
+    next: ?*Rule,
+
+    pub const empty = std.mem.zeroInit(Rule, .{ .lhs = undefined });
 };
 
 const ConfigStatus = enum {
@@ -988,9 +993,34 @@ fn parseonetoken(psp: *PState) !void {
         },
         .in_rhs => {
             if (x[0] == '.') {
-                // This is really complex setup which I don't want to do yet
-                // TODO: rest of the owl.
-
+                // Note that the original code allocates one contiguous block of
+                // bytes, doling them out to the three separate allocations below.
+                // Not without regret, I am not, at this time, willing to follow suit.
+                const rp = try psp.allocator.create(Rule);
+                rp.* = .empty;
+                rp.ruleline = psp.tokenlineno;
+                rp.rhs = try psp.allocator.alloc(*Symbol, psp.nrhs);
+                rp.rhsalias = try psp.allocator.alloc([]const u8, psp.nrhs);
+                for (0..psp.nrhs) |i| {
+                    rp.rhs[i] = psp.rhs[i];
+                    rp.rhsalias[i] = psp.alias[i];
+                }
+                rp.lhs = psp.lhs;
+                rp.lhsalias = psp.lhsalias;
+                rp.nrhs = psp.nrhs;
+                rp.noCode = true; // Can be falsified subsequently..
+                rp.index = psp.gp.nrule;
+                psp.gp.nrule += 1;
+                rp.nextlhs = rp.lhs.rule;
+                if (psp.firstrule == null) {
+                    psp.firstrule = rp;
+                    psp.lastrule = rp;
+                } else { // Append to linked list
+                    psp.lastrule.next = rp;
+                    psp.lastrule = rp;
+                }
+                psp.prevrule = rp;
+                psp.state = .waiting_for_decl_or_rule;
             } else if (isAlpha(x[0])) {
                 //
                 if (psp.nrhs >= MAXRHS) {
@@ -1035,6 +1065,31 @@ fn parseonetoken(psp: *PState) !void {
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
+        },
+        .rhs_alias_1 => {
+            if (isAlpha(x[0])) {
+                psp.alias[psp.nrhs - 1] = x;
+                psp.state = .rhs_alias_2;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "\"{s}\" is not a valid alias for the RHS symbol \"{s}\"\n", //
+                    .{ x, psp.rhs[psp.nrhs - 1].name });
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
+        },
+        .rhs_alias_2 => {
+            if (x[0] == ')') {
+                psp.state = .in_rhs;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Missing \")\" following LHS alias name \"{s}\".", .{});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
+        },
+        .waiting_for_decl_keyword => {
+            // This I'm doing with an enum, a StaticStringMap, and a switch.
         },
     }
 }
