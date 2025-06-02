@@ -28,6 +28,12 @@ const isSpace = std.ascii.isWhitespace;
 
 const assert = std.debug.assert;
 
+fn dbgassert(ok: bool) void {
+    if (builtin.mode == .Debug) {
+        assert(ok);
+    }
+}
+
 // NOTE: This is not, in fact, how strcmp works.  If it turns out
 // I need anything other than != 0 and == 0 from strcmp, which I doubt,
 // I can decide how to handle that then.
@@ -248,21 +254,6 @@ const Config = struct {
     next: ?*Config = null,
     /// The next basis configuration
     bp: ?*Config = null,
-};
-
-const ConfigContext = struct {
-    pub fn eql(_: ConfigContext, c1: *Config, c2: *Config, _: usize) bool {
-        return c1.rp.index == c2.rp.index and c1.dot == c2.dot;
-    }
-
-    // [5822]
-    pub fn hash(_: ConfigContext, c: *Config) u32 {
-        // This is where I brag just a little, having spotted an error
-        // of no practical significance in lemon.c as it was when I
-        // began this:  https://sqlite.org/forum/forumpost/686cb52ae2
-        //
-        return @intCast(c.rp.index * 37 + c.dot);
-    }
 };
 
 const E_Action = enum(u4) {
@@ -701,93 +692,6 @@ const ActTable = struct {
     }
 };
 
-//| [1300] configlist.c
-//|
-//| This is one of the places where the Lemon generator uses global state.
-//| No sin in that, not in an application, but we're going to package it up
-//| into:
-
-pub const ConfigLists = struct {
-    allocator: Allocator,
-    pool: MemoryPool(Config),
-    current: ?*Config,
-    currentend: *?*Config,
-    basis: ?*Config,
-    basisend: *?*Config,
-    config_table: ArrayHashMap(*Config, void, ConfigContext, false),
-};
-
-//| ... but we'll make it 'global' for now:
-threadlocal var cfgl: ConfigLists = undefined;
-
-fn newconfig() !*Config {
-    return cfgl.pool.create();
-}
-
-fn ConfigList_init(allocator: Allocator, pool: MemoryPool(Config)) void {
-    cfgl.allocator = allocator;
-    cfgl.pool = pool;
-    cfgl.current = null;
-    cfgl.currentend = &cfgl.current;
-    cfgl.basis = null;
-    cfgl.basisend = &cfgl.basis;
-    cfgl.config_table = .empty;
-}
-
-fn ConfigList_reset() void {
-    cfgl.current = null;
-    cfgl.currentend = &cfgl.current;
-    cfgl.basis = null;
-    cfgl.basisend = &cfgl.basis;
-    cfgl.config_table.clearRetainingCapacity();
-}
-
-/// Add another configuration to the configuration list
-fn Configlist_add(rp: *Rule, dot: int) !*Config {
-    var model: Config = undefined;
-    model.rp = rp;
-    model.dot = dot;
-    const maybe_cfp = cfgl.config_table.getKey(&model);
-    if (maybe_cfp) |cfp| return cfp;
-    var cfp = try newconfig();
-    cfp.* = .{};
-    cfp.rp = rp;
-    cfp.dot = dot;
-    cfp.fws = try cfgl.allocator.alloc(bool, set_size);
-    @memset(cfp.fws, false);
-    cfgl.currentend.* = cfp;
-    cfgl.currentend = &cfp.next;
-    cfgl.config_table.put(cfgl.allocator, cfp, {});
-    return cfp;
-}
-
-fn Configlist_addbasis(rp: *Rule, dot: int) !void {
-    var model: Config = undefined;
-    model.rp = rp;
-    model.dot = dot;
-    const maybe_cfp = cfgl.config_table.getKey(&model);
-    if (maybe_cfp) |cfp| return cfp;
-    var cfp = try newconfig();
-    cfp.* = .{};
-    cfp.rp = rp;
-    cfp.dot = dot;
-    cfp.fws = try cfgl.allocator.alloc(bool, set_size);
-    @memset(cfp.fws, false);
-    cfgl.currentend.* = cfp;
-    cfgl.currentend = cfp.next;
-    cfgl.basisend.* = cfp;
-    cfgl.basisend = &cfp.bp;
-    cfgl.config_table.put(cfgl.allocator, cfp, {});
-    return cfp;
-}
-
-// TODO: Configlist_closure(lemp: *Lemon) void {}
-// Configlist_sort
-// Configlist_sortbasis
-// Configlist_return
-// Configlist_basis
-// Configlist_eat
-
 //| [1500] ErrorMsg
 
 fn ErrorMsg(filename: []const u8, lineno: usize, comptime fmt: []const u8, args: anytype) !void {
@@ -915,24 +819,6 @@ pub const PState = struct {
 
     pub fn destroy(ps: *PState) void {
         ps.allocator.destroy(ps);
-    }
-};
-
-const StrSafe = struct {
-    safe: StringArrayHashMap(void),
-    allocator: Allocator,
-
-    pub fn init(allocator: Allocator) StrSafe {
-        return .{ .allocator = allocator, .safe = .empty };
-    }
-
-    pub fn intern(strsafe: *StrSafe, k: []const u8) ![]const u8 {
-        if (strsafe.safe.getKey(k)) |key| {
-            return key;
-        }
-        const dupe = try strsafe.allocator.dupe(u8, k);
-        try strsafe.safe.put(strsafe.allocator, dupe, {});
-        return dupe;
     }
 };
 
@@ -1684,15 +1570,6 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
     }
 }
 
-fn Symbol_new(str: []const u8) !*Symbol {
-    _ = str;
-    return .{}; // XXX: write this
-}
-
-fn Symbol_find(str: []const u8) ?*Symbol {
-    return Symbol_new(str) catch unreachable; // XXX: write this as well
-}
-
 //| [5230] Set manipulation
 //|
 //| This is actually pretty straightforward, we use a []bool instead of a
@@ -1734,39 +1611,6 @@ fn SetUnion(s1: []bool, s2: []bool) bool {
     return changed;
 }
 
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-
 pub fn main() void {
     var dbga: std.heap.DebugAllocator(.{}) = .init;
     defer {
@@ -1777,8 +1621,12 @@ pub fn main() void {
     action_allocator = ActionAllocator.init(std.heap.page_allocator);
     defer action_allocator.reset();
     ConfigList_init(allocator, .init(std.heap.page_allocator));
-    defer cfgl.pool.reset();
-    cfgl.allocator = allocator;
+    defer config_lists.pool.reset();
+    config_lists.allocator = allocator;
+    Strsafe_init(allocator);
+    defer Strsafe_free();
+    Symbol_init(allocator);
+    defer Symbol_free();
 
     std.debug.print("lemon for great justice!\n", .{});
     std.process.exit(0);
@@ -1787,3 +1635,240 @@ pub fn main() void {
 test "exe mentioned" {
     std.debug.print("hello from lemon main\n", .{});
 }
+
+// Global State
+//
+// lemon.c uses some judicious static globals, and if only to
+// ease porting, lemon.zig does likewise.
+//
+// I will want to 'modularize' zitron, so that it can be, in
+// particular, compiled to WASM and run in the browser.  But
+// that can wait.  I might even give lemon.zig the same
+// treatment for the same reason, I really don't know enough
+// about WASM to say if that would even help.  I'm sure I've
+// seen "programs" which would have a main function running
+// in the browser, so surely there's an affordance for it.
+
+threadlocal var str_safe: StrSafe = undefined;
+threadlocal var is_a_strsafe: bool = false;
+
+const StrSafe = struct {
+    safe: StringArrayHashMap(void),
+    allocator: Allocator,
+
+    pub fn init(allocator: Allocator) StrSafe {
+        return .{ .allocator = allocator, .safe = .empty };
+    }
+
+    pub fn find(strsafe: *StrSafe, key: []const u8) ?[]const u8 {
+        return strsafe.safe.getKey(key);
+    }
+
+    pub fn intern(strsafe: *StrSafe, k: []const u8) ![]const u8 {
+        if (strsafe.safe.getKey(k)) |key| {
+            return key;
+        }
+        const dupe = try strsafe.allocator.dupe(u8, k);
+        try strsafe.safe.put(strsafe.allocator, dupe, {});
+        return dupe;
+    }
+};
+
+fn Strsafe_init(allocator: Allocator) !void {
+    if (is_a_strsafe) return; // I don't think this happens..
+    defer is_a_strsafe = true;
+    str_safe = .init(allocator);
+}
+
+fn Strsafe(data: []const u8) ![]const u8 {
+    dbgassert(is_a_strsafe);
+    return str_safe.intern(data);
+}
+
+fn Strsafe_find(key: []const u8) ?[]const u8 {
+    dbgassert(is_a_strsafe);
+    return str_safe.find(key);
+}
+
+fn Strsafe_free() void {
+    dbgassert(is_a_strsafe);
+    defer is_a_strsafe = false;
+    // strsafe owns all interned strings:
+    for (str_safe.safe.keys()) |str| {
+        str_safe.allocator.free(str);
+    }
+    str_safe.safe.deinit(str_safe.allocator);
+}
+
+//| Symbols
+//|
+
+const SymbolSafe = struct {
+    safe: StringArrayHashMap(*Symbol),
+    allocator: Allocator,
+
+    pub fn intern(symsafe: *SymbolSafe, x: []const u8) !*Symbol {
+        if (symsafe.safe.get(x)) |sym| {
+            return sym;
+        }
+        try symsafe.safe.ensureUnusedCapacity(symsafe.allocator, 1);
+        const sp = try symsafe.allocator.create(Symbol);
+        sp.* = .empty;
+        sp.name = x;
+        symsafe.safe.putAssumeCapacity(x, sp);
+        return sp;
+    }
+};
+
+threadlocal var symbol_map: SymbolSafe = undefined;
+threadlocal var is_symbol_map = false;
+
+fn Symbol_init(allocator: Allocator) void {
+    if (is_symbol_map) return;
+    defer is_symbol_map = true;
+    symbol_map.allocator = allocator;
+    symbol_map.safe = .empty;
+}
+
+fn Symbol_free() void {
+    dbgassert(is_symbol_map);
+    defer is_symbol_map = false;
+    // The assumption we make: symbol_map owns the values,
+    // having created them, but not the keys (belonging to
+    // strsafe), or any of the references, mostly belonging to
+    // strsafe as well.
+    for (symbol_map.safe.values()) |v| {
+        symbol_map.allocator.destroy(v);
+    }
+    symbol_map.safe.deinit(symbol_map.allocator);
+}
+
+fn Symbol_new(str: []const u8) !*Symbol {
+    dbgassert(is_symbol_map);
+    return symbol_map.intern(str);
+}
+
+fn Symbol_find(str: []const u8) ?*Symbol {
+    dbgassert(is_symbol_map);
+    return symbol_map.safe.get(str);
+}
+
+fn Symbol_arrayof() []*Symbol {
+    dbgassert(is_symbol_map);
+    return symbol_map.safe.values();
+}
+
+//| [1300] configlist.c
+//|
+//| This is one of the places where the Lemon generator uses global state.
+//| No sin in that, not in an application, but we're going to package it up
+//| into:
+
+pub const ConfigLists = struct {
+    allocator: Allocator,
+    pool: MemoryPool(Config),
+    current: ?*Config,
+    currentend: *?*Config,
+    basis: ?*Config,
+    basisend: *?*Config,
+    config_table: ArrayHashMap(*Config, void, ConfigContext, false),
+};
+
+const ConfigContext = struct {
+    pub fn eql(_: ConfigContext, c1: *Config, c2: *Config, _: usize) bool {
+        return c1.rp.index == c2.rp.index and c1.dot == c2.dot;
+    }
+
+    // [5822]
+    pub fn hash(_: ConfigContext, c: *Config) u32 {
+        // This is where I brag just a little, having spotted an error
+        // of no practical significance in lemon.c as it was when I
+        // began this:  https://sqlite.org/forum/forumpost/686cb52ae2
+        //
+        return @intCast(c.rp.index * 37 + c.dot);
+    }
+};
+
+//| so we only need one global:
+threadlocal var config_lists: ConfigLists = undefined;
+threadlocal var is_a_configlists = false;
+
+fn newconfig() !*Config {
+    dbgassert(is_a_configlists);
+    return config_lists.pool.create();
+}
+
+fn deleteconfig(cfp: *Config) void {
+    dbgassert(is_a_configlists);
+    config_lists.pool.destroy(cfp);
+}
+
+fn ConfigList_init(allocator: Allocator, pool: MemoryPool(Config)) void {
+    if (is_a_configlists) return;
+    defer is_a_configlists = true;
+    config_lists.allocator = allocator;
+    config_lists.pool = pool;
+    config_lists.current = null;
+    config_lists.currentend = &config_lists.current;
+    config_lists.basis = null;
+    config_lists.basisend = &config_lists.basis;
+    config_lists.config_table = .empty;
+}
+
+fn ConfigList_reset() void {
+    dbgassert(is_a_configlists);
+    config_lists.current = null;
+    config_lists.currentend = &config_lists.current;
+    config_lists.basis = null;
+    config_lists.basisend = &config_lists.basis;
+    config_lists.config_table.clearRetainingCapacity();
+}
+
+/// Add another configuration to the configuration list
+fn Configlist_add(rp: *Rule, dot: int) !*Config {
+    dbgassert(is_a_configlists);
+    var model: Config = undefined;
+    model.rp = rp;
+    model.dot = dot;
+    const maybe_cfp = config_lists.config_table.getKey(&model);
+    if (maybe_cfp) |cfp| return cfp;
+    var cfp = try newconfig();
+    cfp.* = .{};
+    cfp.rp = rp;
+    cfp.dot = dot;
+    cfp.fws = try config_lists.allocator.alloc(bool, set_size);
+    @memset(cfp.fws, false);
+    config_lists.currentend.* = cfp;
+    config_lists.currentend = &cfp.next;
+    config_lists.config_table.put(config_lists.allocator, cfp, {});
+    return cfp;
+}
+
+fn Configlist_addbasis(rp: *Rule, dot: int) !*Config {
+    dbgassert(is_a_configlists);
+    var model: Config = undefined;
+    model.rp = rp;
+    model.dot = dot;
+    const maybe_cfp = config_lists.config_table.getKey(&model);
+    if (maybe_cfp) |cfp| return cfp;
+    var cfp = try newconfig();
+    cfp.* = .{}; // TODO: should 'really' be an .empty
+    cfp.rp = rp;
+    cfp.dot = dot;
+    cfp.fws = try config_lists.allocator.alloc(bool, set_size);
+    @memset(cfp.fws, false);
+    config_lists.currentend.* = cfp;
+    config_lists.currentend = cfp.next;
+    config_lists.basisend.* = cfp;
+    config_lists.basisend = &cfp.bp;
+    config_lists.config_table.put(config_lists.allocator, cfp, {});
+    return cfp;
+}
+
+// TODO:
+// Configlist_closure(lemp: *Lemon) void {}
+// Configlist_sort
+// Configlist_sortbasis
+// Configlist_return
+// Configlist_basis
+// Configlist_eat
