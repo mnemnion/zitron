@@ -167,11 +167,18 @@ const Symbol = struct {
     // following fields are used by MULTITERMINALs only
 
     /// Number of constituent symbols in the MULTI
-    nsubsym: int, // Probably redundant with this slice:
+    nsubsym: usize, // TODO: Probably redundant with this slice:
+    //
     /// Array (slice) of constituent symbols
     subsym: []*Symbol,
 
     pub const empty: Symbol = std.mem.zeroInit(Symbol, .{});
+
+    pub var start: Symbol = start: {
+        var starter: Symbol = .empty;
+        starter.name = "!!!Invalid";
+        break :start starter;
+    };
 };
 
 /// Each production rule in the grammar is stored in the following structure.
@@ -183,16 +190,16 @@ const Rule = struct {
     /// True if left-hand side is the start symbol
     lhsStart: bool,
     /// Line number for the rule
-    ruleline: int, // Unsigned, duh
+    ruleline: usize,
     /// The RHS symbols
     rhs: []*Symbol,
     /// Number of RHS symbols
     nrhs: usize, // NOTE: This should use rule.rhs.len, eventually.
 
     /// An alias for each RHS symbol (empty if none)
-    rhsalias: [][]u8, // Const?
+    rhsalias: [][]const u8,
     /// Line number at which code begins
-    line: int,
+    line: usize,
     /// The code executed when this rule is reduced
     code: []const u8,
     /// Setup code before code[] above
@@ -202,7 +209,7 @@ const Rule = struct {
     /// Precedence symbol for this rule
     precsym: ?*Symbol,
     /// An index number for this rule
-    index: int,
+    index: usize,
     /// Rule number as used in the generated tables
     iRule: int,
     /// True if this rule has no associated C code
@@ -394,18 +401,18 @@ const Lemon = struct {
     rule: *Rule,
     /// First rule
     startRule: *Rule,
-    ///.Number of states
-    nstate: int,
+    /// Number of states
+    nstate: usize,
     /// nstate with tail degenerate states removed
-    nxstate: int,
+    nxstate: usize,
     /// Number of rules
-    nrule: int,
+    nrule: usize,
     /// Number of rules with actions
-    nruleWithAction: int,
+    nruleWithAction: usize,
     /// Number of terminal and nonterminal symbols
-    nsymbol: int,
+    nsymbol: usize,
     /// Number of terminal symbols
-    nterminal: int,
+    nterminal: usize,
     /// Minimum shift-reduce action value
     minShiftReduce: int,
     /// Error action value
@@ -475,6 +482,57 @@ const Lemon = struct {
     has_fallback: bool,
     nolineosflag: bool,
     argv: [][]u8,
+
+    pub const empty: Lemon = .{
+        .sorted = &.{},
+        .rule = undefined,
+        .startRule = undefined,
+        .nstate = 0,
+        .nxstate = 0,
+        .nrule = 0,
+        .nruleWithAction = 0,
+        .nsymbol = 0,
+        .nterminal = 0,
+        .minShiftReduce = 0,
+        .errAction = 0,
+        .accAction = 0,
+        .noAction = 0,
+        .minReduce = 0,
+        .maxAction = 0,
+        .symbols = &.{},
+        .errorcnt = 0,
+        .errorsym = null,
+        .wildcard = null,
+        .name = &.{},
+        .arg = &.{},
+        .ctx = &.{},
+        .tokentype = &.{},
+        .vartype = &.{},
+        .start = &.{},
+        .stacksize = &.{},
+        .include = &.{},
+        .@"error" = &.{},
+        .overflow = &.{},
+        .failure = &.{},
+        .accept = &.{},
+        .extracode = &.{},
+        .tokendest = &.{},
+        .vardest = &.{},
+        .filename = &.{},
+        .outname = &.{},
+        .tokenprefix = &.{},
+        .reallocFunc = &.{},
+        .freeFunc = &.{},
+        .nconflict = 0,
+        .nactiontab = 0,
+        .nlookaheadtab = 0,
+        .tablesize = 0,
+        .basisflag = false,
+        .printPreprocessed = false,
+        .has_fallback = false,
+        .nolineosflag = false,
+        .argv = &.{},
+    };
 };
 
 //| [324] Action stuff
@@ -706,7 +764,7 @@ const ActTable = struct {
 
 //| [1500] ErrorMsg
 
-fn ErrorMsg(filename: []const u8, lineno: usize, comptime fmt: []const u8, args: anytype) !void {
+fn ErrorMsg(filename: []const u8, lineno: usize, comptime fmt: []const u8, args: anytype) void {
     std.debug.print("{s}:{d}", .{ filename, lineno });
     std.debug.print(fmt, args);
     std.debug.print("{s}", .{"\n"});
@@ -746,11 +804,11 @@ pub const PState = struct {
     /// Name of the input file
     filename: []const u8,
     /// Line number at which current token starts
-    tokenlineno: int,
+    tokenlineno: usize,
     /// Number of errors so far
     errorcnt: int,
-    /// Text of current token
-    tokenstart: []const u8,
+    /// Start index of current token
+    tokenstart: usize,
     /// Global state vector
     gp: *Lemon,
     /// The state of the parser
@@ -764,7 +822,7 @@ pub const PState = struct {
     /// Alias for the LHS
     lhsalias: []const u8,
     /// Number of right-hand side symbols seen
-    nrhs: int,
+    nrhs: usize, // TODO: rhs.len right?
     /// RHS symbols
     rhs: []*Symbol,
     /// Aliases for each RHS symbol (or null)
@@ -794,16 +852,17 @@ pub const PState = struct {
         .allocator = undefined,
         .filename = "",
         .tokenlineno = 0,
+        .tokenstart = 0,
         .errorcnt = 0,
         .gp = undefined,
         .state = .initialize,
         .fallback = null,
-        .tkclass = &Symbol.empty,
-        .lhs = &Symbol.empty,
-        .lhsalias = &Symbol.empty,
+        .tkclass = &Symbol.start,
+        .lhs = &Symbol.start,
+        .lhsalias = "",
         .nrhs = 0,
         .rhs = &.{},
-        .alias = &.{""},
+        .alias = &.{},
         .prevrule = null,
         .declkeyword = "",
         .declargslot = null,
@@ -834,14 +893,14 @@ pub const PState = struct {
     }
 };
 
-fn parseonetoken(psp: *PState) !void {
-    const x = try psp.strsafe.intern(psp.tokenstart);
+fn parseonetoken(psp: *PState, x_init: []const u8) !void {
+    const x = try psp.strsafe.intern(x_init);
     // This seems to be presumed (?)
     assert(x.len != 0);
     state: switch (psp.state) {
         .initialize => { // TODO: Probably just do this first yeah
             psp.prevrule = null;
-            psp.prevcounter = 0;
+            psp.preccounter = 0;
             psp.firstrule, psp.lastrule = .{ null, null };
             psp.gp.nrule = 0;
             continue :state .waiting_for_decl_keyword;
@@ -981,7 +1040,7 @@ fn parseonetoken(psp: *PState) !void {
                     psp.firstrule = rp;
                     psp.lastrule = rp;
                 } else { // Append to linked list
-                    psp.lastrule.next = rp;
+                    psp.lastrule.?.next = rp;
                     psp.lastrule = rp;
                 }
                 psp.prevrule = rp;
@@ -993,12 +1052,12 @@ fn parseonetoken(psp: *PState) !void {
                     psp.errorcnt += 1;
                     psp.state = .resync_after_rule_error;
                 } else {
-                    psp.rhs[psp.nrhs] = Symbol_new(x);
+                    psp.rhs[psp.nrhs] = try Symbol_new(x);
                     psp.alias[psp.nrhs] = "";
                     psp.nrhs += 1;
                 }
             } else if ((x[0] == '|' or x[0] == '/') and psp.nrhs > 0 and x.len > 0 and isUpper(x[1])) {
-                const msp = psp.rhs[psp.nrhs - 1];
+                var msp = psp.rhs[psp.nrhs - 1];
                 if (msp.type != .multiterminal) {
                     const origmsp = msp;
                     msp = try psp.allocator.create(Symbol);
@@ -1011,10 +1070,15 @@ fn parseonetoken(psp: *PState) !void {
                     psp.rhs[psp.nrhs - 1] = msp;
                 }
                 msp.nsubsym += 1;
-                msp.subsym = try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
+                msp.subsym = subsym: {
+                    if (msp.subsym.len == 0)
+                        break :subsym try psp.allocator.alloc(*Symbol, 1)
+                    else
+                        break :subsym try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
+                };
                 // We know x[1] exists and is terminal-shaped, so this is valid:
-                msp.subsym[msp.nsubsym - 1] = Symbol_new(x[1..]);
-                if (isLower(x[1]) || isLower(msp.subsym[0].name[0])) {
+                msp.subsym[msp.nsubsym - 1] = try Symbol_new(x[1..]);
+                if (isLower(x[1]) or isLower(msp.subsym[0].name[0])) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Cannot form a compound containing a non-terminal", .{});
                     psp.errorcnt += 1;
@@ -1024,7 +1088,7 @@ fn parseonetoken(psp: *PState) !void {
                 psp.state = .rhs_alias_1;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Illegal character on RHS of rule: \"{s}\".", .{});
+                    "Illegal character on RHS of rule: \"{s}\".", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -1046,7 +1110,7 @@ fn parseonetoken(psp: *PState) !void {
                 psp.state = .in_rhs;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Missing \")\" following LHS alias name \"{s}\".", .{});
+                    "Missing \")\" following LHS alias name \"{s}\".", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -1074,7 +1138,7 @@ fn parseonetoken(psp: *PState) !void {
             switch (decl) {
                 .name => {
                     psp.declargslot = &psp.gp.name;
-                    psp.insertLineMacro = 0;
+                    psp.insertLineMacro = false;
                 },
                 .include => {
                     psp.declargslot = &psp.gp.include;
@@ -1197,7 +1261,7 @@ fn parseonetoken(psp: *PState) !void {
             const sp = Symbol_find(x) orelse try Symbol_new(x);
             if (sp.datatype.len != 0) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Symbol %type \"{s}\" already defined", .{});
+                    "Symbol %type \"{s}\" already defined", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
             } else {
@@ -1250,24 +1314,24 @@ fn parseonetoken(psp: *PState) !void {
                     (psp.decllinenoslot == null or psp.decllinenoslot.?.* != 0);
                 if (addLineMacro) {
                     var nBack = std.mem.count(u8, psp.filename, "\\");
-                    nBack += std.mem.count(u8, psp.filename, '"');
-                    zLine = std.fmt.bufPrint(zBuffer, "#line {d} ", .{psp.tokenlineno}) catch |err| {
+                    nBack += std.mem.count(u8, psp.filename, "\"");
+                    zLine = std.fmt.bufPrint(&zBuffer, "#line {d} ", .{psp.tokenlineno}) catch |err| slice: {
                         // Should be literally impossible but ¯\_(ツ)_/¯
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "Buffer overflow on #line directive print: {s}", .{@errorName(err)});
                         psp.errorcnt += 1;
-                        // NOTE: This will leave zLine empty, which is good, but
-                        // there has been talk of error catching 'poisoning'
-                        // the old result, because I'm doing this deliberately
-                        // but it's often a mistake.  That would be a compile
-                        // error and can be corrected by resetting zLine to
-                        // zBuf[0..0];
+                        break :slice zBuffer[0..0];
                     };
                     n += psp.filename.len + nBack;
                 }
                 // We put this back on declargslot and PSP once we know how long the
                 // slice actually should be.
-                const zBuf = try psp.allocator.realloc(declargslot.*, n);
+                const zBuf = zbuf: {
+                    if (declargslot.*.len == 0)
+                        break :zbuf try psp.allocator.alloc(u8, n)
+                    else
+                        break :zbuf try psp.allocator.realloc(declargslot.*, n);
+                };
                 @memcpy(zBuf[0..zOld.len], zOld);
                 zIdx += zOld.len;
                 if (addLineMacro) {
@@ -1293,9 +1357,9 @@ fn parseonetoken(psp: *PState) !void {
                     zBuf[zIdx + 1] = '\n';
                     zIdx += 2;
                 }
-                if (psp.decllinenoslot != null and psp.decllinenoslot.* == 0) {
-                    psp.decllinenoslot.?.* = psp.tokenlineno;
-                }
+                if (psp.decllinenoslot) |linenoslot| if (linenoslot.* == 0) {
+                    psp.decllinenoslot.?.* = @intCast(psp.tokenlineno);
+                };
                 @memcpy(zBuf[zIdx..][0..zNew.len], zNew);
                 zIdx += zNew.len;
                 // Finally, we can put a cap on declargslot:
@@ -1303,7 +1367,7 @@ fn parseonetoken(psp: *PState) !void {
                 // Let's check if that spurious 20 actually comes into play:
                 if (zIdx != cast(isize, n) - 20) {
                     // TODO: Remove the extra bytes once this pans out.
-                    std.debug.print("zIdx is {d} less than n, not 20\n", .{cast(isize, n) - zIdx});
+                    std.debug.print("zIdx is {d} less than n, not 20\n", .{cast(isize, n) - cast(isize, zIdx)});
                 }
                 // I think we need this, otherwise why zOld?
                 psp.declargslot = declargslot;
@@ -1327,7 +1391,7 @@ fn parseonetoken(psp: *PState) !void {
                 const sp = try Symbol_new(x);
                 if (psp.fallback == null) {
                     psp.fallback = sp;
-                } else if (sp.fallback) {
+                } else if (sp.fallback != null) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "More than one fallback assigned to token {s}", .{sp.name});
                     psp.errorcnt += 1;
@@ -1399,8 +1463,13 @@ fn parseonetoken(psp: *PState) !void {
             } else if (isUpper(x[0]) or ((x[0] == '|' or x[0] == '/') and isUpper(x[1]))) {
                 const msp = psp.tkclass;
                 msp.nsubsym += 1;
-                msp.subsym = try psp.allocator.realloc(msp.subsym, msp.nsubsym);
-                msp.subsym[msp.nsubsym.nsubsym - 1] = try Symbol_new(if (!isUpper(x[0])) x else x[1..]);
+                msp.subsym = subsym: {
+                    if (msp.subsym.len == 0)
+                        break :subsym try psp.allocator.alloc(*Symbol, 1)
+                    else
+                        break :subsym try psp.allocator.realloc(msp.subsym, msp.nsubsym);
+                };
+                msp.subsym[msp.nsubsym - 1] = try Symbol_new(if (!isUpper(x[0])) x else x[1..]);
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "%token_class argument \"{s}\" should be a token", .{x});
@@ -1547,7 +1616,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
                 } else if (fb[i] == '"' or fb[i] == '\'') {
                     // String or character literals (since the latter can have " in it)
                     const startchar = fb[i];
-                    var prevc = 0;
+                    var prevc: u8 = 0;
                     i += 1;
                     while (fb[i] != 0 and (fb[i] != startchar or prevc == '\\')) : (i += 1) {
                         if (fb[i] == '\n') lineno += 1;
@@ -1577,7 +1646,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
             i += 1;
         }
         const x = fb[ps.tokenstart..i];
-        parseonetoken(x);
+        try parseonetoken(ps, x);
         if (skip) i += 1; // End byte of string and code tokens.
     }
 }
@@ -1623,7 +1692,7 @@ fn SetUnion(s1: []bool, s2: []bool) bool {
     return changed;
 }
 
-pub fn main() void {
+pub fn main() !void {
     var dbga: std.heap.DebugAllocator(.{}) = .init;
     defer {
         _ = dbga.detectLeaks();
@@ -1652,7 +1721,23 @@ pub fn main() void {
         std.process.exit(1);
     }
     const filename = maybe_filename.?;
-    _ = filename;
+    const file = try std.fs.cwd().openFile(filename, .{});
+    defer file.close();
+    const end_pos = try file.getEndPos();
+    const filebuf = try allocator.allocSentinel(u8, end_pos, 0);
+    defer allocator.free(filebuf);
+    const read_bytes = try file.readAll(filebuf);
+    if (read_bytes < end_pos) {
+        std.debug.print("didnt read to end of file {s}\n", .{filename});
+        std.process.exit(1);
+    }
+    const lemon = try allocator.create(Lemon);
+    lemon.* = .empty;
+    var pstate = try allocator.create(PState);
+    pstate.* = .empty;
+    pstate.gp = lemon;
+
+    try scan(pstate, filebuf);
 
     std.debug.print("lemon for great justice!\n", .{});
     std.process.cleanExit();
