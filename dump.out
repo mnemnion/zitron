@@ -1,0 +1,2378 @@
+tstart == 0 '%' i == 1 'i' state: initialize  token: %
+skip: false tstart == 1 'i' i == 8 ' ' state: waiting_for_decl_keyword  token: include
+skip: false tstart == 9 '{' i == 30546 '}' state: waiting_for_decl_arg  token: {
+/*
+** Zero-Clause BSD license:
+**
+** Copyright (...
+got here
+alloc 30556 bytes
+alloc ok
+post alloc
+skip: true tstart == 30565 '%' i == 30566 'n' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30566 'n' i == 30570 ' ' state: waiting_for_decl_keyword  token: name
+skip: false tstart == 30571 'p' i == 30581 '
+' state: waiting_for_decl_arg  token: pik_parser
+got here
+alloc 30 bytes
+alloc ok
+post alloc
+skip: false tstart == 30582 '%' i == 30583 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30583 't' i == 30595 ' ' state: waiting_for_decl_keyword  token: token_prefix
+skip: false tstart == 30596 'T' i == 30598 '
+' state: waiting_for_decl_arg  token: T_
+got here
+alloc 22 bytes
+alloc ok
+post alloc
+skip: false tstart == 30599 '%' i == 30600 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30600 't' i == 30610 ' ' state: waiting_for_decl_keyword  token: token_type
+skip: false tstart == 30611 '{' i == 30618 '}' state: waiting_for_decl_arg  token: {PToken
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 30620 '%' i == 30621 'e' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30621 'e' i == 30634 ' ' state: waiting_for_decl_keyword  token: extra_context
+skip: false tstart == 30635 '{' i == 30642 '}' state: waiting_for_decl_arg  token: {Pik *p
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 30645 '%' i == 30646 'f' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30646 'f' i == 30654 ' ' state: waiting_for_decl_keyword  token: fallback
+skip: false tstart == 30655 'I' i == 30657 ' ' state: waiting_for_fallback_id  token: ID
+skip: false tstart == 30658 'E' i == 30664 '.' state: waiting_for_fallback_id  token: EDGEPT
+skip: false tstart == 30664 '.' i == 30665 '
+' state: waiting_for_fallback_id  token: .
+skip: false tstart == 30688 '%' i == 30689 'l' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30689 'l' i == 30693 ' ' state: waiting_for_decl_keyword  token: left
+skip: false tstart == 30694 'O' i == 30696 '.' state: waiting_for_precedence_symbol  token: OF
+skip: false tstart == 30696 '.' i == 30697 '
+' state: waiting_for_precedence_symbol  token: .
+skip: false tstart == 30698 '%' i == 30699 'l' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30699 'l' i == 30703 ' ' state: waiting_for_decl_keyword  token: left
+skip: false tstart == 30704 'P' i == 30708 ' ' state: waiting_for_precedence_symbol  token: PLUS
+skip: false tstart == 30709 'M' i == 30714 '.' state: waiting_for_precedence_symbol  token: MINUS
+skip: false tstart == 30714 '.' i == 30715 '
+' state: waiting_for_precedence_symbol  token: .
+skip: false tstart == 30716 '%' i == 30717 'l' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30717 'l' i == 30721 ' ' state: waiting_for_decl_keyword  token: left
+skip: false tstart == 30722 'S' i == 30726 ' ' state: waiting_for_precedence_symbol  token: STAR
+skip: false tstart == 30727 'S' i == 30732 ' ' state: waiting_for_precedence_symbol  token: SLASH
+skip: false tstart == 30733 'P' i == 30740 '.' state: waiting_for_precedence_symbol  token: PERCENT
+skip: false tstart == 30740 '.' i == 30741 '
+' state: waiting_for_precedence_symbol  token: .
+skip: false tstart == 30742 '%' i == 30743 'r' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30743 'r' i == 30748 ' ' state: waiting_for_decl_keyword  token: right
+skip: false tstart == 30749 'U' i == 30755 '.' state: waiting_for_precedence_symbol  token: UMINUS
+skip: false tstart == 30755 '.' i == 30756 '
+' state: waiting_for_precedence_symbol  token: .
+skip: false tstart == 30758 '%' i == 30759 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30759 't' i == 30763 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 30764 's' i == 30778 ' ' state: waiting_for_datatype_symbol  token: statement_list
+skip: false tstart == 30779 '{' i == 30786 '}' state: waiting_for_decl_arg  token: {PList*
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 30788 '%' i == 30789 'd' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30789 'd' i == 30799 ' ' state: waiting_for_decl_keyword  token: destructor
+skip: false tstart == 30800 's' i == 30814 ' ' state: waiting_for_destructor_symbol  token: statement_list
+skip: false tstart == 30815 '{' i == 30837 '}' state: waiting_for_decl_arg  token: {pik_elist_free(p,$$);
+got here
+alloc 41 bytes
+alloc ok
+post alloc
+skip: true tstart == 30839 '%' i == 30840 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30840 't' i == 30844 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 30845 's' i == 30854 ' ' state: waiting_for_datatype_symbol  token: statement
+skip: false tstart == 30855 '{' i == 30861 '}' state: waiting_for_decl_arg  token: {PObj*
+got here
+alloc 25 bytes
+alloc ok
+post alloc
+skip: true tstart == 30863 '%' i == 30864 'd' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30864 'd' i == 30874 ' ' state: waiting_for_decl_keyword  token: destructor
+skip: false tstart == 30875 's' i == 30884 ' ' state: waiting_for_destructor_symbol  token: statement
+skip: false tstart == 30885 '{' i == 30906 '}' state: waiting_for_decl_arg  token: {pik_elem_free(p,$$);
+got here
+alloc 40 bytes
+alloc ok
+post alloc
+skip: true tstart == 30908 '%' i == 30909 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30909 't' i == 30913 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 30914 'u' i == 30931 ' ' state: waiting_for_datatype_symbol  token: unnamed_statement
+skip: false tstart == 30932 '{' i == 30938 '}' state: waiting_for_decl_arg  token: {PObj*
+got here
+alloc 25 bytes
+alloc ok
+post alloc
+skip: true tstart == 30940 '%' i == 30941 'd' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30941 'd' i == 30951 ' ' state: waiting_for_decl_keyword  token: destructor
+skip: false tstart == 30952 'u' i == 30969 ' ' state: waiting_for_destructor_symbol  token: unnamed_statement
+skip: false tstart == 30970 '{' i == 30991 '}' state: waiting_for_decl_arg  token: {pik_elem_free(p,$$);
+got here
+alloc 40 bytes
+alloc ok
+post alloc
+skip: true tstart == 30993 '%' i == 30994 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 30994 't' i == 30998 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 30999 'b' i == 31007 ' ' state: waiting_for_datatype_symbol  token: basetype
+skip: false tstart == 31008 '{' i == 31014 '}' state: waiting_for_decl_arg  token: {PObj*
+got here
+alloc 25 bytes
+alloc ok
+post alloc
+skip: true tstart == 31016 '%' i == 31017 'd' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31017 'd' i == 31027 ' ' state: waiting_for_decl_keyword  token: destructor
+skip: false tstart == 31028 'b' i == 31036 ' ' state: waiting_for_destructor_symbol  token: basetype
+skip: false tstart == 31037 '{' i == 31058 '}' state: waiting_for_decl_arg  token: {pik_elem_free(p,$$);
+got here
+alloc 40 bytes
+alloc ok
+post alloc
+skip: true tstart == 31060 '%' i == 31061 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31061 't' i == 31065 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31066 'e' i == 31070 ' ' state: waiting_for_datatype_symbol  token: expr
+skip: false tstart == 31071 '{' i == 31076 '}' state: waiting_for_decl_arg  token: {PNum
+got here
+alloc 24 bytes
+alloc ok
+post alloc
+skip: true tstart == 31078 '%' i == 31079 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31079 't' i == 31083 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31084 'n' i == 31095 ' ' state: waiting_for_datatype_symbol  token: numproperty
+skip: false tstart == 31096 '{' i == 31103 '}' state: waiting_for_decl_arg  token: {PToken
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31105 '%' i == 31106 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31106 't' i == 31110 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31111 'e' i == 31115 ' ' state: waiting_for_datatype_symbol  token: edge
+skip: false tstart == 31116 '{' i == 31123 '}' state: waiting_for_decl_arg  token: {PToken
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31125 '%' i == 31126 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31126 't' i == 31130 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31131 'd' i == 31140 ' ' state: waiting_for_datatype_symbol  token: direction
+skip: false tstart == 31141 '{' i == 31148 '}' state: waiting_for_decl_arg  token: {PToken
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31150 '%' i == 31151 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31151 't' i == 31155 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31156 'd' i == 31168 ' ' state: waiting_for_datatype_symbol  token: dashproperty
+skip: false tstart == 31169 '{' i == 31176 '}' state: waiting_for_decl_arg  token: {PToken
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31178 '%' i == 31179 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31179 't' i == 31183 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31184 'c' i == 31197 ' ' state: waiting_for_datatype_symbol  token: colorproperty
+skip: false tstart == 31198 '{' i == 31205 '}' state: waiting_for_decl_arg  token: {PToken
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31207 '%' i == 31208 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31208 't' i == 31212 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31213 'l' i == 31224 ' ' state: waiting_for_datatype_symbol  token: locproperty
+skip: false tstart == 31225 '{' i == 31232 '}' state: waiting_for_decl_arg  token: {PToken
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31234 '%' i == 31235 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31235 't' i == 31239 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31240 'p' i == 31248 ' ' state: waiting_for_datatype_symbol  token: position
+skip: false tstart == 31249 '{' i == 31256 '}' state: waiting_for_decl_arg  token: {PPoint
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31258 '%' i == 31259 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31259 't' i == 31263 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31264 'p' i == 31269 ' ' state: waiting_for_datatype_symbol  token: place
+skip: false tstart == 31270 '{' i == 31277 '}' state: waiting_for_decl_arg  token: {PPoint
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31279 '%' i == 31280 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31280 't' i == 31284 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31285 'o' i == 31291 ' ' state: waiting_for_datatype_symbol  token: object
+skip: false tstart == 31292 '{' i == 31298 '}' state: waiting_for_decl_arg  token: {PObj*
+got here
+alloc 25 bytes
+alloc ok
+post alloc
+skip: true tstart == 31300 '%' i == 31301 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31301 't' i == 31305 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31306 'o' i == 31316 ' ' state: waiting_for_datatype_symbol  token: objectname
+skip: false tstart == 31317 '{' i == 31323 '}' state: waiting_for_decl_arg  token: {PObj*
+got here
+alloc 25 bytes
+alloc ok
+post alloc
+skip: true tstart == 31325 '%' i == 31326 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31326 't' i == 31330 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31331 'n' i == 31334 ' ' state: waiting_for_datatype_symbol  token: nth
+skip: false tstart == 31335 '{' i == 31342 '}' state: waiting_for_decl_arg  token: {PToken
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31344 '%' i == 31345 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31345 't' i == 31349 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31350 't' i == 31362 ' ' state: waiting_for_datatype_symbol  token: textposition
+skip: false tstart == 31363 '{' i == 31373 '}' state: waiting_for_decl_arg  token: {short int
+got here
+alloc 29 bytes
+alloc ok
+post alloc
+skip: true tstart == 31375 '%' i == 31376 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31376 't' i == 31380 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31381 'r' i == 31387 ' ' state: waiting_for_datatype_symbol  token: rvalue
+skip: false tstart == 31388 '{' i == 31393 '}' state: waiting_for_decl_arg  token: {PNum
+got here
+alloc 24 bytes
+alloc ok
+post alloc
+skip: true tstart == 31395 '%' i == 31396 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31396 't' i == 31400 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31401 'l' i == 31407 ' ' state: waiting_for_datatype_symbol  token: lvalue
+skip: false tstart == 31408 '{' i == 31415 '}' state: waiting_for_decl_arg  token: {PToken
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31417 '%' i == 31418 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31418 't' i == 31422 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31423 'e' i == 31427 ' ' state: waiting_for_datatype_symbol  token: even
+skip: false tstart == 31428 '{' i == 31435 '}' state: waiting_for_decl_arg  token: {PToken
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 31437 '%' i == 31438 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31438 't' i == 31442 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31443 'r' i == 31450 ' ' state: waiting_for_datatype_symbol  token: relexpr
+skip: false tstart == 31451 '{' i == 31456 '}' state: waiting_for_decl_arg  token: {PRel
+got here
+alloc 24 bytes
+alloc ok
+post alloc
+skip: true tstart == 31458 '%' i == 31459 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31459 't' i == 31463 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 31464 'o' i == 31474 ' ' state: waiting_for_datatype_symbol  token: optrelexpr
+skip: false tstart == 31475 '{' i == 31480 '}' state: waiting_for_decl_arg  token: {PRel
+got here
+alloc 24 bytes
+alloc ok
+post alloc
+skip: true tstart == 31483 '%' i == 31484 's' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31484 's' i == 31496 ' ' state: waiting_for_decl_keyword  token: syntax_error
+skip: false tstart == 31497 '{' i == 31651 '}' state: waiting_for_decl_arg  token: {
+  if( TOKEN.z && TOKEN.z[0] ){
+    pik_error(p, ...
+got here
+alloc 189 bytes
+alloc ok
+post alloc
+zIdx is 7 less than n, not 20
+skip: true tstart == 31653 '%' i == 31654 's' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 31654 's' i == 31668 ' ' state: waiting_for_decl_keyword  token: stack_overflow
+skip: false tstart == 31669 '{' i == 31715 '}' state: waiting_for_decl_arg  token: {
+  pik_error(p, 0, "parser stack overflow");
+
+got here
+alloc 81 bytes
+alloc ok
+post alloc
+zIdx is 7 less than n, not 20
+skip: true tstart == 31718 'd' i == 31726 ' ' state: waiting_for_decl_or_rule  token: document
+skip: false tstart == 31727 ':' i == 31730 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 31731 's' i == 31745 '(' state: in_rhs  token: statement_list
+skip: false tstart == 31745 '(' i == 31746 'X' state: in_rhs  token: (
+skip: false tstart == 31746 'X' i == 31747 ')' state: rhs_alias_1  token: X
+skip: false tstart == 31747 ')' i == 31748 '.' state: rhs_alias_2  token: )
+skip: false tstart == 31748 '.' i == 31749 ' ' state: in_rhs  token: .
+skip: false tstart == 31751 '{' i == 31768 '}' state: waiting_for_decl_or_rule  token: {pik_render(p,X);
+skip: true tstart == 31772 's' i == 31786 '(' state: waiting_for_decl_or_rule  token: statement_list
+skip: false tstart == 31786 '(' i == 31787 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 31787 'A' i == 31788 ')' state: lhs_alias_1  token: A
+skip: false tstart == 31788 ')' i == 31789 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 31790 ':' i == 31793 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 31794 's' i == 31803 '(' state: in_rhs  token: statement
+skip: false tstart == 31803 '(' i == 31804 'X' state: in_rhs  token: (
+skip: false tstart == 31804 'X' i == 31805 ')' state: rhs_alias_1  token: X
+skip: false tstart == 31805 ')' i == 31806 '.' state: rhs_alias_2  token: )
+skip: false tstart == 31806 '.' i == 31807 ' ' state: in_rhs  token: .
+skip: false tstart == 31810 '{' i == 31841 '}' state: waiting_for_decl_or_rule  token: { A = pik_elist_append(p,0,X); 
+skip: true tstart == 31843 's' i == 31857 '(' state: waiting_for_decl_or_rule  token: statement_list
+skip: false tstart == 31857 '(' i == 31858 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 31858 'A' i == 31859 ')' state: lhs_alias_1  token: A
+skip: false tstart == 31859 ')' i == 31860 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 31861 ':' i == 31864 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 31865 's' i == 31879 '(' state: in_rhs  token: statement_list
+skip: false tstart == 31879 '(' i == 31880 'B' state: in_rhs  token: (
+skip: false tstart == 31880 'B' i == 31881 ')' state: rhs_alias_1  token: B
+skip: false tstart == 31881 ')' i == 31882 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 31883 'E' i == 31886 ' ' state: in_rhs  token: EOL
+skip: false tstart == 31887 's' i == 31896 '(' state: in_rhs  token: statement
+skip: false tstart == 31896 '(' i == 31897 'X' state: in_rhs  token: (
+skip: false tstart == 31897 'X' i == 31898 ')' state: rhs_alias_1  token: X
+skip: false tstart == 31898 ')' i == 31899 '.' state: rhs_alias_2  token: )
+skip: false tstart == 31899 '.' i == 31900 '
+' state: in_rhs  token: .
+skip: false tstart == 31923 '{' i == 31954 '}' state: waiting_for_decl_or_rule  token: { A = pik_elist_append(p,B,X); 
+skip: true tstart == 31958 's' i == 31967 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 31967 '(' i == 31968 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 31968 'A' i == 31969 ')' state: lhs_alias_1  token: A
+skip: false tstart == 31969 ')' i == 31970 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 31971 ':' i == 31974 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 31975 '.' i == 31976 ' ' state: in_rhs  token: .
+skip: false tstart == 31979 '{' i == 31988 '}' state: waiting_for_decl_or_rule  token: { A = 0; 
+skip: true tstart == 31990 's' i == 31999 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 31999 '(' i == 32000 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 32000 'A' i == 32001 ')' state: lhs_alias_1  token: A
+skip: false tstart == 32001 ')' i == 32002 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 32003 ':' i == 32006 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 32007 'd' i == 32016 '(' state: in_rhs  token: direction
+skip: false tstart == 32016 '(' i == 32017 'D' state: in_rhs  token: (
+skip: false tstart == 32017 'D' i == 32018 ')' state: rhs_alias_1  token: D
+skip: false tstart == 32018 ')' i == 32019 '.' state: rhs_alias_2  token: )
+skip: false tstart == 32019 '.' i == 32020 ' ' state: in_rhs  token: .
+skip: false tstart == 32022 '{' i == 32060 '}' state: waiting_for_decl_or_rule  token: { pik_set_direction(p,D.eCode);  A=0; 
+skip: true tstart == 32062 's' i == 32071 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 32071 '(' i == 32072 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 32072 'A' i == 32073 ')' state: lhs_alias_1  token: A
+skip: false tstart == 32073 ')' i == 32074 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 32075 ':' i == 32078 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 32079 'l' i == 32085 '(' state: in_rhs  token: lvalue
+skip: false tstart == 32085 '(' i == 32086 'N' state: in_rhs  token: (
+skip: false tstart == 32086 'N' i == 32087 ')' state: rhs_alias_1  token: N
+skip: false tstart == 32087 ')' i == 32088 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 32089 'A' i == 32095 '(' state: in_rhs  token: ASSIGN
+skip: false tstart == 32095 '(' i == 32096 'O' state: in_rhs  token: (
+skip: false tstart == 32096 'O' i == 32098 ')' state: rhs_alias_1  token: OP
+skip: false tstart == 32098 ')' i == 32099 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 32100 'r' i == 32106 '(' state: in_rhs  token: rvalue
+skip: false tstart == 32106 '(' i == 32107 'X' state: in_rhs  token: (
+skip: false tstart == 32107 'X' i == 32108 ')' state: rhs_alias_1  token: X
+skip: false tstart == 32108 ')' i == 32109 '.' state: rhs_alias_2  token: )
+skip: false tstart == 32109 '.' i == 32110 ' ' state: in_rhs  token: .
+skip: false tstart == 32111 '{' i == 32141 '}' state: waiting_for_decl_or_rule  token: {pik_set_var(p,&N,X,&OP); A=0;
+skip: true tstart == 32143 's' i == 32152 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 32152 '(' i == 32153 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 32153 'A' i == 32154 ')' state: lhs_alias_1  token: A
+skip: false tstart == 32154 ')' i == 32155 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 32156 ':' i == 32159 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 32160 'P' i == 32169 '(' state: in_rhs  token: PLACENAME
+skip: false tstart == 32169 '(' i == 32170 'N' state: in_rhs  token: (
+skip: false tstart == 32170 'N' i == 32171 ')' state: rhs_alias_1  token: N
+skip: false tstart == 32171 ')' i == 32172 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 32173 'C' i == 32178 ' ' state: in_rhs  token: COLON
+skip: false tstart == 32179 'u' i == 32196 '(' state: in_rhs  token: unnamed_statement
+skip: false tstart == 32196 '(' i == 32197 'X' state: in_rhs  token: (
+skip: false tstart == 32197 'X' i == 32198 ')' state: rhs_alias_1  token: X
+skip: false tstart == 32198 ')' i == 32199 '.' state: rhs_alias_2  token: )
+skip: false tstart == 32199 '.' i == 32200 '
+' state: in_rhs  token: .
+skip: false tstart == 32216 '{' i == 32252 '}' state: waiting_for_decl_or_rule  token: { A = X;  pik_elem_setname(p,X,&N); 
+skip: true tstart == 32254 's' i == 32263 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 32263 '(' i == 32264 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 32264 'A' i == 32265 ')' state: lhs_alias_1  token: A
+skip: false tstart == 32265 ')' i == 32266 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 32267 ':' i == 32270 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 32271 'P' i == 32280 '(' state: in_rhs  token: PLACENAME
+skip: false tstart == 32280 '(' i == 32281 'N' state: in_rhs  token: (
+skip: false tstart == 32281 'N' i == 32282 ')' state: rhs_alias_1  token: N
+skip: false tstart == 32282 ')' i == 32283 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 32284 'C' i == 32289 ' ' state: in_rhs  token: COLON
+skip: false tstart == 32290 'p' i == 32298 '(' state: in_rhs  token: position
+skip: false tstart == 32298 '(' i == 32299 'P' state: in_rhs  token: (
+skip: false tstart == 32299 'P' i == 32300 ')' state: rhs_alias_1  token: P
+skip: false tstart == 32300 ')' i == 32301 '.' state: rhs_alias_2  token: )
+skip: false tstart == 32301 '.' i == 32302 '
+' state: in_rhs  token: .
+skip: false tstart == 32318 '{' i == 32411 '}' state: waiting_for_decl_or_rule  token: { A = pik_elem_new(p,0,0,0);
+                 if(A...
+skip: true tstart == 32413 's' i == 32422 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 32422 '(' i == 32423 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 32423 'A' i == 32424 ')' state: lhs_alias_1  token: A
+skip: false tstart == 32424 ')' i == 32425 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 32426 ':' i == 32429 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 32430 'T' i == 32435 ' ' state: in_rhs  token: TITLE
+skip: false tstart == 32436 'S' i == 32442 '(' state: in_rhs  token: STRING
+skip: false tstart == 32442 '(' i == 32443 'S' state: in_rhs  token: (
+skip: false tstart == 32443 'S' i == 32444 ')' state: rhs_alias_1  token: S
+skip: false tstart == 32444 ')' i == 32445 '.' state: rhs_alias_2  token: )
+skip: false tstart == 32445 '.' i == 32446 '{' state: in_rhs  token: .
+skip: false tstart == 32446 '{' i == 32478 '}' state: waiting_for_decl_or_rule  token: { pik_set_title(p, &S, 0); A=0; 
+skip: true tstart == 32480 's' i == 32489 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 32489 '(' i == 32490 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 32490 'A' i == 32491 ')' state: lhs_alias_1  token: A
+skip: false tstart == 32491 ')' i == 32492 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 32493 ':' i == 32496 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 32497 'L' i == 32502 ' ' state: in_rhs  token: LABEL
+skip: false tstart == 32503 'S' i == 32509 '(' state: in_rhs  token: STRING
+skip: false tstart == 32509 '(' i == 32510 'S' state: in_rhs  token: (
+skip: false tstart == 32510 'S' i == 32511 ')' state: rhs_alias_1  token: S
+skip: false tstart == 32511 ')' i == 32512 '.' state: rhs_alias_2  token: )
+skip: false tstart == 32512 '.' i == 32513 ' ' state: in_rhs  token: .
+skip: false tstart == 32514 '{' i == 32546 '}' state: waiting_for_decl_or_rule  token: { pik_set_title(p, &S, 1); A=0; 
+skip: true tstart == 32548 's' i == 32557 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 32557 '(' i == 32558 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 32558 'A' i == 32559 ')' state: lhs_alias_1  token: A
+skip: false tstart == 32559 ')' i == 32560 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 32561 ':' i == 32564 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 32565 'D' i == 32573 ' ' state: in_rhs  token: DESCRIBE
+skip: false tstart == 32574 'S' i == 32580 '(' state: in_rhs  token: STRING
+skip: false tstart == 32580 '(' i == 32581 'S' state: in_rhs  token: (
+skip: false tstart == 32581 'S' i == 32582 ')' state: rhs_alias_1  token: S
+skip: false tstart == 32582 ')' i == 32583 '.' state: rhs_alias_2  token: )
+skip: false tstart == 32583 '.' i == 32584 ' ' state: in_rhs  token: .
+skip: false tstart == 32585 '{' i == 32620 '}' state: waiting_for_decl_or_rule  token: { pik_set_description(p, &S); A=0; 
+skip: true tstart == 32622 's' i == 32631 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 32631 '(' i == 32632 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 32632 'A' i == 32633 ')' state: lhs_alias_1  token: A
+skip: false tstart == 32633 ')' i == 32634 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 32635 ':' i == 32638 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 32639 'u' i == 32656 '(' state: in_rhs  token: unnamed_statement
+skip: false tstart == 32656 '(' i == 32657 'X' state: in_rhs  token: (
+skip: false tstart == 32657 'X' i == 32658 ')' state: rhs_alias_1  token: X
+skip: false tstart == 32658 ')' i == 32659 '.' state: rhs_alias_2  token: )
+skip: false tstart == 32659 '.' i == 32660 ' ' state: in_rhs  token: .
+skip: false tstart == 32662 '{' i == 32669 '}' state: waiting_for_decl_or_rule  token: {A = X;
+skip: true tstart == 32671 's' i == 32680 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 32680 '(' i == 32681 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 32681 'A' i == 32682 ')' state: lhs_alias_1  token: A
+skip: false tstart == 32682 ')' i == 32683 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 32684 ':' i == 32687 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 32688 'p' i == 32693 ' ' state: in_rhs  token: print
+skip: false tstart == 32694 'p' i == 32700 '.' state: in_rhs  token: prlist
+skip: false tstart == 32700 '.' i == 32701 ' ' state: in_rhs  token: .
+skip: false tstart == 32703 '{' i == 32734 '}' state: waiting_for_decl_or_rule  token: {pik_append(p,"<br>\n",5); A=0;
+skip: true tstart == 32922 's' i == 32931 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 32931 '(' i == 32932 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 32932 'A' i == 32933 ')' state: lhs_alias_1  token: A
+skip: false tstart == 32933 ')' i == 32934 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 32935 ':' i == 32938 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 32939 'A' i == 32945 ' ' state: in_rhs  token: ASSERT
+skip: false tstart == 32946 'L' i == 32948 ' ' state: in_rhs  token: LP
+skip: false tstart == 32949 'e' i == 32953 '(' state: in_rhs  token: expr
+skip: false tstart == 32953 '(' i == 32954 'X' state: in_rhs  token: (
+skip: false tstart == 32954 'X' i == 32955 ')' state: rhs_alias_1  token: X
+skip: false tstart == 32955 ')' i == 32956 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 32957 'E' i == 32959 '(' state: in_rhs  token: EQ
+skip: false tstart == 32959 '(' i == 32960 'O' state: in_rhs  token: (
+skip: false tstart == 32960 'O' i == 32962 ')' state: rhs_alias_1  token: OP
+skip: false tstart == 32962 ')' i == 32963 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 32964 'e' i == 32968 '(' state: in_rhs  token: expr
+skip: false tstart == 32968 '(' i == 32969 'Y' state: in_rhs  token: (
+skip: false tstart == 32969 'Y' i == 32970 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 32970 ')' i == 32971 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 32972 'R' i == 32974 '.' state: in_rhs  token: RP
+skip: false tstart == 32974 '.' i == 32975 ' ' state: in_rhs  token: .
+skip: false tstart == 32976 '{' i == 33001 '}' state: waiting_for_decl_or_rule  token: {A=pik_assert(p,X,&OP,Y);
+skip: true tstart == 33003 's' i == 33012 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 33012 '(' i == 33013 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 33013 'A' i == 33014 ')' state: lhs_alias_1  token: A
+skip: false tstart == 33014 ')' i == 33015 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 33016 ':' i == 33019 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 33020 'A' i == 33026 ' ' state: in_rhs  token: ASSERT
+skip: false tstart == 33027 'L' i == 33029 ' ' state: in_rhs  token: LP
+skip: false tstart == 33030 'p' i == 33038 '(' state: in_rhs  token: position
+skip: false tstart == 33038 '(' i == 33039 'X' state: in_rhs  token: (
+skip: false tstart == 33039 'X' i == 33040 ')' state: rhs_alias_1  token: X
+skip: false tstart == 33040 ')' i == 33041 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 33042 'E' i == 33044 '(' state: in_rhs  token: EQ
+skip: false tstart == 33044 '(' i == 33045 'O' state: in_rhs  token: (
+skip: false tstart == 33045 'O' i == 33047 ')' state: rhs_alias_1  token: OP
+skip: false tstart == 33047 ')' i == 33048 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 33049 'p' i == 33057 '(' state: in_rhs  token: position
+skip: false tstart == 33057 '(' i == 33058 'Y' state: in_rhs  token: (
+skip: false tstart == 33058 'Y' i == 33059 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 33059 ')' i == 33060 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 33061 'R' i == 33063 '.' state: in_rhs  token: RP
+skip: false tstart == 33063 '.' i == 33064 '
+' state: in_rhs  token: .
+skip: false tstart == 33107 '{' i == 33143 '}' state: waiting_for_decl_or_rule  token: {A=pik_position_assert(p,&X,&OP,&Y);
+skip: true tstart == 33145 's' i == 33154 '(' state: waiting_for_decl_or_rule  token: statement
+skip: false tstart == 33154 '(' i == 33155 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 33155 'A' i == 33156 ')' state: lhs_alias_1  token: A
+skip: false tstart == 33156 ')' i == 33157 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 33158 ':' i == 33161 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 33162 'D' i == 33168 ' ' state: in_rhs  token: DEFINE
+skip: false tstart == 33169 'I' i == 33171 '(' state: in_rhs  token: ID
+skip: false tstart == 33171 '(' i == 33172 'I' state: in_rhs  token: (
+skip: false tstart == 33172 'I' i == 33174 ')' state: rhs_alias_1  token: ID
+skip: false tstart == 33174 ')' i == 33175 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 33176 'C' i == 33185 '(' state: in_rhs  token: CODEBLOCK
+skip: false tstart == 33185 '(' i == 33186 'C' state: in_rhs  token: (
+skip: false tstart == 33186 'C' i == 33187 ')' state: rhs_alias_1  token: C
+skip: false tstart == 33187 ')' i == 33188 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33188 '.' i == 33189 ' ' state: in_rhs  token: .
+skip: false tstart == 33191 '{' i == 33221 '}' state: waiting_for_decl_or_rule  token: {A=0; pik_add_macro(p,&ID,&C);
+skip: true tstart == 33224 'l' i == 33230 '(' state: waiting_for_decl_or_rule  token: lvalue
+skip: false tstart == 33230 '(' i == 33231 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 33231 'A' i == 33232 ')' state: lhs_alias_1  token: A
+skip: false tstart == 33232 ')' i == 33233 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 33234 ':' i == 33237 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 33238 'I' i == 33240 '(' state: in_rhs  token: ID
+skip: false tstart == 33240 '(' i == 33241 'A' state: in_rhs  token: (
+skip: false tstart == 33241 'A' i == 33242 ')' state: rhs_alias_1  token: A
+skip: false tstart == 33242 ')' i == 33243 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33243 '.' i == 33244 '
+' state: in_rhs  token: .
+skip: false tstart == 33245 'l' i == 33251 '(' state: waiting_for_decl_or_rule  token: lvalue
+skip: false tstart == 33251 '(' i == 33252 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 33252 'A' i == 33253 ')' state: lhs_alias_1  token: A
+skip: false tstart == 33253 ')' i == 33254 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 33255 ':' i == 33258 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 33259 'F' i == 33263 '(' state: in_rhs  token: FILL
+skip: false tstart == 33263 '(' i == 33264 'A' state: in_rhs  token: (
+skip: false tstart == 33264 'A' i == 33265 ')' state: rhs_alias_1  token: A
+skip: false tstart == 33265 ')' i == 33266 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33266 '.' i == 33267 '
+' state: in_rhs  token: .
+skip: false tstart == 33268 'l' i == 33274 '(' state: waiting_for_decl_or_rule  token: lvalue
+skip: false tstart == 33274 '(' i == 33275 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 33275 'A' i == 33276 ')' state: lhs_alias_1  token: A
+skip: false tstart == 33276 ')' i == 33277 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 33278 ':' i == 33281 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 33282 'C' i == 33287 '(' state: in_rhs  token: COLOR
+skip: false tstart == 33287 '(' i == 33288 'A' state: in_rhs  token: (
+skip: false tstart == 33288 'A' i == 33289 ')' state: rhs_alias_1  token: A
+skip: false tstart == 33289 ')' i == 33290 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33290 '.' i == 33291 '
+' state: in_rhs  token: .
+skip: false tstart == 33292 'l' i == 33298 '(' state: waiting_for_decl_or_rule  token: lvalue
+skip: false tstart == 33298 '(' i == 33299 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 33299 'A' i == 33300 ')' state: lhs_alias_1  token: A
+skip: false tstart == 33300 ')' i == 33301 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 33302 ':' i == 33305 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 33306 'T' i == 33315 '(' state: in_rhs  token: TEXTCOLOR
+skip: false tstart == 33315 '(' i == 33316 'A' state: in_rhs  token: (
+skip: false tstart == 33316 'A' i == 33317 ')' state: rhs_alias_1  token: A
+skip: false tstart == 33317 ')' i == 33318 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33318 '.' i == 33319 '
+' state: in_rhs  token: .
+skip: false tstart == 33320 'l' i == 33326 '(' state: waiting_for_decl_or_rule  token: lvalue
+skip: false tstart == 33326 '(' i == 33327 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 33327 'A' i == 33328 ')' state: lhs_alias_1  token: A
+skip: false tstart == 33328 ')' i == 33329 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 33330 ':' i == 33333 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 33334 'T' i == 33343 '(' state: in_rhs  token: THICKNESS
+skip: false tstart == 33343 '(' i == 33344 'A' state: in_rhs  token: (
+skip: false tstart == 33344 'A' i == 33345 ')' state: rhs_alias_1  token: A
+skip: false tstart == 33345 ')' i == 33346 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33346 '.' i == 33347 '
+' state: in_rhs  token: .
+skip: false tstart == 33546 'r' i == 33552 '(' state: waiting_for_decl_or_rule  token: rvalue
+skip: false tstart == 33552 '(' i == 33553 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 33553 'A' i == 33554 ')' state: lhs_alias_1  token: A
+skip: false tstart == 33554 ')' i == 33555 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 33556 ':' i == 33559 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 33560 'e' i == 33564 '(' state: in_rhs  token: expr
+skip: false tstart == 33564 '(' i == 33565 'A' state: in_rhs  token: (
+skip: false tstart == 33565 'A' i == 33566 ')' state: rhs_alias_1  token: A
+skip: false tstart == 33566 ')' i == 33567 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33567 '.' i == 33568 '
+' state: in_rhs  token: .
+skip: false tstart == 33569 'r' i == 33575 '(' state: waiting_for_decl_or_rule  token: rvalue
+skip: false tstart == 33575 '(' i == 33576 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 33576 'A' i == 33577 ')' state: lhs_alias_1  token: A
+skip: false tstart == 33577 ')' i == 33578 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 33579 ':' i == 33582 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 33583 'P' i == 33592 '(' state: in_rhs  token: PLACENAME
+skip: false tstart == 33592 '(' i == 33593 'C' state: in_rhs  token: (
+skip: false tstart == 33593 'C' i == 33594 ')' state: rhs_alias_1  token: C
+skip: false tstart == 33594 ')' i == 33595 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33595 '.' i == 33596 ' ' state: in_rhs  token: .
+skip: false tstart == 33598 '{' i == 33626 '}' state: waiting_for_decl_or_rule  token: {A = pik_lookup_color(p,&C);
+skip: true tstart == 33629 'p' i == 33634 ' ' state: waiting_for_decl_or_rule  token: print
+skip: false tstart == 33635 ':' i == 33638 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 33639 'P' i == 33644 '.' state: in_rhs  token: PRINT
+skip: false tstart == 33644 '.' i == 33645 '
+' state: in_rhs  token: .
+skip: false tstart == 33646 'p' i == 33652 ' ' state: waiting_for_decl_or_rule  token: prlist
+skip: false tstart == 33653 ':' i == 33656 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 33657 'p' i == 33663 '.' state: in_rhs  token: pritem
+skip: false tstart == 33663 '.' i == 33664 '
+' state: in_rhs  token: .
+skip: false tstart == 33665 'p' i == 33671 ' ' state: waiting_for_decl_or_rule  token: prlist
+skip: false tstart == 33672 ':' i == 33675 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 33676 'p' i == 33682 ' ' state: in_rhs  token: prlist
+skip: false tstart == 33683 'p' i == 33688 ' ' state: in_rhs  token: prsep
+skip: false tstart == 33689 'p' i == 33695 '.' state: in_rhs  token: pritem
+skip: false tstart == 33695 '.' i == 33696 '
+' state: in_rhs  token: .
+skip: false tstart == 33697 'p' i == 33703 ' ' state: waiting_for_decl_or_rule  token: pritem
+skip: false tstart == 33704 ':' i == 33707 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 33708 'F' i == 33712 '(' state: in_rhs  token: FILL
+skip: false tstart == 33712 '(' i == 33713 'X' state: in_rhs  token: (
+skip: false tstart == 33713 'X' i == 33714 ')' state: rhs_alias_1  token: X
+skip: false tstart == 33714 ')' i == 33715 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33715 '.' i == 33716 ' ' state: in_rhs  token: .
+skip: false tstart == 33724 '{' i == 33769 '}' state: waiting_for_decl_or_rule  token: {pik_append_num(p,"",pik_value(p,X.z,X.n,0));
+skip: true tstart == 33771 'p' i == 33777 ' ' state: waiting_for_decl_or_rule  token: pritem
+skip: false tstart == 33778 ':' i == 33781 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 33782 'C' i == 33787 '(' state: in_rhs  token: COLOR
+skip: false tstart == 33787 '(' i == 33788 'X' state: in_rhs  token: (
+skip: false tstart == 33788 'X' i == 33789 ')' state: rhs_alias_1  token: X
+skip: false tstart == 33789 ')' i == 33790 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33790 '.' i == 33791 ' ' state: in_rhs  token: .
+skip: false tstart == 33798 '{' i == 33843 '}' state: waiting_for_decl_or_rule  token: {pik_append_num(p,"",pik_value(p,X.z,X.n,0));
+skip: true tstart == 33845 'p' i == 33851 ' ' state: waiting_for_decl_or_rule  token: pritem
+skip: false tstart == 33852 ':' i == 33855 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 33856 'T' i == 33865 '(' state: in_rhs  token: THICKNESS
+skip: false tstart == 33865 '(' i == 33866 'X' state: in_rhs  token: (
+skip: false tstart == 33866 'X' i == 33867 ')' state: rhs_alias_1  token: X
+skip: false tstart == 33867 ')' i == 33868 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33868 '.' i == 33869 ' ' state: in_rhs  token: .
+skip: false tstart == 33872 '{' i == 33917 '}' state: waiting_for_decl_or_rule  token: {pik_append_num(p,"",pik_value(p,X.z,X.n,0));
+skip: true tstart == 33919 'p' i == 33925 ' ' state: waiting_for_decl_or_rule  token: pritem
+skip: false tstart == 33926 ':' i == 33929 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 33930 'r' i == 33936 '(' state: in_rhs  token: rvalue
+skip: false tstart == 33936 '(' i == 33937 'X' state: in_rhs  token: (
+skip: false tstart == 33937 'X' i == 33938 ')' state: rhs_alias_1  token: X
+skip: false tstart == 33938 ')' i == 33939 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33939 '.' i == 33940 ' ' state: in_rhs  token: .
+skip: false tstart == 33946 '{' i == 33970 '}' state: waiting_for_decl_or_rule  token: {pik_append_num(p,"",X);
+skip: true tstart == 33972 'p' i == 33978 ' ' state: waiting_for_decl_or_rule  token: pritem
+skip: false tstart == 33979 ':' i == 33982 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 33983 'S' i == 33989 '(' state: in_rhs  token: STRING
+skip: false tstart == 33989 '(' i == 33990 'S' state: in_rhs  token: (
+skip: false tstart == 33990 'S' i == 33991 ')' state: rhs_alias_1  token: S
+skip: false tstart == 33991 ')' i == 33992 '.' state: rhs_alias_2  token: )
+skip: false tstart == 33992 '.' i == 33993 ' ' state: in_rhs  token: .
+skip: false tstart == 33994 '{' i == 34028 '}' state: waiting_for_decl_or_rule  token: {pik_append_text(p,S.z+1,S.n-2,0);
+skip: true tstart == 34030 'p' i == 34035 ' ' state: waiting_for_decl_or_rule  token: prsep
+skip: false tstart == 34037 ':' i == 34040 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 34041 'C' i == 34046 '.' state: in_rhs  token: COMMA
+skip: false tstart == 34046 '.' i == 34047 ' ' state: in_rhs  token: .
+skip: false tstart == 34048 '{' i == 34071 '}' state: waiting_for_decl_or_rule  token: {pik_append(p, " ", 1);
+skip: true tstart == 34074 'u' i == 34091 '(' state: waiting_for_decl_or_rule  token: unnamed_statement
+skip: false tstart == 34091 '(' i == 34092 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34092 'A' i == 34093 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34093 ')' i == 34094 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34095 ':' i == 34098 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34099 'b' i == 34107 '(' state: in_rhs  token: basetype
+skip: false tstart == 34107 '(' i == 34108 'X' state: in_rhs  token: (
+skip: false tstart == 34108 'X' i == 34109 ')' state: rhs_alias_1  token: X
+skip: false tstart == 34109 ')' i == 34110 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 34111 'a' i == 34125 '.' state: in_rhs  token: attribute_list
+skip: false tstart == 34125 '.' i == 34126 '
+' state: in_rhs  token: .
+skip: false tstart == 34153 '{' i == 34194 '}' state: waiting_for_decl_or_rule  token: {A = X; pik_after_adding_attributes(p,A);
+skip: true tstart == 34197 'b' i == 34205 '(' state: waiting_for_decl_or_rule  token: basetype
+skip: false tstart == 34205 '(' i == 34206 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34206 'A' i == 34207 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34207 ')' i == 34208 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34209 ':' i == 34212 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34213 'C' i == 34222 '(' state: in_rhs  token: CLASSNAME
+skip: false tstart == 34222 '(' i == 34223 'N' state: in_rhs  token: (
+skip: false tstart == 34223 'N' i == 34224 ')' state: rhs_alias_1  token: N
+skip: false tstart == 34224 ')' i == 34225 '.' state: rhs_alias_2  token: )
+skip: false tstart == 34225 '.' i == 34226 ' ' state: in_rhs  token: .
+skip: false tstart == 34238 '{' i == 34267 '}' state: waiting_for_decl_or_rule  token: {A = pik_elem_new(p,&N,0,0); 
+skip: true tstart == 34269 'b' i == 34277 '(' state: waiting_for_decl_or_rule  token: basetype
+skip: false tstart == 34277 '(' i == 34278 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34278 'A' i == 34279 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34279 ')' i == 34280 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34281 ':' i == 34284 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34285 'S' i == 34291 '(' state: in_rhs  token: STRING
+skip: false tstart == 34291 '(' i == 34292 'N' state: in_rhs  token: (
+skip: false tstart == 34292 'N' i == 34293 ')' state: rhs_alias_1  token: N
+skip: false tstart == 34293 ')' i == 34294 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 34295 't' i == 34307 '(' state: in_rhs  token: textposition
+skip: false tstart == 34307 '(' i == 34308 'P' state: in_rhs  token: (
+skip: false tstart == 34308 'P' i == 34309 ')' state: rhs_alias_1  token: P
+skip: false tstart == 34309 ')' i == 34310 '.' state: rhs_alias_2  token: )
+skip: false tstart == 34310 '.' i == 34311 '
+' state: in_rhs  token: .
+skip: false tstart == 34340 '{' i == 34382 '}' state: waiting_for_decl_or_rule  token: {N.eCode = P; A = pik_elem_new(p,0,&N,0); 
+skip: true tstart == 34384 'b' i == 34392 '(' state: waiting_for_decl_or_rule  token: basetype
+skip: false tstart == 34392 '(' i == 34393 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34393 'A' i == 34394 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34394 ')' i == 34395 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34396 ':' i == 34399 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34400 'L' i == 34402 ' ' state: in_rhs  token: LB
+skip: false tstart == 34403 's' i == 34411 '(' state: in_rhs  token: savelist
+skip: false tstart == 34411 '(' i == 34412 'L' state: in_rhs  token: (
+skip: false tstart == 34412 'L' i == 34413 ')' state: rhs_alias_1  token: L
+skip: false tstart == 34413 ')' i == 34414 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 34415 's' i == 34429 '(' state: in_rhs  token: statement_list
+skip: false tstart == 34429 '(' i == 34430 'X' state: in_rhs  token: (
+skip: false tstart == 34430 'X' i == 34431 ')' state: rhs_alias_1  token: X
+skip: false tstart == 34431 ')' i == 34432 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 34433 'R' i == 34435 '(' state: in_rhs  token: RB
+skip: false tstart == 34435 '(' i == 34436 'E' state: in_rhs  token: (
+skip: false tstart == 34436 'E' i == 34437 ')' state: rhs_alias_1  token: E
+skip: false tstart == 34437 ')' i == 34438 '.' state: rhs_alias_2  token: )
+skip: false tstart == 34438 '.' i == 34439 '
+' state: in_rhs  token: .
+skip: false tstart == 34446 '{' i == 34509 '}' state: waiting_for_decl_or_rule  token: { p->list = L; A = pik_elem_new(p,0,0,X); if(A) A-...
+skip: true tstart == 34512 '%' i == 34513 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 34513 't' i == 34517 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 34518 's' i == 34526 ' ' state: waiting_for_datatype_symbol  token: savelist
+skip: false tstart == 34527 '{' i == 34534 '}' state: waiting_for_decl_arg  token: {PList*
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 34649 's' i == 34657 '(' state: waiting_for_decl_or_rule  token: savelist
+skip: false tstart == 34657 '(' i == 34658 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34658 'A' i == 34659 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34659 ')' i == 34660 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34661 ':' i == 34664 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34665 '.' i == 34666 ' ' state: in_rhs  token: .
+skip: false tstart == 34669 '{' i == 34695 '}' state: waiting_for_decl_or_rule  token: {A = p->list; p->list = 0;
+skip: true tstart == 34698 'd' i == 34707 '(' state: waiting_for_decl_or_rule  token: direction
+skip: false tstart == 34707 '(' i == 34708 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34708 'A' i == 34709 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34709 ')' i == 34710 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34711 ':' i == 34714 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34715 'U' i == 34717 '(' state: in_rhs  token: UP
+skip: false tstart == 34717 '(' i == 34718 'A' state: in_rhs  token: (
+skip: false tstart == 34718 'A' i == 34719 ')' state: rhs_alias_1  token: A
+skip: false tstart == 34719 ')' i == 34720 '.' state: rhs_alias_2  token: )
+skip: false tstart == 34720 '.' i == 34721 '
+' state: in_rhs  token: .
+skip: false tstart == 34722 'd' i == 34731 '(' state: waiting_for_decl_or_rule  token: direction
+skip: false tstart == 34731 '(' i == 34732 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34732 'A' i == 34733 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34733 ')' i == 34734 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34735 ':' i == 34738 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34739 'D' i == 34743 '(' state: in_rhs  token: DOWN
+skip: false tstart == 34743 '(' i == 34744 'A' state: in_rhs  token: (
+skip: false tstart == 34744 'A' i == 34745 ')' state: rhs_alias_1  token: A
+skip: false tstart == 34745 ')' i == 34746 '.' state: rhs_alias_2  token: )
+skip: false tstart == 34746 '.' i == 34747 '
+' state: in_rhs  token: .
+skip: false tstart == 34748 'd' i == 34757 '(' state: waiting_for_decl_or_rule  token: direction
+skip: false tstart == 34757 '(' i == 34758 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34758 'A' i == 34759 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34759 ')' i == 34760 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34761 ':' i == 34764 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34765 'L' i == 34769 '(' state: in_rhs  token: LEFT
+skip: false tstart == 34769 '(' i == 34770 'A' state: in_rhs  token: (
+skip: false tstart == 34770 'A' i == 34771 ')' state: rhs_alias_1  token: A
+skip: false tstart == 34771 ')' i == 34772 '.' state: rhs_alias_2  token: )
+skip: false tstart == 34772 '.' i == 34773 '
+' state: in_rhs  token: .
+skip: false tstart == 34774 'd' i == 34783 '(' state: waiting_for_decl_or_rule  token: direction
+skip: false tstart == 34783 '(' i == 34784 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34784 'A' i == 34785 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34785 ')' i == 34786 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34787 ':' i == 34790 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34791 'R' i == 34796 '(' state: in_rhs  token: RIGHT
+skip: false tstart == 34796 '(' i == 34797 'A' state: in_rhs  token: (
+skip: false tstart == 34797 'A' i == 34798 ')' state: rhs_alias_1  token: A
+skip: false tstart == 34798 ')' i == 34799 '.' state: rhs_alias_2  token: )
+skip: false tstart == 34799 '.' i == 34800 '
+' state: in_rhs  token: .
+skip: false tstart == 34802 'r' i == 34809 '(' state: waiting_for_decl_or_rule  token: relexpr
+skip: false tstart == 34809 '(' i == 34810 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34810 'A' i == 34811 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34811 ')' i == 34812 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34813 ':' i == 34816 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34817 'e' i == 34821 '(' state: in_rhs  token: expr
+skip: false tstart == 34821 '(' i == 34822 'B' state: in_rhs  token: (
+skip: false tstart == 34822 'B' i == 34823 ')' state: rhs_alias_1  token: B
+skip: false tstart == 34823 ')' i == 34824 '.' state: rhs_alias_2  token: )
+skip: false tstart == 34824 '.' i == 34825 ' ' state: in_rhs  token: .
+skip: false tstart == 34838 '{' i == 34862 '}' state: waiting_for_decl_or_rule  token: {A.rAbs = B; A.rRel = 0;
+skip: true tstart == 34864 'r' i == 34871 '(' state: waiting_for_decl_or_rule  token: relexpr
+skip: false tstart == 34871 '(' i == 34872 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34872 'A' i == 34873 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34873 ')' i == 34874 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34875 ':' i == 34878 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34879 'e' i == 34883 '(' state: in_rhs  token: expr
+skip: false tstart == 34883 '(' i == 34884 'B' state: in_rhs  token: (
+skip: false tstart == 34884 'B' i == 34885 ')' state: rhs_alias_1  token: B
+skip: false tstart == 34885 ')' i == 34886 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 34887 'P' i == 34894 '.' state: in_rhs  token: PERCENT
+skip: false tstart == 34894 '.' i == 34895 ' ' state: in_rhs  token: .
+skip: false tstart == 34900 '{' i == 34928 '}' state: waiting_for_decl_or_rule  token: {A.rAbs = 0; A.rRel = B/100;
+skip: true tstart == 34930 'o' i == 34940 '(' state: waiting_for_decl_or_rule  token: optrelexpr
+skip: false tstart == 34940 '(' i == 34941 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34941 'A' i == 34942 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34942 ')' i == 34943 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34944 ':' i == 34947 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34948 'r' i == 34955 '(' state: in_rhs  token: relexpr
+skip: false tstart == 34955 '(' i == 34956 'A' state: in_rhs  token: (
+skip: false tstart == 34956 'A' i == 34957 ')' state: rhs_alias_1  token: A
+skip: false tstart == 34957 ')' i == 34958 '.' state: rhs_alias_2  token: )
+skip: false tstart == 34958 '.' i == 34959 '
+' state: in_rhs  token: .
+skip: false tstart == 34960 'o' i == 34970 '(' state: waiting_for_decl_or_rule  token: optrelexpr
+skip: false tstart == 34970 '(' i == 34971 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 34971 'A' i == 34972 ')' state: lhs_alias_1  token: A
+skip: false tstart == 34972 ')' i == 34973 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 34974 ':' i == 34977 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 34978 '.' i == 34979 ' ' state: in_rhs  token: .
+skip: false tstart == 34996 '{' i == 35022 '}' state: waiting_for_decl_or_rule  token: {A.rAbs = 0; A.rRel = 1.0;
+skip: true tstart == 35025 'a' i == 35039 ' ' state: waiting_for_decl_or_rule  token: attribute_list
+skip: false tstart == 35040 ':' i == 35043 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35044 'r' i == 35051 '(' state: in_rhs  token: relexpr
+skip: false tstart == 35051 '(' i == 35052 'X' state: in_rhs  token: (
+skip: false tstart == 35052 'X' i == 35053 ')' state: rhs_alias_1  token: X
+skip: false tstart == 35053 ')' i == 35054 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 35055 'a' i == 35060 '.' state: in_rhs  token: alist
+skip: false tstart == 35060 '.' i == 35061 ' ' state: in_rhs  token: .
+skip: false tstart == 35065 '{' i == 35092 '}' state: waiting_for_decl_or_rule  token: {pik_add_direction(p,0,&X);
+skip: true tstart == 35094 'a' i == 35108 ' ' state: waiting_for_decl_or_rule  token: attribute_list
+skip: false tstart == 35109 ':' i == 35112 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35113 'a' i == 35118 '.' state: in_rhs  token: alist
+skip: false tstart == 35118 '.' i == 35119 '
+' state: in_rhs  token: .
+skip: false tstart == 35120 'a' i == 35125 ' ' state: waiting_for_decl_or_rule  token: alist
+skip: false tstart == 35126 ':' i == 35129 '.' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35129 '.' i == 35130 '
+' state: in_rhs  token: .
+skip: false tstart == 35131 'a' i == 35136 ' ' state: waiting_for_decl_or_rule  token: alist
+skip: false tstart == 35137 ':' i == 35140 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35141 'a' i == 35146 ' ' state: in_rhs  token: alist
+skip: false tstart == 35147 'a' i == 35156 '.' state: in_rhs  token: attribute
+skip: false tstart == 35156 '.' i == 35157 '
+' state: in_rhs  token: .
+skip: false tstart == 35158 'a' i == 35167 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35168 ':' i == 35171 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35172 'n' i == 35183 '(' state: in_rhs  token: numproperty
+skip: false tstart == 35183 '(' i == 35184 'P' state: in_rhs  token: (
+skip: false tstart == 35184 'P' i == 35185 ')' state: rhs_alias_1  token: P
+skip: false tstart == 35185 ')' i == 35186 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 35187 'r' i == 35194 '(' state: in_rhs  token: relexpr
+skip: false tstart == 35194 '(' i == 35195 'X' state: in_rhs  token: (
+skip: false tstart == 35195 'X' i == 35196 ')' state: rhs_alias_1  token: X
+skip: false tstart == 35196 ')' i == 35197 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35197 '.' i == 35198 ' ' state: in_rhs  token: .
+skip: false tstart == 35203 '{' i == 35231 '}' state: waiting_for_decl_or_rule  token: { pik_set_numprop(p,&P,&X); 
+skip: true tstart == 35233 'a' i == 35242 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35243 ':' i == 35246 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35247 'd' i == 35259 '(' state: in_rhs  token: dashproperty
+skip: false tstart == 35259 '(' i == 35260 'P' state: in_rhs  token: (
+skip: false tstart == 35260 'P' i == 35261 ')' state: rhs_alias_1  token: P
+skip: false tstart == 35261 ')' i == 35262 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 35263 'e' i == 35267 '(' state: in_rhs  token: expr
+skip: false tstart == 35267 '(' i == 35268 'X' state: in_rhs  token: (
+skip: false tstart == 35268 'X' i == 35269 ')' state: rhs_alias_1  token: X
+skip: false tstart == 35269 ')' i == 35270 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35270 '.' i == 35271 ' ' state: in_rhs  token: .
+skip: false tstart == 35278 '{' i == 35305 '}' state: waiting_for_decl_or_rule  token: { pik_set_dashed(p,&P,&X); 
+skip: true tstart == 35307 'a' i == 35316 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35317 ':' i == 35320 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35321 'd' i == 35333 '(' state: in_rhs  token: dashproperty
+skip: false tstart == 35333 '(' i == 35334 'P' state: in_rhs  token: (
+skip: false tstart == 35334 'P' i == 35335 ')' state: rhs_alias_1  token: P
+skip: false tstart == 35335 ')' i == 35336 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35336 '.' i == 35337 ' ' state: in_rhs  token: .
+skip: false tstart == 35352 '{' i == 35379 '}' state: waiting_for_decl_or_rule  token: { pik_set_dashed(p,&P,0);  
+skip: true tstart == 35381 'a' i == 35390 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35391 ':' i == 35394 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35395 'c' i == 35408 '(' state: in_rhs  token: colorproperty
+skip: false tstart == 35408 '(' i == 35409 'P' state: in_rhs  token: (
+skip: false tstart == 35409 'P' i == 35410 ')' state: rhs_alias_1  token: P
+skip: false tstart == 35410 ')' i == 35411 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 35412 'r' i == 35418 '(' state: in_rhs  token: rvalue
+skip: false tstart == 35418 '(' i == 35419 'X' state: in_rhs  token: (
+skip: false tstart == 35419 'X' i == 35420 ')' state: rhs_alias_1  token: X
+skip: false tstart == 35420 ')' i == 35421 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35421 '.' i == 35422 ' ' state: in_rhs  token: .
+skip: false tstart == 35426 '{' i == 35453 '}' state: waiting_for_decl_or_rule  token: { pik_set_clrprop(p,&P,X); 
+skip: true tstart == 35455 'a' i == 35464 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35465 ':' i == 35468 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35469 'g' i == 35471 ' ' state: in_rhs  token: go
+skip: false tstart == 35472 'd' i == 35481 '(' state: in_rhs  token: direction
+skip: false tstart == 35481 '(' i == 35482 'D' state: in_rhs  token: (
+skip: false tstart == 35482 'D' i == 35483 ')' state: rhs_alias_1  token: D
+skip: false tstart == 35483 ')' i == 35484 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 35485 'o' i == 35495 '(' state: in_rhs  token: optrelexpr
+skip: false tstart == 35495 '(' i == 35496 'X' state: in_rhs  token: (
+skip: false tstart == 35496 'X' i == 35497 ')' state: rhs_alias_1  token: X
+skip: false tstart == 35497 ')' i == 35498 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35498 '.' i == 35499 ' ' state: in_rhs  token: .
+skip: false tstart == 35500 '{' i == 35529 '}' state: waiting_for_decl_or_rule  token: { pik_add_direction(p,&D,&X);
+skip: true tstart == 35531 'a' i == 35540 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35541 ':' i == 35544 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35545 'g' i == 35547 ' ' state: in_rhs  token: go
+skip: false tstart == 35548 'd' i == 35557 '(' state: in_rhs  token: direction
+skip: false tstart == 35557 '(' i == 35558 'D' state: in_rhs  token: (
+skip: false tstart == 35558 'D' i == 35559 ')' state: rhs_alias_1  token: D
+skip: false tstart == 35559 ')' i == 35560 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 35561 'e' i == 35565 ' ' state: in_rhs  token: even
+skip: false tstart == 35566 'p' i == 35574 '(' state: in_rhs  token: position
+skip: false tstart == 35574 '(' i == 35575 'P' state: in_rhs  token: (
+skip: false tstart == 35575 'P' i == 35576 ')' state: rhs_alias_1  token: P
+skip: false tstart == 35576 ')' i == 35577 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35577 '.' i == 35578 ' ' state: in_rhs  token: .
+skip: false tstart == 35579 '{' i == 35602 '}' state: waiting_for_decl_or_rule  token: {pik_evenwith(p,&D,&P);
+skip: true tstart == 35604 'a' i == 35613 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35614 ':' i == 35617 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35618 'C' i == 35623 ' ' state: in_rhs  token: CLASS
+skip: false tstart == 35624 'I' i == 35626 '(' state: in_rhs  token: ID
+skip: false tstart == 35626 '(' i == 35627 'C' state: in_rhs  token: (
+skip: false tstart == 35627 'C' i == 35628 ')' state: rhs_alias_1  token: C
+skip: false tstart == 35628 ')' i == 35629 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35629 '.' i == 35630 ' ' state: in_rhs  token: .
+skip: false tstart == 35631 '{' i == 35657 '}' state: waiting_for_decl_or_rule  token: {pik_set_xml_class(p, &C);
+skip: true tstart == 35659 'a' i == 35668 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35669 ':' i == 35672 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35673 'C' i == 35678 ' ' state: in_rhs  token: CLASS
+skip: false tstart == 35679 'X' i == 35690 '(' state: in_rhs  token: XML_CLASSES
+skip: false tstart == 35690 '(' i == 35691 'C' state: in_rhs  token: (
+skip: false tstart == 35691 'C' i == 35692 ')' state: rhs_alias_1  token: C
+skip: false tstart == 35692 ')' i == 35693 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35693 '.' i == 35694 ' ' state: in_rhs  token: .
+skip: false tstart == 35695 '{' i == 35723 '}' state: waiting_for_decl_or_rule  token: {pik_set_xml_classes(p, &C);
+skip: true tstart == 35725 'a' i == 35734 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35735 ':' i == 35738 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35739 'C' i == 35744 '(' state: in_rhs  token: CLOSE
+skip: false tstart == 35744 '(' i == 35745 'E' state: in_rhs  token: (
+skip: false tstart == 35745 'E' i == 35746 ')' state: rhs_alias_1  token: E
+skip: false tstart == 35746 ')' i == 35747 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35747 '.' i == 35748 ' ' state: in_rhs  token: .
+skip: false tstart == 35761 '{' i == 35785 '}' state: waiting_for_decl_or_rule  token: { pik_close_path(p,&E); 
+skip: true tstart == 35787 'a' i == 35796 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35797 ':' i == 35800 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35801 'C' i == 35805 '.' state: in_rhs  token: CHOP
+skip: false tstart == 35805 '.' i == 35806 ' ' state: in_rhs  token: .
+skip: false tstart == 35823 '{' i == 35844 '}' state: waiting_for_decl_or_rule  token: { p->cur->bChop = 1; 
+skip: true tstart == 35846 'a' i == 35855 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35856 ':' i == 35859 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35860 'F' i == 35864 '(' state: in_rhs  token: FROM
+skip: false tstart == 35864 '(' i == 35865 'T' state: in_rhs  token: (
+skip: false tstart == 35865 'T' i == 35866 ')' state: rhs_alias_1  token: T
+skip: false tstart == 35866 ')' i == 35867 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 35868 'p' i == 35876 '(' state: in_rhs  token: position
+skip: false tstart == 35876 '(' i == 35877 'X' state: in_rhs  token: (
+skip: false tstart == 35877 'X' i == 35878 ')' state: rhs_alias_1  token: X
+skip: false tstart == 35878 ')' i == 35879 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35879 '.' i == 35880 ' ' state: in_rhs  token: .
+skip: false tstart == 35882 '{' i == 35914 '}' state: waiting_for_decl_or_rule  token: { pik_set_from(p,p->cur,&T,&X); 
+skip: true tstart == 35916 'a' i == 35925 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35926 ':' i == 35929 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35930 'T' i == 35932 '(' state: in_rhs  token: TO
+skip: false tstart == 35932 '(' i == 35933 'T' state: in_rhs  token: (
+skip: false tstart == 35933 'T' i == 35934 ')' state: rhs_alias_1  token: T
+skip: false tstart == 35934 ')' i == 35935 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 35936 'p' i == 35944 '(' state: in_rhs  token: position
+skip: false tstart == 35944 '(' i == 35945 'X' state: in_rhs  token: (
+skip: false tstart == 35945 'X' i == 35946 ')' state: rhs_alias_1  token: X
+skip: false tstart == 35946 ')' i == 35947 '.' state: rhs_alias_2  token: )
+skip: false tstart == 35947 '.' i == 35948 ' ' state: in_rhs  token: .
+skip: false tstart == 35952 '{' i == 35982 '}' state: waiting_for_decl_or_rule  token: { pik_add_to(p,p->cur,&T,&X); 
+skip: true tstart == 35984 'a' i == 35993 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 35994 ':' i == 35997 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 35998 'T' i == 36002 '(' state: in_rhs  token: THEN
+skip: false tstart == 36002 '(' i == 36003 'T' state: in_rhs  token: (
+skip: false tstart == 36003 'T' i == 36004 ')' state: rhs_alias_1  token: T
+skip: false tstart == 36004 ')' i == 36005 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36005 '.' i == 36006 ' ' state: in_rhs  token: .
+skip: false tstart == 36020 '{' i == 36047 '}' state: waiting_for_decl_or_rule  token: { pik_then(p, &T, p->cur); 
+skip: true tstart == 36049 'a' i == 36058 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36059 ':' i == 36062 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36063 'T' i == 36067 '(' state: in_rhs  token: THEN
+skip: false tstart == 36067 '(' i == 36068 'E' state: in_rhs  token: (
+skip: false tstart == 36068 'E' i == 36069 ')' state: rhs_alias_1  token: E
+skip: false tstart == 36069 ')' i == 36070 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36071 'o' i == 36081 '(' state: in_rhs  token: optrelexpr
+skip: false tstart == 36081 '(' i == 36082 'D' state: in_rhs  token: (
+skip: false tstart == 36082 'D' i == 36083 ')' state: rhs_alias_1  token: D
+skip: false tstart == 36083 ')' i == 36084 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36085 'H' i == 36092 '(' state: in_rhs  token: HEADING
+skip: false tstart == 36092 '(' i == 36093 'H' state: in_rhs  token: (
+skip: false tstart == 36093 'H' i == 36094 ')' state: rhs_alias_1  token: H
+skip: false tstart == 36094 ')' i == 36095 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36096 'e' i == 36100 '(' state: in_rhs  token: expr
+skip: false tstart == 36100 '(' i == 36101 'A' state: in_rhs  token: (
+skip: false tstart == 36101 'A' i == 36102 ')' state: rhs_alias_1  token: A
+skip: false tstart == 36102 ')' i == 36103 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36103 '.' i == 36104 '
+' state: in_rhs  token: .
+skip: false tstart == 36153 '{' i == 36183 '}' state: waiting_for_decl_or_rule  token: {pik_move_hdg(p,&D,&H,A,0,&E);
+skip: true tstart == 36185 'a' i == 36194 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36195 ':' i == 36198 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36199 'T' i == 36203 '(' state: in_rhs  token: THEN
+skip: false tstart == 36203 '(' i == 36204 'E' state: in_rhs  token: (
+skip: false tstart == 36204 'E' i == 36205 ')' state: rhs_alias_1  token: E
+skip: false tstart == 36205 ')' i == 36206 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36207 'o' i == 36217 '(' state: in_rhs  token: optrelexpr
+skip: false tstart == 36217 '(' i == 36218 'D' state: in_rhs  token: (
+skip: false tstart == 36218 'D' i == 36219 ')' state: rhs_alias_1  token: D
+skip: false tstart == 36219 ')' i == 36220 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36221 'E' i == 36227 '(' state: in_rhs  token: EDGEPT
+skip: false tstart == 36227 '(' i == 36228 'C' state: in_rhs  token: (
+skip: false tstart == 36228 'C' i == 36229 ')' state: rhs_alias_1  token: C
+skip: false tstart == 36229 ')' i == 36230 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36230 '.' i == 36231 ' ' state: in_rhs  token: .
+skip: false tstart == 36233 '{' i == 36263 '}' state: waiting_for_decl_or_rule  token: {pik_move_hdg(p,&D,0,0,&C,&E);
+skip: true tstart == 36265 'a' i == 36274 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36275 ':' i == 36278 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36279 'G' i == 36281 '(' state: in_rhs  token: GO
+skip: false tstart == 36281 '(' i == 36282 'E' state: in_rhs  token: (
+skip: false tstart == 36282 'E' i == 36283 ')' state: rhs_alias_1  token: E
+skip: false tstart == 36283 ')' i == 36284 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36285 'o' i == 36295 '(' state: in_rhs  token: optrelexpr
+skip: false tstart == 36295 '(' i == 36296 'D' state: in_rhs  token: (
+skip: false tstart == 36296 'D' i == 36297 ')' state: rhs_alias_1  token: D
+skip: false tstart == 36297 ')' i == 36298 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36299 'H' i == 36306 '(' state: in_rhs  token: HEADING
+skip: false tstart == 36306 '(' i == 36307 'H' state: in_rhs  token: (
+skip: false tstart == 36307 'H' i == 36308 ')' state: rhs_alias_1  token: H
+skip: false tstart == 36308 ')' i == 36309 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36310 'e' i == 36314 '(' state: in_rhs  token: expr
+skip: false tstart == 36314 '(' i == 36315 'A' state: in_rhs  token: (
+skip: false tstart == 36315 'A' i == 36316 ')' state: rhs_alias_1  token: A
+skip: false tstart == 36316 ')' i == 36317 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36317 '.' i == 36318 '
+' state: in_rhs  token: .
+skip: false tstart == 36367 '{' i == 36397 '}' state: waiting_for_decl_or_rule  token: {pik_move_hdg(p,&D,&H,A,0,&E);
+skip: true tstart == 36399 'a' i == 36408 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36409 ':' i == 36412 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36413 'G' i == 36415 '(' state: in_rhs  token: GO
+skip: false tstart == 36415 '(' i == 36416 'E' state: in_rhs  token: (
+skip: false tstart == 36416 'E' i == 36417 ')' state: rhs_alias_1  token: E
+skip: false tstart == 36417 ')' i == 36418 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36419 'o' i == 36429 '(' state: in_rhs  token: optrelexpr
+skip: false tstart == 36429 '(' i == 36430 'D' state: in_rhs  token: (
+skip: false tstart == 36430 'D' i == 36431 ')' state: rhs_alias_1  token: D
+skip: false tstart == 36431 ')' i == 36432 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36433 'E' i == 36439 '(' state: in_rhs  token: EDGEPT
+skip: false tstart == 36439 '(' i == 36440 'C' state: in_rhs  token: (
+skip: false tstart == 36440 'C' i == 36441 ')' state: rhs_alias_1  token: C
+skip: false tstart == 36441 ')' i == 36442 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36442 '.' i == 36443 ' ' state: in_rhs  token: .
+skip: false tstart == 36447 '{' i == 36477 '}' state: waiting_for_decl_or_rule  token: {pik_move_hdg(p,&D,0,0,&C,&E);
+skip: true tstart == 36479 'a' i == 36488 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36489 ':' i == 36492 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36493 'b' i == 36505 '.' state: in_rhs  token: boolproperty
+skip: false tstart == 36505 '.' i == 36506 '
+' state: in_rhs  token: .
+skip: false tstart == 36507 'a' i == 36516 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36517 ':' i == 36520 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36521 'A' i == 36523 '(' state: in_rhs  token: AT
+skip: false tstart == 36523 '(' i == 36524 'A' state: in_rhs  token: (
+skip: false tstart == 36524 'A' i == 36525 ')' state: rhs_alias_1  token: A
+skip: false tstart == 36525 ')' i == 36526 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36527 'p' i == 36535 '(' state: in_rhs  token: position
+skip: false tstart == 36535 '(' i == 36536 'P' state: in_rhs  token: (
+skip: false tstart == 36536 'P' i == 36537 ')' state: rhs_alias_1  token: P
+skip: false tstart == 36537 ')' i == 36538 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36538 '.' i == 36539 ' ' state: in_rhs  token: .
+skip: false tstart == 36559 '{' i == 36584 '}' state: waiting_for_decl_or_rule  token: { pik_set_at(p,0,&P,&A); 
+skip: true tstart == 36586 'a' i == 36595 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36596 ':' i == 36599 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36600 'W' i == 36604 ' ' state: in_rhs  token: WITH
+skip: false tstart == 36605 'w' i == 36615 '.' state: in_rhs  token: withclause
+skip: false tstart == 36615 '.' i == 36616 '
+' state: in_rhs  token: .
+skip: false tstart == 36617 'a' i == 36626 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36627 ':' i == 36630 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36631 'S' i == 36635 '(' state: in_rhs  token: SAME
+skip: false tstart == 36635 '(' i == 36636 'E' state: in_rhs  token: (
+skip: false tstart == 36636 'E' i == 36637 ')' state: rhs_alias_1  token: E
+skip: false tstart == 36637 ')' i == 36638 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36638 '.' i == 36639 ' ' state: in_rhs  token: .
+skip: false tstart == 36665 '{' i == 36683 '}' state: waiting_for_decl_or_rule  token: {pik_same(p,0,&E);
+skip: true tstart == 36685 'a' i == 36694 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36695 ':' i == 36698 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36699 'S' i == 36703 '(' state: in_rhs  token: SAME
+skip: false tstart == 36703 '(' i == 36704 'E' state: in_rhs  token: (
+skip: false tstart == 36704 'E' i == 36705 ')' state: rhs_alias_1  token: E
+skip: false tstart == 36705 ')' i == 36706 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36707 'A' i == 36709 ' ' state: in_rhs  token: AS
+skip: false tstart == 36710 'o' i == 36716 '(' state: in_rhs  token: object
+skip: false tstart == 36716 '(' i == 36717 'X' state: in_rhs  token: (
+skip: false tstart == 36717 'X' i == 36718 ')' state: rhs_alias_1  token: X
+skip: false tstart == 36718 ')' i == 36719 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36719 '.' i == 36720 ' ' state: in_rhs  token: .
+skip: false tstart == 36733 '{' i == 36751 '}' state: waiting_for_decl_or_rule  token: {pik_same(p,X,&E);
+skip: true tstart == 36753 'a' i == 36762 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36763 ':' i == 36766 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36767 'S' i == 36773 '(' state: in_rhs  token: STRING
+skip: false tstart == 36773 '(' i == 36774 'T' state: in_rhs  token: (
+skip: false tstart == 36774 'T' i == 36775 ')' state: rhs_alias_1  token: T
+skip: false tstart == 36775 ')' i == 36776 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 36777 't' i == 36789 '(' state: in_rhs  token: textposition
+skip: false tstart == 36789 '(' i == 36790 'P' state: in_rhs  token: (
+skip: false tstart == 36790 'P' i == 36791 ')' state: rhs_alias_1  token: P
+skip: false tstart == 36791 ')' i == 36792 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36792 '.' i == 36793 ' ' state: in_rhs  token: .
+skip: false tstart == 36801 '{' i == 36822 '}' state: waiting_for_decl_or_rule  token: {pik_add_txt(p,&T,P);
+skip: true tstart == 36824 'a' i == 36833 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36834 ':' i == 36837 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36838 'F' i == 36841 '(' state: in_rhs  token: FIT
+skip: false tstart == 36841 '(' i == 36842 'E' state: in_rhs  token: (
+skip: false tstart == 36842 'E' i == 36843 ')' state: rhs_alias_1  token: E
+skip: false tstart == 36843 ')' i == 36844 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36844 '.' i == 36845 ' ' state: in_rhs  token: .
+skip: false tstart == 36872 '{' i == 36898 '}' state: waiting_for_decl_or_rule  token: {pik_size_to_fit(p,&E,3); 
+skip: true tstart == 36900 'a' i == 36909 ' ' state: waiting_for_decl_or_rule  token: attribute
+skip: false tstart == 36910 ':' i == 36913 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36914 'B' i == 36920 ' ' state: in_rhs  token: BEHIND
+skip: false tstart == 36921 'o' i == 36927 '(' state: in_rhs  token: object
+skip: false tstart == 36927 '(' i == 36928 'X' state: in_rhs  token: (
+skip: false tstart == 36928 'X' i == 36929 ')' state: rhs_alias_1  token: X
+skip: false tstart == 36929 ')' i == 36930 '.' state: rhs_alias_2  token: )
+skip: false tstart == 36930 '.' i == 36931 ' ' state: in_rhs  token: .
+skip: false tstart == 36948 '{' i == 36965 '}' state: waiting_for_decl_or_rule  token: {pik_behind(p,X);
+skip: true tstart == 36968 'g' i == 36970 ' ' state: waiting_for_decl_or_rule  token: go
+skip: false tstart == 36971 ':' i == 36974 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36975 'G' i == 36977 '.' state: in_rhs  token: GO
+skip: false tstart == 36977 '.' i == 36978 '
+' state: in_rhs  token: .
+skip: false tstart == 36979 'g' i == 36981 ' ' state: waiting_for_decl_or_rule  token: go
+skip: false tstart == 36982 ':' i == 36985 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36986 '.' i == 36987 '
+' state: in_rhs  token: .
+skip: false tstart == 36989 'e' i == 36993 ' ' state: waiting_for_decl_or_rule  token: even
+skip: false tstart == 36994 ':' i == 36997 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 36998 'U' i == 37003 ' ' state: in_rhs  token: UNTIL
+skip: false tstart == 37004 'E' i == 37008 ' ' state: in_rhs  token: EVEN
+skip: false tstart == 37009 'W' i == 37013 '.' state: in_rhs  token: WITH
+skip: false tstart == 37013 '.' i == 37014 '
+' state: in_rhs  token: .
+skip: false tstart == 37015 'e' i == 37019 ' ' state: waiting_for_decl_or_rule  token: even
+skip: false tstart == 37020 ':' i == 37023 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37024 'E' i == 37028 ' ' state: in_rhs  token: EVEN
+skip: false tstart == 37029 'W' i == 37033 '.' state: in_rhs  token: WITH
+skip: false tstart == 37033 '.' i == 37034 '
+' state: in_rhs  token: .
+skip: false tstart == 37036 'w' i == 37046 ' ' state: waiting_for_decl_or_rule  token: withclause
+skip: false tstart == 37047 ':' i == 37050 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37052 'D' i == 37057 ' ' state: in_rhs  token: DOT_E
+skip: false tstart == 37058 'e' i == 37062 '(' state: in_rhs  token: edge
+skip: false tstart == 37062 '(' i == 37063 'E' state: in_rhs  token: (
+skip: false tstart == 37063 'E' i == 37064 ')' state: rhs_alias_1  token: E
+skip: false tstart == 37064 ')' i == 37065 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 37066 'A' i == 37068 '(' state: in_rhs  token: AT
+skip: false tstart == 37068 '(' i == 37069 'A' state: in_rhs  token: (
+skip: false tstart == 37069 'A' i == 37070 ')' state: rhs_alias_1  token: A
+skip: false tstart == 37070 ')' i == 37071 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 37072 'p' i == 37080 '(' state: in_rhs  token: position
+skip: false tstart == 37080 '(' i == 37081 'P' state: in_rhs  token: (
+skip: false tstart == 37081 'P' i == 37082 ')' state: rhs_alias_1  token: P
+skip: false tstart == 37082 ')' i == 37083 '.' state: rhs_alias_2  token: )
+skip: false tstart == 37083 '.' i == 37084 '{' state: in_rhs  token: .
+skip: false tstart == 37084 '{' i == 37110 '}' state: waiting_for_decl_or_rule  token: { pik_set_at(p,&E,&P,&A); 
+skip: true tstart == 37112 'w' i == 37122 ' ' state: waiting_for_decl_or_rule  token: withclause
+skip: false tstart == 37123 ':' i == 37126 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37128 'e' i == 37132 '(' state: in_rhs  token: edge
+skip: false tstart == 37132 '(' i == 37133 'E' state: in_rhs  token: (
+skip: false tstart == 37133 'E' i == 37134 ')' state: rhs_alias_1  token: E
+skip: false tstart == 37134 ')' i == 37135 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 37136 'A' i == 37138 '(' state: in_rhs  token: AT
+skip: false tstart == 37138 '(' i == 37139 'A' state: in_rhs  token: (
+skip: false tstart == 37139 'A' i == 37140 ')' state: rhs_alias_1  token: A
+skip: false tstart == 37140 ')' i == 37141 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 37142 'p' i == 37150 '(' state: in_rhs  token: position
+skip: false tstart == 37150 '(' i == 37151 'P' state: in_rhs  token: (
+skip: false tstart == 37151 'P' i == 37152 ')' state: rhs_alias_1  token: P
+skip: false tstart == 37152 ')' i == 37153 '.' state: rhs_alias_2  token: )
+skip: false tstart == 37153 '.' i == 37154 ' ' state: in_rhs  token: .
+skip: false tstart == 37160 '{' i == 37186 '}' state: waiting_for_decl_or_rule  token: { pik_set_at(p,&E,&P,&A); 
+skip: true tstart == 37228 'n' i == 37239 '(' state: waiting_for_decl_or_rule  token: numproperty
+skip: false tstart == 37239 '(' i == 37240 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 37240 'A' i == 37241 ')' state: lhs_alias_1  token: A
+skip: false tstart == 37241 ')' i == 37242 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 37243 ':' i == 37246 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 37247 'H' i == 37253 '|' state: in_rhs  token: HEIGHT
+skip: false tstart == 37253 '|' i == 37258 'H' state: in_rhs  token: |WIDT
+skip: false tstart == 37258 'H' i == 37259 '|' state: in_rhs  token: H
+skip: false tstart == 37259 '|' i == 37265 'S' state: in_rhs  token: |RADIU
+skip: false tstart == 37265 'S' i == 37266 '|' state: in_rhs  token: S
+skip: false tstart == 37266 '|' i == 37274 'R' state: in_rhs  token: |DIAMETE
+skip: false tstart == 37274 'R' i == 37275 '|' state: in_rhs  token: R
+skip: false tstart == 37275 '|' i == 37284 'S' state: in_rhs  token: |THICKNES
+skip: false tstart == 37284 'S' i == 37285 '(' state: in_rhs  token: S
+skip: false tstart == 37285 '(' i == 37286 'P' state: in_rhs  token: (
+skip: false tstart == 37286 'P' i == 37287 ')' state: rhs_alias_1  token: P
+skip: false tstart == 37287 ')' i == 37288 '.' state: rhs_alias_2  token: )
+skip: false tstart == 37288 '.' i == 37289 ' ' state: in_rhs  token: .
+skip: false tstart == 37291 '{' i == 37298 '}' state: waiting_for_decl_or_rule  token: {A = P;
+skip: true tstart == 37339 'd' i == 37351 '(' state: waiting_for_decl_or_rule  token: dashproperty
+skip: false tstart == 37351 '(' i == 37352 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 37352 'A' i == 37353 ')' state: lhs_alias_1  token: A
+skip: false tstart == 37353 ')' i == 37354 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 37355 ':' i == 37358 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 37359 'D' i == 37365 '(' state: in_rhs  token: DOTTED
+skip: false tstart == 37365 '(' i == 37366 'A' state: in_rhs  token: (
+skip: false tstart == 37366 'A' i == 37367 ')' state: rhs_alias_1  token: A
+skip: false tstart == 37367 ')' i == 37368 '.' state: rhs_alias_2  token: )
+skip: false tstart == 37368 '.' i == 37369 '
+' state: in_rhs  token: .
+skip: false tstart == 37370 'd' i == 37382 '(' state: waiting_for_decl_or_rule  token: dashproperty
+skip: false tstart == 37382 '(' i == 37383 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 37383 'A' i == 37384 ')' state: lhs_alias_1  token: A
+skip: false tstart == 37384 ')' i == 37385 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 37386 ':' i == 37389 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 37390 'D' i == 37396 '(' state: in_rhs  token: DASHED
+skip: false tstart == 37396 '(' i == 37397 'A' state: in_rhs  token: (
+skip: false tstart == 37397 'A' i == 37398 ')' state: rhs_alias_1  token: A
+skip: false tstart == 37398 ')' i == 37399 '.' state: rhs_alias_2  token: )
+skip: false tstart == 37399 '.' i == 37400 '
+' state: in_rhs  token: .
+skip: false tstart == 37422 'c' i == 37435 '(' state: waiting_for_decl_or_rule  token: colorproperty
+skip: false tstart == 37435 '(' i == 37436 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 37436 'A' i == 37437 ')' state: lhs_alias_1  token: A
+skip: false tstart == 37437 ')' i == 37438 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 37439 ':' i == 37442 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 37443 'F' i == 37447 '(' state: in_rhs  token: FILL
+skip: false tstart == 37447 '(' i == 37448 'A' state: in_rhs  token: (
+skip: false tstart == 37448 'A' i == 37449 ')' state: rhs_alias_1  token: A
+skip: false tstart == 37449 ')' i == 37450 '.' state: rhs_alias_2  token: )
+skip: false tstart == 37450 '.' i == 37451 '
+' state: in_rhs  token: .
+skip: false tstart == 37452 'c' i == 37465 '(' state: waiting_for_decl_or_rule  token: colorproperty
+skip: false tstart == 37465 '(' i == 37466 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 37466 'A' i == 37467 ')' state: lhs_alias_1  token: A
+skip: false tstart == 37467 ')' i == 37468 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 37469 ':' i == 37472 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 37473 'C' i == 37478 '(' state: in_rhs  token: COLOR
+skip: false tstart == 37478 '(' i == 37479 'A' state: in_rhs  token: (
+skip: false tstart == 37479 'A' i == 37480 ')' state: rhs_alias_1  token: A
+skip: false tstart == 37480 ')' i == 37481 '.' state: rhs_alias_2  token: )
+skip: false tstart == 37481 '.' i == 37482 '
+' state: in_rhs  token: .
+skip: false tstart == 37483 'c' i == 37496 '(' state: waiting_for_decl_or_rule  token: colorproperty
+skip: false tstart == 37496 '(' i == 37497 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 37497 'A' i == 37498 ')' state: lhs_alias_1  token: A
+skip: false tstart == 37498 ')' i == 37499 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 37500 ':' i == 37503 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 37504 'T' i == 37513 '(' state: in_rhs  token: TEXTCOLOR
+skip: false tstart == 37513 '(' i == 37514 'A' state: in_rhs  token: (
+skip: false tstart == 37514 'A' i == 37515 ')' state: rhs_alias_1  token: A
+skip: false tstart == 37515 ')' i == 37516 '.' state: rhs_alias_2  token: )
+skip: false tstart == 37516 '.' i == 37517 '
+' state: in_rhs  token: .
+skip: false tstart == 37550 'b' i == 37562 ' ' state: waiting_for_decl_or_rule  token: boolproperty
+skip: false tstart == 37563 ':' i == 37566 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37567 'C' i == 37569 '.' state: in_rhs  token: CW
+skip: false tstart == 37569 '.' i == 37570 ' ' state: in_rhs  token: .
+skip: false tstart == 37580 '{' i == 37596 '}' state: waiting_for_decl_or_rule  token: {p->cur->cw = 1;
+skip: true tstart == 37598 'b' i == 37610 ' ' state: waiting_for_decl_or_rule  token: boolproperty
+skip: false tstart == 37611 ':' i == 37614 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37615 'C' i == 37618 '.' state: in_rhs  token: CCW
+skip: false tstart == 37618 '.' i == 37619 ' ' state: in_rhs  token: .
+skip: false tstart == 37628 '{' i == 37644 '}' state: waiting_for_decl_or_rule  token: {p->cur->cw = 0;
+skip: true tstart == 37646 'b' i == 37658 ' ' state: waiting_for_decl_or_rule  token: boolproperty
+skip: false tstart == 37659 ':' i == 37662 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37663 'L' i == 37669 '.' state: in_rhs  token: LARROW
+skip: false tstart == 37669 '.' i == 37670 ' ' state: in_rhs  token: .
+skip: false tstart == 37676 '{' i == 37713 '}' state: waiting_for_decl_or_rule  token: {p->cur->larrow=1; p->cur->rarrow=0; 
+skip: true tstart == 37715 'b' i == 37727 ' ' state: waiting_for_decl_or_rule  token: boolproperty
+skip: false tstart == 37728 ':' i == 37731 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37732 'R' i == 37738 '.' state: in_rhs  token: RARROW
+skip: false tstart == 37738 '.' i == 37739 ' ' state: in_rhs  token: .
+skip: false tstart == 37745 '{' i == 37782 '}' state: waiting_for_decl_or_rule  token: {p->cur->larrow=0; p->cur->rarrow=1; 
+skip: true tstart == 37784 'b' i == 37796 ' ' state: waiting_for_decl_or_rule  token: boolproperty
+skip: false tstart == 37797 ':' i == 37800 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37801 'L' i == 37808 '.' state: in_rhs  token: LRARROW
+skip: false tstart == 37808 '.' i == 37809 ' ' state: in_rhs  token: .
+skip: false tstart == 37814 '{' i == 37851 '}' state: waiting_for_decl_or_rule  token: {p->cur->larrow=1; p->cur->rarrow=1; 
+skip: true tstart == 37853 'b' i == 37865 ' ' state: waiting_for_decl_or_rule  token: boolproperty
+skip: false tstart == 37866 ':' i == 37869 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37870 'I' i == 37875 '.' state: in_rhs  token: INVIS
+skip: false tstart == 37875 '.' i == 37876 ' ' state: in_rhs  token: .
+skip: false tstart == 37883 '{' i == 37906 '}' state: waiting_for_decl_or_rule  token: {p->cur->sw = -0.00001;
+skip: true tstart == 37908 'b' i == 37920 ' ' state: waiting_for_decl_or_rule  token: boolproperty
+skip: false tstart == 37921 ':' i == 37924 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37925 'T' i == 37930 '.' state: in_rhs  token: THICK
+skip: false tstart == 37930 '.' i == 37931 ' ' state: in_rhs  token: .
+skip: false tstart == 37938 '{' i == 37957 '}' state: waiting_for_decl_or_rule  token: {p->cur->sw *= 1.5;
+skip: true tstart == 37959 'b' i == 37971 ' ' state: waiting_for_decl_or_rule  token: boolproperty
+skip: false tstart == 37972 ':' i == 37975 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 37976 'T' i == 37980 '.' state: in_rhs  token: THIN
+skip: false tstart == 37980 '.' i == 37981 ' ' state: in_rhs  token: .
+skip: false tstart == 37989 '{' i == 38009 '}' state: waiting_for_decl_or_rule  token: {p->cur->sw *= 0.67;
+skip: true tstart == 38011 'b' i == 38023 ' ' state: waiting_for_decl_or_rule  token: boolproperty
+skip: false tstart == 38024 ':' i == 38027 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 38028 'S' i == 38033 '.' state: in_rhs  token: SOLID
+skip: false tstart == 38033 '.' i == 38034 ' ' state: in_rhs  token: .
+skip: false tstart == 38041 '{' i == 38154 '}' state: waiting_for_decl_or_rule  token: {p->cur->sw = pik_value(p,"thickness",9,0);
+      ...
+skip: true tstart == 38157 't' i == 38169 '(' state: waiting_for_decl_or_rule  token: textposition
+skip: false tstart == 38169 '(' i == 38170 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 38170 'A' i == 38171 ')' state: lhs_alias_1  token: A
+skip: false tstart == 38171 ')' i == 38172 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 38173 ':' i == 38176 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 38177 '.' i == 38178 ' ' state: in_rhs  token: .
+skip: false tstart == 38181 '{' i == 38188 '}' state: waiting_for_decl_or_rule  token: {A = 0;
+skip: true tstart == 38190 't' i == 38202 '(' state: waiting_for_decl_or_rule  token: textposition
+skip: false tstart == 38202 '(' i == 38203 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 38203 'A' i == 38204 ')' state: lhs_alias_1  token: A
+skip: false tstart == 38204 ')' i == 38205 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 38206 ':' i == 38209 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 38210 't' i == 38222 '(' state: in_rhs  token: textposition
+skip: false tstart == 38222 '(' i == 38223 'B' state: in_rhs  token: (
+skip: false tstart == 38223 'B' i == 38224 ')' state: rhs_alias_1  token: B
+skip: false tstart == 38224 ')' i == 38225 '
+' state: rhs_alias_2  token: )
+skip: false tstart == 38229 'C' i == 38235 '|' state: in_rhs  token: CENTER
+skip: false tstart == 38235 '|' i == 38240 'T' state: in_rhs  token: |LJUS
+skip: false tstart == 38240 'T' i == 38241 '|' state: in_rhs  token: T
+skip: false tstart == 38241 '|' i == 38246 'T' state: in_rhs  token: |RJUS
+skip: false tstart == 38246 'T' i == 38247 '|' state: in_rhs  token: T
+skip: false tstart == 38247 '|' i == 38252 'E' state: in_rhs  token: |ABOV
+skip: false tstart == 38252 'E' i == 38253 '|' state: in_rhs  token: E
+skip: false tstart == 38253 '|' i == 38258 'W' state: in_rhs  token: |BELO
+skip: false tstart == 38258 'W' i == 38259 '|' state: in_rhs  token: W
+skip: false tstart == 38259 '|' i == 38265 'C' state: in_rhs  token: |ITALI
+skip: false tstart == 38265 'C' i == 38266 '|' state: in_rhs  token: C
+skip: false tstart == 38266 '|' i == 38270 'D' state: in_rhs  token: |BOL
+skip: false tstart == 38270 'D' i == 38271 '|' state: in_rhs  token: D
+skip: false tstart == 38271 '|' i == 38275 'O' state: in_rhs  token: |MON
+skip: false tstart == 38275 'O' i == 38276 '|' state: in_rhs  token: O
+skip: false tstart == 38276 '|' i == 38283 'D' state: in_rhs  token: |ALIGNE
+skip: false tstart == 38283 'D' i == 38284 '|' state: in_rhs  token: D
+skip: false tstart == 38284 '|' i == 38287 'G' state: in_rhs  token: |BI
+skip: false tstart == 38287 'G' i == 38288 '|' state: in_rhs  token: G
+skip: false tstart == 38288 '|' i == 38293 'L' state: in_rhs  token: |SMAL
+skip: false tstart == 38293 'L' i == 38294 '(' state: in_rhs  token: L
+skip: false tstart == 38294 '(' i == 38295 'F' state: in_rhs  token: (
+skip: false tstart == 38295 'F' i == 38296 ')' state: rhs_alias_1  token: F
+skip: false tstart == 38296 ')' i == 38297 '.' state: rhs_alias_2  token: )
+skip: false tstart == 38297 '.' i == 38298 '
+' state: in_rhs  token: .
+skip: false tstart == 38323 '{' i == 38363 '}' state: waiting_for_decl_or_rule  token: {A = (short int)pik_text_position(B,&F);
+skip: true tstart == 38367 'p' i == 38375 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 38375 '(' i == 38376 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 38376 'A' i == 38377 ')' state: lhs_alias_1  token: A
+skip: false tstart == 38377 ')' i == 38378 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 38379 ':' i == 38382 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 38383 'e' i == 38387 '(' state: in_rhs  token: expr
+skip: false tstart == 38387 '(' i == 38388 'X' state: in_rhs  token: (
+skip: false tstart == 38388 'X' i == 38389 ')' state: rhs_alias_1  token: X
+skip: false tstart == 38389 ')' i == 38390 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38391 'C' i == 38396 ' ' state: in_rhs  token: COMMA
+skip: false tstart == 38397 'e' i == 38401 '(' state: in_rhs  token: expr
+skip: false tstart == 38401 '(' i == 38402 'Y' state: in_rhs  token: (
+skip: false tstart == 38402 'Y' i == 38403 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 38403 ')' i == 38404 '.' state: rhs_alias_2  token: )
+skip: false tstart == 38404 '.' i == 38405 ' ' state: in_rhs  token: .
+skip: false tstart == 38421 '{' i == 38435 '}' state: waiting_for_decl_or_rule  token: {A.x=X; A.y=Y;
+skip: true tstart == 38437 'p' i == 38445 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 38445 '(' i == 38446 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 38446 'A' i == 38447 ')' state: lhs_alias_1  token: A
+skip: false tstart == 38447 ')' i == 38448 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 38449 ':' i == 38452 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 38453 'p' i == 38458 '(' state: in_rhs  token: place
+skip: false tstart == 38458 '(' i == 38459 'A' state: in_rhs  token: (
+skip: false tstart == 38459 'A' i == 38460 ')' state: rhs_alias_1  token: A
+skip: false tstart == 38460 ')' i == 38461 '.' state: rhs_alias_2  token: )
+skip: false tstart == 38461 '.' i == 38462 '
+' state: in_rhs  token: .
+skip: false tstart == 38463 'p' i == 38471 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 38471 '(' i == 38472 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 38472 'A' i == 38473 ')' state: lhs_alias_1  token: A
+skip: false tstart == 38473 ')' i == 38474 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 38475 ':' i == 38478 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 38479 'p' i == 38484 '(' state: in_rhs  token: place
+skip: false tstart == 38484 '(' i == 38485 'B' state: in_rhs  token: (
+skip: false tstart == 38485 'B' i == 38486 ')' state: rhs_alias_1  token: B
+skip: false tstart == 38486 ')' i == 38487 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38488 'P' i == 38492 ' ' state: in_rhs  token: PLUS
+skip: false tstart == 38493 'e' i == 38497 '(' state: in_rhs  token: expr
+skip: false tstart == 38497 '(' i == 38498 'X' state: in_rhs  token: (
+skip: false tstart == 38498 'X' i == 38499 ')' state: rhs_alias_1  token: X
+skip: false tstart == 38499 ')' i == 38500 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38501 'C' i == 38506 ' ' state: in_rhs  token: COMMA
+skip: false tstart == 38507 'e' i == 38511 '(' state: in_rhs  token: expr
+skip: false tstart == 38511 '(' i == 38512 'Y' state: in_rhs  token: (
+skip: false tstart == 38512 'Y' i == 38513 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 38513 ')' i == 38514 '.' state: rhs_alias_2  token: )
+skip: false tstart == 38514 '.' i == 38515 ' ' state: in_rhs  token: .
+skip: false tstart == 38517 '{' i == 38539 '}' state: waiting_for_decl_or_rule  token: {A.x=B.x+X; A.y=B.y+Y;
+skip: true tstart == 38541 'p' i == 38549 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 38549 '(' i == 38550 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 38550 'A' i == 38551 ')' state: lhs_alias_1  token: A
+skip: false tstart == 38551 ')' i == 38552 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 38553 ':' i == 38556 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 38557 'p' i == 38562 '(' state: in_rhs  token: place
+skip: false tstart == 38562 '(' i == 38563 'B' state: in_rhs  token: (
+skip: false tstart == 38563 'B' i == 38564 ')' state: rhs_alias_1  token: B
+skip: false tstart == 38564 ')' i == 38565 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38566 'M' i == 38571 ' ' state: in_rhs  token: MINUS
+skip: false tstart == 38572 'e' i == 38576 '(' state: in_rhs  token: expr
+skip: false tstart == 38576 '(' i == 38577 'X' state: in_rhs  token: (
+skip: false tstart == 38577 'X' i == 38578 ')' state: rhs_alias_1  token: X
+skip: false tstart == 38578 ')' i == 38579 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38580 'C' i == 38585 ' ' state: in_rhs  token: COMMA
+skip: false tstart == 38586 'e' i == 38590 '(' state: in_rhs  token: expr
+skip: false tstart == 38590 '(' i == 38591 'Y' state: in_rhs  token: (
+skip: false tstart == 38591 'Y' i == 38592 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 38592 ')' i == 38593 '.' state: rhs_alias_2  token: )
+skip: false tstart == 38593 '.' i == 38594 ' ' state: in_rhs  token: .
+skip: false tstart == 38595 '{' i == 38617 '}' state: waiting_for_decl_or_rule  token: {A.x=B.x-X; A.y=B.y-Y;
+skip: true tstart == 38619 'p' i == 38627 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 38627 '(' i == 38628 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 38628 'A' i == 38629 ')' state: lhs_alias_1  token: A
+skip: false tstart == 38629 ')' i == 38630 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 38631 ':' i == 38634 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 38635 'p' i == 38640 '(' state: in_rhs  token: place
+skip: false tstart == 38640 '(' i == 38641 'B' state: in_rhs  token: (
+skip: false tstart == 38641 'B' i == 38642 ')' state: rhs_alias_1  token: B
+skip: false tstart == 38642 ')' i == 38643 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38644 'P' i == 38648 ' ' state: in_rhs  token: PLUS
+skip: false tstart == 38649 'L' i == 38651 ' ' state: in_rhs  token: LP
+skip: false tstart == 38652 'e' i == 38656 '(' state: in_rhs  token: expr
+skip: false tstart == 38656 '(' i == 38657 'X' state: in_rhs  token: (
+skip: false tstart == 38657 'X' i == 38658 ')' state: rhs_alias_1  token: X
+skip: false tstart == 38658 ')' i == 38659 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38660 'C' i == 38665 ' ' state: in_rhs  token: COMMA
+skip: false tstart == 38666 'e' i == 38670 '(' state: in_rhs  token: expr
+skip: false tstart == 38670 '(' i == 38671 'Y' state: in_rhs  token: (
+skip: false tstart == 38671 'Y' i == 38672 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 38672 ')' i == 38673 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38674 'R' i == 38676 '.' state: in_rhs  token: RP
+skip: false tstart == 38676 '.' i == 38677 '
+' state: in_rhs  token: .
+skip: false tstart == 38732 '{' i == 38754 '}' state: waiting_for_decl_or_rule  token: {A.x=B.x+X; A.y=B.y+Y;
+skip: true tstart == 38756 'p' i == 38764 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 38764 '(' i == 38765 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 38765 'A' i == 38766 ')' state: lhs_alias_1  token: A
+skip: false tstart == 38766 ')' i == 38767 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 38768 ':' i == 38771 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 38772 'p' i == 38777 '(' state: in_rhs  token: place
+skip: false tstart == 38777 '(' i == 38778 'B' state: in_rhs  token: (
+skip: false tstart == 38778 'B' i == 38779 ')' state: rhs_alias_1  token: B
+skip: false tstart == 38779 ')' i == 38780 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38781 'M' i == 38786 ' ' state: in_rhs  token: MINUS
+skip: false tstart == 38787 'L' i == 38789 ' ' state: in_rhs  token: LP
+skip: false tstart == 38790 'e' i == 38794 '(' state: in_rhs  token: expr
+skip: false tstart == 38794 '(' i == 38795 'X' state: in_rhs  token: (
+skip: false tstart == 38795 'X' i == 38796 ')' state: rhs_alias_1  token: X
+skip: false tstart == 38796 ')' i == 38797 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38798 'C' i == 38803 ' ' state: in_rhs  token: COMMA
+skip: false tstart == 38804 'e' i == 38808 '(' state: in_rhs  token: expr
+skip: false tstart == 38808 '(' i == 38809 'Y' state: in_rhs  token: (
+skip: false tstart == 38809 'Y' i == 38810 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 38810 ')' i == 38811 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38812 'R' i == 38814 '.' state: in_rhs  token: RP
+skip: false tstart == 38814 '.' i == 38815 '
+' state: in_rhs  token: .
+skip: false tstart == 38870 '{' i == 38892 '}' state: waiting_for_decl_or_rule  token: {A.x=B.x-X; A.y=B.y-Y;
+skip: true tstart == 38894 'p' i == 38902 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 38902 '(' i == 38903 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 38903 'A' i == 38904 ')' state: lhs_alias_1  token: A
+skip: false tstart == 38904 ')' i == 38905 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 38906 ':' i == 38909 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 38910 'L' i == 38912 ' ' state: in_rhs  token: LP
+skip: false tstart == 38913 'p' i == 38921 '(' state: in_rhs  token: position
+skip: false tstart == 38921 '(' i == 38922 'X' state: in_rhs  token: (
+skip: false tstart == 38922 'X' i == 38923 ')' state: rhs_alias_1  token: X
+skip: false tstart == 38923 ')' i == 38924 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38925 'C' i == 38930 ' ' state: in_rhs  token: COMMA
+skip: false tstart == 38931 'p' i == 38939 '(' state: in_rhs  token: position
+skip: false tstart == 38939 '(' i == 38940 'Y' state: in_rhs  token: (
+skip: false tstart == 38940 'Y' i == 38941 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 38941 ')' i == 38942 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38943 'R' i == 38945 '.' state: in_rhs  token: RP
+skip: false tstart == 38945 '.' i == 38946 ' ' state: in_rhs  token: .
+skip: false tstart == 38948 '{' i == 38966 '}' state: waiting_for_decl_or_rule  token: {A.x=X.x; A.y=Y.y;
+skip: true tstart == 38968 'p' i == 38976 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 38976 '(' i == 38977 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 38977 'A' i == 38978 ')' state: lhs_alias_1  token: A
+skip: false tstart == 38978 ')' i == 38979 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 38980 ':' i == 38983 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 38984 'L' i == 38986 ' ' state: in_rhs  token: LP
+skip: false tstart == 38987 'p' i == 38995 '(' state: in_rhs  token: position
+skip: false tstart == 38995 '(' i == 38996 'X' state: in_rhs  token: (
+skip: false tstart == 38996 'X' i == 38997 ')' state: rhs_alias_1  token: X
+skip: false tstart == 38997 ')' i == 38998 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 38999 'R' i == 39001 '.' state: in_rhs  token: RP
+skip: false tstart == 39001 '.' i == 39002 ' ' state: in_rhs  token: .
+skip: false tstart == 39022 '{' i == 39027 '}' state: waiting_for_decl_or_rule  token: {A=X;
+skip: true tstart == 39029 'p' i == 39037 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 39037 '(' i == 39038 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 39038 'A' i == 39039 ')' state: lhs_alias_1  token: A
+skip: false tstart == 39039 ')' i == 39040 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 39041 ':' i == 39044 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 39045 'e' i == 39049 '(' state: in_rhs  token: expr
+skip: false tstart == 39049 '(' i == 39050 'X' state: in_rhs  token: (
+skip: false tstart == 39050 'X' i == 39051 ')' state: rhs_alias_1  token: X
+skip: false tstart == 39051 ')' i == 39052 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39053 'b' i == 39060 ' ' state: in_rhs  token: between
+skip: false tstart == 39061 'p' i == 39069 '(' state: in_rhs  token: position
+skip: false tstart == 39069 '(' i == 39070 'P' state: in_rhs  token: (
+skip: false tstart == 39070 'P' i == 39072 ')' state: rhs_alias_1  token: P1
+skip: false tstart == 39072 ')' i == 39073 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39074 'A' i == 39077 ' ' state: in_rhs  token: AND
+skip: false tstart == 39078 'p' i == 39086 '(' state: in_rhs  token: position
+skip: false tstart == 39086 '(' i == 39087 'P' state: in_rhs  token: (
+skip: false tstart == 39087 'P' i == 39089 ')' state: rhs_alias_1  token: P2
+skip: false tstart == 39089 ')' i == 39090 '.' state: rhs_alias_2  token: )
+skip: false tstart == 39090 '.' i == 39091 '
+' state: in_rhs  token: .
+skip: false tstart == 39131 '{' i == 39166 '}' state: waiting_for_decl_or_rule  token: {A = pik_position_between(X,P1,P2);
+skip: true tstart == 39168 'p' i == 39176 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 39176 '(' i == 39177 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 39177 'A' i == 39178 ')' state: lhs_alias_1  token: A
+skip: false tstart == 39178 ')' i == 39179 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 39180 ':' i == 39183 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 39184 'e' i == 39188 '(' state: in_rhs  token: expr
+skip: false tstart == 39188 '(' i == 39189 'X' state: in_rhs  token: (
+skip: false tstart == 39189 'X' i == 39190 ')' state: rhs_alias_1  token: X
+skip: false tstart == 39190 ')' i == 39191 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39192 'L' i == 39194 ' ' state: in_rhs  token: LT
+skip: false tstart == 39195 'p' i == 39203 '(' state: in_rhs  token: position
+skip: false tstart == 39203 '(' i == 39204 'P' state: in_rhs  token: (
+skip: false tstart == 39204 'P' i == 39206 ')' state: rhs_alias_1  token: P1
+skip: false tstart == 39206 ')' i == 39207 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39208 'C' i == 39213 ' ' state: in_rhs  token: COMMA
+skip: false tstart == 39214 'p' i == 39222 '(' state: in_rhs  token: position
+skip: false tstart == 39222 '(' i == 39223 'P' state: in_rhs  token: (
+skip: false tstart == 39223 'P' i == 39225 ')' state: rhs_alias_1  token: P2
+skip: false tstart == 39225 ')' i == 39226 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39227 'G' i == 39229 '.' state: in_rhs  token: GT
+skip: false tstart == 39229 '.' i == 39230 '
+' state: in_rhs  token: .
+skip: false tstart == 39270 '{' i == 39305 '}' state: waiting_for_decl_or_rule  token: {A = pik_position_between(X,P1,P2);
+skip: true tstart == 39307 'p' i == 39315 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 39315 '(' i == 39316 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 39316 'A' i == 39317 ')' state: lhs_alias_1  token: A
+skip: false tstart == 39317 ')' i == 39318 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 39319 ':' i == 39322 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 39323 'e' i == 39327 '(' state: in_rhs  token: expr
+skip: false tstart == 39327 '(' i == 39328 'X' state: in_rhs  token: (
+skip: false tstart == 39328 'X' i == 39329 ')' state: rhs_alias_1  token: X
+skip: false tstart == 39329 ')' i == 39330 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39331 'A' i == 39336 ' ' state: in_rhs  token: ABOVE
+skip: false tstart == 39337 'p' i == 39345 '(' state: in_rhs  token: position
+skip: false tstart == 39345 '(' i == 39346 'B' state: in_rhs  token: (
+skip: false tstart == 39346 'B' i == 39347 ')' state: rhs_alias_1  token: B
+skip: false tstart == 39347 ')' i == 39348 '.' state: rhs_alias_2  token: )
+skip: false tstart == 39348 '.' i == 39349 ' ' state: in_rhs  token: .
+skip: false tstart == 39353 '{' i == 39368 '}' state: waiting_for_decl_or_rule  token: {A=B; A.y += X;
+skip: true tstart == 39370 'p' i == 39378 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 39378 '(' i == 39379 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 39379 'A' i == 39380 ')' state: lhs_alias_1  token: A
+skip: false tstart == 39380 ')' i == 39381 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 39382 ':' i == 39385 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 39386 'e' i == 39390 '(' state: in_rhs  token: expr
+skip: false tstart == 39390 '(' i == 39391 'X' state: in_rhs  token: (
+skip: false tstart == 39391 'X' i == 39392 ')' state: rhs_alias_1  token: X
+skip: false tstart == 39392 ')' i == 39393 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39394 'B' i == 39399 ' ' state: in_rhs  token: BELOW
+skip: false tstart == 39400 'p' i == 39408 '(' state: in_rhs  token: position
+skip: false tstart == 39408 '(' i == 39409 'B' state: in_rhs  token: (
+skip: false tstart == 39409 'B' i == 39410 ')' state: rhs_alias_1  token: B
+skip: false tstart == 39410 ')' i == 39411 '.' state: rhs_alias_2  token: )
+skip: false tstart == 39411 '.' i == 39412 ' ' state: in_rhs  token: .
+skip: false tstart == 39416 '{' i == 39431 '}' state: waiting_for_decl_or_rule  token: {A=B; A.y -= X;
+skip: true tstart == 39433 'p' i == 39441 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 39441 '(' i == 39442 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 39442 'A' i == 39443 ')' state: lhs_alias_1  token: A
+skip: false tstart == 39443 ')' i == 39444 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 39445 ':' i == 39448 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 39449 'e' i == 39453 '(' state: in_rhs  token: expr
+skip: false tstart == 39453 '(' i == 39454 'X' state: in_rhs  token: (
+skip: false tstart == 39454 'X' i == 39455 ')' state: rhs_alias_1  token: X
+skip: false tstart == 39455 ')' i == 39456 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39457 'L' i == 39461 ' ' state: in_rhs  token: LEFT
+skip: false tstart == 39462 'O' i == 39464 ' ' state: in_rhs  token: OF
+skip: false tstart == 39465 'p' i == 39473 '(' state: in_rhs  token: position
+skip: false tstart == 39473 '(' i == 39474 'B' state: in_rhs  token: (
+skip: false tstart == 39474 'B' i == 39475 ')' state: rhs_alias_1  token: B
+skip: false tstart == 39475 ')' i == 39476 '.' state: rhs_alias_2  token: )
+skip: false tstart == 39476 '.' i == 39477 ' ' state: in_rhs  token: .
+skip: false tstart == 39479 '{' i == 39494 '}' state: waiting_for_decl_or_rule  token: {A=B; A.x -= X;
+skip: true tstart == 39496 'p' i == 39504 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 39504 '(' i == 39505 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 39505 'A' i == 39506 ')' state: lhs_alias_1  token: A
+skip: false tstart == 39506 ')' i == 39507 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 39508 ':' i == 39511 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 39512 'e' i == 39516 '(' state: in_rhs  token: expr
+skip: false tstart == 39516 '(' i == 39517 'X' state: in_rhs  token: (
+skip: false tstart == 39517 'X' i == 39518 ')' state: rhs_alias_1  token: X
+skip: false tstart == 39518 ')' i == 39519 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39520 'R' i == 39525 ' ' state: in_rhs  token: RIGHT
+skip: false tstart == 39526 'O' i == 39528 ' ' state: in_rhs  token: OF
+skip: false tstart == 39529 'p' i == 39537 '(' state: in_rhs  token: position
+skip: false tstart == 39537 '(' i == 39538 'B' state: in_rhs  token: (
+skip: false tstart == 39538 'B' i == 39539 ')' state: rhs_alias_1  token: B
+skip: false tstart == 39539 ')' i == 39540 '.' state: rhs_alias_2  token: )
+skip: false tstart == 39540 '.' i == 39541 ' ' state: in_rhs  token: .
+skip: false tstart == 39542 '{' i == 39557 '}' state: waiting_for_decl_or_rule  token: {A=B; A.x += X;
+skip: true tstart == 39559 'p' i == 39567 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 39567 '(' i == 39568 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 39568 'A' i == 39569 ')' state: lhs_alias_1  token: A
+skip: false tstart == 39569 ')' i == 39570 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 39571 ':' i == 39574 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 39575 'e' i == 39579 '(' state: in_rhs  token: expr
+skip: false tstart == 39579 '(' i == 39580 'D' state: in_rhs  token: (
+skip: false tstart == 39580 'D' i == 39581 ')' state: rhs_alias_1  token: D
+skip: false tstart == 39581 ')' i == 39582 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39583 'O' i == 39585 ' ' state: in_rhs  token: ON
+skip: false tstart == 39586 'H' i == 39593 ' ' state: in_rhs  token: HEADING
+skip: false tstart == 39594 'E' i == 39600 '(' state: in_rhs  token: EDGEPT
+skip: false tstart == 39600 '(' i == 39601 'E' state: in_rhs  token: (
+skip: false tstart == 39601 'E' i == 39602 ')' state: rhs_alias_1  token: E
+skip: false tstart == 39602 ')' i == 39603 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39604 'O' i == 39606 ' ' state: in_rhs  token: OF
+skip: false tstart == 39607 'p' i == 39615 '(' state: in_rhs  token: position
+skip: false tstart == 39615 '(' i == 39616 'P' state: in_rhs  token: (
+skip: false tstart == 39616 'P' i == 39617 ')' state: rhs_alias_1  token: P
+skip: false tstart == 39617 ')' i == 39618 '.' state: rhs_alias_2  token: )
+skip: false tstart == 39618 '.' i == 39619 '
+' state: in_rhs  token: .
+skip: false tstart == 39660 '{' i == 39693 '}' state: waiting_for_decl_or_rule  token: {A = pik_position_at_hdg(D,&E,P);
+skip: true tstart == 39695 'p' i == 39703 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 39703 '(' i == 39704 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 39704 'A' i == 39705 ')' state: lhs_alias_1  token: A
+skip: false tstart == 39705 ')' i == 39706 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 39707 ':' i == 39710 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 39711 'e' i == 39715 '(' state: in_rhs  token: expr
+skip: false tstart == 39715 '(' i == 39716 'D' state: in_rhs  token: (
+skip: false tstart == 39716 'D' i == 39717 ')' state: rhs_alias_1  token: D
+skip: false tstart == 39717 ')' i == 39718 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39719 'H' i == 39726 ' ' state: in_rhs  token: HEADING
+skip: false tstart == 39727 'E' i == 39733 '(' state: in_rhs  token: EDGEPT
+skip: false tstart == 39733 '(' i == 39734 'E' state: in_rhs  token: (
+skip: false tstart == 39734 'E' i == 39735 ')' state: rhs_alias_1  token: E
+skip: false tstart == 39735 ')' i == 39736 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39737 'O' i == 39739 ' ' state: in_rhs  token: OF
+skip: false tstart == 39740 'p' i == 39748 '(' state: in_rhs  token: position
+skip: false tstart == 39748 '(' i == 39749 'P' state: in_rhs  token: (
+skip: false tstart == 39749 'P' i == 39750 ')' state: rhs_alias_1  token: P
+skip: false tstart == 39750 ')' i == 39751 '.' state: rhs_alias_2  token: )
+skip: false tstart == 39751 '.' i == 39752 '
+' state: in_rhs  token: .
+skip: false tstart == 39793 '{' i == 39826 '}' state: waiting_for_decl_or_rule  token: {A = pik_position_at_hdg(D,&E,P);
+skip: true tstart == 39828 'p' i == 39836 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 39836 '(' i == 39837 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 39837 'A' i == 39838 ')' state: lhs_alias_1  token: A
+skip: false tstart == 39838 ')' i == 39839 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 39840 ':' i == 39843 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 39844 'e' i == 39848 '(' state: in_rhs  token: expr
+skip: false tstart == 39848 '(' i == 39849 'D' state: in_rhs  token: (
+skip: false tstart == 39849 'D' i == 39850 ')' state: rhs_alias_1  token: D
+skip: false tstart == 39850 ')' i == 39851 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39852 'E' i == 39858 '(' state: in_rhs  token: EDGEPT
+skip: false tstart == 39858 '(' i == 39859 'E' state: in_rhs  token: (
+skip: false tstart == 39859 'E' i == 39860 ')' state: rhs_alias_1  token: E
+skip: false tstart == 39860 ')' i == 39861 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39862 'O' i == 39864 ' ' state: in_rhs  token: OF
+skip: false tstart == 39865 'p' i == 39873 '(' state: in_rhs  token: position
+skip: false tstart == 39873 '(' i == 39874 'P' state: in_rhs  token: (
+skip: false tstart == 39874 'P' i == 39875 ')' state: rhs_alias_1  token: P
+skip: false tstart == 39875 ')' i == 39876 '.' state: rhs_alias_2  token: )
+skip: false tstart == 39876 '.' i == 39877 '
+' state: in_rhs  token: .
+skip: false tstart == 39918 '{' i == 39951 '}' state: waiting_for_decl_or_rule  token: {A = pik_position_at_hdg(D,&E,P);
+skip: true tstart == 39953 'p' i == 39961 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 39961 '(' i == 39962 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 39962 'A' i == 39963 ')' state: lhs_alias_1  token: A
+skip: false tstart == 39963 ')' i == 39964 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 39965 ':' i == 39968 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 39969 'e' i == 39973 '(' state: in_rhs  token: expr
+skip: false tstart == 39973 '(' i == 39974 'D' state: in_rhs  token: (
+skip: false tstart == 39974 'D' i == 39975 ')' state: rhs_alias_1  token: D
+skip: false tstart == 39975 ')' i == 39976 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39977 'O' i == 39979 ' ' state: in_rhs  token: ON
+skip: false tstart == 39980 'H' i == 39987 ' ' state: in_rhs  token: HEADING
+skip: false tstart == 39988 'e' i == 39992 '(' state: in_rhs  token: expr
+skip: false tstart == 39992 '(' i == 39993 'G' state: in_rhs  token: (
+skip: false tstart == 39993 'G' i == 39994 ')' state: rhs_alias_1  token: G
+skip: false tstart == 39994 ')' i == 39995 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 39996 'F' i == 40000 ' ' state: in_rhs  token: FROM
+skip: false tstart == 40001 'p' i == 40009 '(' state: in_rhs  token: position
+skip: false tstart == 40009 '(' i == 40010 'P' state: in_rhs  token: (
+skip: false tstart == 40010 'P' i == 40011 ')' state: rhs_alias_1  token: P
+skip: false tstart == 40011 ')' i == 40012 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40012 '.' i == 40013 '
+' state: in_rhs  token: .
+skip: false tstart == 40054 '{' i == 40088 '}' state: waiting_for_decl_or_rule  token: {A = pik_position_at_angle(D,G,P);
+skip: true tstart == 40090 'p' i == 40098 '(' state: waiting_for_decl_or_rule  token: position
+skip: false tstart == 40098 '(' i == 40099 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40099 'A' i == 40100 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40100 ')' i == 40101 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40102 ':' i == 40105 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40106 'e' i == 40110 '(' state: in_rhs  token: expr
+skip: false tstart == 40110 '(' i == 40111 'D' state: in_rhs  token: (
+skip: false tstart == 40111 'D' i == 40112 ')' state: rhs_alias_1  token: D
+skip: false tstart == 40112 ')' i == 40113 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 40114 'H' i == 40121 ' ' state: in_rhs  token: HEADING
+skip: false tstart == 40122 'e' i == 40126 '(' state: in_rhs  token: expr
+skip: false tstart == 40126 '(' i == 40127 'G' state: in_rhs  token: (
+skip: false tstart == 40127 'G' i == 40128 ')' state: rhs_alias_1  token: G
+skip: false tstart == 40128 ')' i == 40129 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 40130 'F' i == 40134 ' ' state: in_rhs  token: FROM
+skip: false tstart == 40135 'p' i == 40143 '(' state: in_rhs  token: position
+skip: false tstart == 40143 '(' i == 40144 'P' state: in_rhs  token: (
+skip: false tstart == 40144 'P' i == 40145 ')' state: rhs_alias_1  token: P
+skip: false tstart == 40145 ')' i == 40146 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40146 '.' i == 40147 '
+' state: in_rhs  token: .
+skip: false tstart == 40188 '{' i == 40222 '}' state: waiting_for_decl_or_rule  token: {A = pik_position_at_angle(D,G,P);
+skip: true tstart == 40225 'b' i == 40232 ' ' state: waiting_for_decl_or_rule  token: between
+skip: false tstart == 40233 ':' i == 40236 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 40237 'W' i == 40240 ' ' state: in_rhs  token: WAY
+skip: false tstart == 40241 'B' i == 40248 '.' state: in_rhs  token: BETWEEN
+skip: false tstart == 40248 '.' i == 40249 '
+' state: in_rhs  token: .
+skip: false tstart == 40250 'b' i == 40257 ' ' state: waiting_for_decl_or_rule  token: between
+skip: false tstart == 40258 ':' i == 40261 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 40262 'B' i == 40269 '.' state: in_rhs  token: BETWEEN
+skip: false tstart == 40269 '.' i == 40270 '
+' state: in_rhs  token: .
+skip: false tstart == 40271 'b' i == 40278 ' ' state: waiting_for_decl_or_rule  token: between
+skip: false tstart == 40279 ':' i == 40282 ' ' state: waiting_for_arrow  token: ::=
+skip: false tstart == 40283 'O' i == 40285 ' ' state: in_rhs  token: OF
+skip: false tstart == 40286 'T' i == 40289 ' ' state: in_rhs  token: THE
+skip: false tstart == 40290 'W' i == 40293 ' ' state: in_rhs  token: WAY
+skip: false tstart == 40294 'B' i == 40301 '.' state: in_rhs  token: BETWEEN
+skip: false tstart == 40301 '.' i == 40302 '
+' state: in_rhs  token: .
+skip: false tstart == 40460 '%' i == 40461 't' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 40461 't' i == 40465 ' ' state: waiting_for_decl_keyword  token: type
+skip: false tstart == 40466 'p' i == 40472 ' ' state: waiting_for_datatype_symbol  token: place2
+skip: false tstart == 40473 '{' i == 40480 '}' state: waiting_for_decl_arg  token: {PPoint
+got here
+alloc 26 bytes
+alloc ok
+post alloc
+skip: true tstart == 40483 'p' i == 40488 '(' state: waiting_for_decl_or_rule  token: place
+skip: false tstart == 40488 '(' i == 40489 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40489 'A' i == 40490 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40490 ')' i == 40491 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40492 ':' i == 40495 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40496 'p' i == 40502 '(' state: in_rhs  token: place2
+skip: false tstart == 40502 '(' i == 40503 'A' state: in_rhs  token: (
+skip: false tstart == 40503 'A' i == 40504 ')' state: rhs_alias_1  token: A
+skip: false tstart == 40504 ')' i == 40505 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40505 '.' i == 40506 '
+' state: in_rhs  token: .
+skip: false tstart == 40507 'p' i == 40512 '(' state: waiting_for_decl_or_rule  token: place
+skip: false tstart == 40512 '(' i == 40513 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40513 'A' i == 40514 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40514 ')' i == 40515 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40516 ':' i == 40519 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40520 'e' i == 40524 '(' state: in_rhs  token: edge
+skip: false tstart == 40524 '(' i == 40525 'X' state: in_rhs  token: (
+skip: false tstart == 40525 'X' i == 40526 ')' state: rhs_alias_1  token: X
+skip: false tstart == 40526 ')' i == 40527 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 40528 'O' i == 40530 ' ' state: in_rhs  token: OF
+skip: false tstart == 40531 'o' i == 40537 '(' state: in_rhs  token: object
+skip: false tstart == 40537 '(' i == 40538 'O' state: in_rhs  token: (
+skip: false tstart == 40538 'O' i == 40539 ')' state: rhs_alias_1  token: O
+skip: false tstart == 40539 ')' i == 40540 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40540 '.' i == 40541 ' ' state: in_rhs  token: .
+skip: false tstart == 40552 '{' i == 40583 '}' state: waiting_for_decl_or_rule  token: {A = pik_place_of_elem(p,O,&X);
+skip: true tstart == 40585 'p' i == 40591 '(' state: waiting_for_decl_or_rule  token: place2
+skip: false tstart == 40591 '(' i == 40592 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40592 'A' i == 40593 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40593 ')' i == 40594 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40595 ':' i == 40598 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40599 'o' i == 40605 '(' state: in_rhs  token: object
+skip: false tstart == 40605 '(' i == 40606 'O' state: in_rhs  token: (
+skip: false tstart == 40606 'O' i == 40607 ')' state: rhs_alias_1  token: O
+skip: false tstart == 40607 ')' i == 40608 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40608 '.' i == 40609 ' ' state: in_rhs  token: .
+skip: false tstart == 40630 '{' i == 40660 '}' state: waiting_for_decl_or_rule  token: {A = pik_place_of_elem(p,O,0);
+skip: true tstart == 40662 'p' i == 40668 '(' state: waiting_for_decl_or_rule  token: place2
+skip: false tstart == 40668 '(' i == 40669 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40669 'A' i == 40670 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40670 ')' i == 40671 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40672 ':' i == 40675 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40676 'o' i == 40682 '(' state: in_rhs  token: object
+skip: false tstart == 40682 '(' i == 40683 'O' state: in_rhs  token: (
+skip: false tstart == 40683 'O' i == 40684 ')' state: rhs_alias_1  token: O
+skip: false tstart == 40684 ')' i == 40685 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 40686 'D' i == 40691 ' ' state: in_rhs  token: DOT_E
+skip: false tstart == 40692 'e' i == 40696 '(' state: in_rhs  token: edge
+skip: false tstart == 40696 '(' i == 40697 'X' state: in_rhs  token: (
+skip: false tstart == 40697 'X' i == 40698 ')' state: rhs_alias_1  token: X
+skip: false tstart == 40698 ')' i == 40699 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40699 '.' i == 40700 ' ' state: in_rhs  token: .
+skip: false tstart == 40707 '{' i == 40738 '}' state: waiting_for_decl_or_rule  token: {A = pik_place_of_elem(p,O,&X);
+skip: true tstart == 40740 'p' i == 40746 '(' state: waiting_for_decl_or_rule  token: place2
+skip: false tstart == 40746 '(' i == 40747 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40747 'A' i == 40748 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40748 ')' i == 40749 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40750 ':' i == 40753 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40754 'N' i == 40757 '(' state: in_rhs  token: NTH
+skip: false tstart == 40757 '(' i == 40758 'N' state: in_rhs  token: (
+skip: false tstart == 40758 'N' i == 40759 ')' state: rhs_alias_1  token: N
+skip: false tstart == 40759 ')' i == 40760 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 40761 'V' i == 40767 '(' state: in_rhs  token: VERTEX
+skip: false tstart == 40767 '(' i == 40768 'E' state: in_rhs  token: (
+skip: false tstart == 40768 'E' i == 40769 ')' state: rhs_alias_1  token: E
+skip: false tstart == 40769 ')' i == 40770 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 40771 'O' i == 40773 ' ' state: in_rhs  token: OF
+skip: false tstart == 40774 'o' i == 40780 '(' state: in_rhs  token: object
+skip: false tstart == 40780 '(' i == 40781 'X' state: in_rhs  token: (
+skip: false tstart == 40781 'X' i == 40782 ')' state: rhs_alias_1  token: X
+skip: false tstart == 40782 ')' i == 40783 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40783 '.' i == 40784 ' ' state: in_rhs  token: .
+skip: false tstart == 40785 '{' i == 40816 '}' state: waiting_for_decl_or_rule  token: {A = pik_nth_vertex(p,&N,&E,X);
+skip: true tstart == 40819 'e' i == 40823 '(' state: waiting_for_decl_or_rule  token: edge
+skip: false tstart == 40823 '(' i == 40824 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40824 'A' i == 40825 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40825 ')' i == 40826 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40827 ':' i == 40830 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40831 'C' i == 40837 '(' state: in_rhs  token: CENTER
+skip: false tstart == 40837 '(' i == 40838 'A' state: in_rhs  token: (
+skip: false tstart == 40838 'A' i == 40839 ')' state: rhs_alias_1  token: A
+skip: false tstart == 40839 ')' i == 40840 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40840 '.' i == 40841 '
+' state: in_rhs  token: .
+skip: false tstart == 40842 'e' i == 40846 '(' state: waiting_for_decl_or_rule  token: edge
+skip: false tstart == 40846 '(' i == 40847 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40847 'A' i == 40848 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40848 ')' i == 40849 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40850 ':' i == 40853 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40854 'E' i == 40860 '(' state: in_rhs  token: EDGEPT
+skip: false tstart == 40860 '(' i == 40861 'A' state: in_rhs  token: (
+skip: false tstart == 40861 'A' i == 40862 ')' state: rhs_alias_1  token: A
+skip: false tstart == 40862 ')' i == 40863 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40863 '.' i == 40864 '
+' state: in_rhs  token: .
+skip: false tstart == 40865 'e' i == 40869 '(' state: waiting_for_decl_or_rule  token: edge
+skip: false tstart == 40869 '(' i == 40870 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40870 'A' i == 40871 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40871 ')' i == 40872 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40873 ':' i == 40876 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40877 'T' i == 40880 '(' state: in_rhs  token: TOP
+skip: false tstart == 40880 '(' i == 40881 'A' state: in_rhs  token: (
+skip: false tstart == 40881 'A' i == 40882 ')' state: rhs_alias_1  token: A
+skip: false tstart == 40882 ')' i == 40883 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40883 '.' i == 40884 '
+' state: in_rhs  token: .
+skip: false tstart == 40885 'e' i == 40889 '(' state: waiting_for_decl_or_rule  token: edge
+skip: false tstart == 40889 '(' i == 40890 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40890 'A' i == 40891 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40891 ')' i == 40892 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40893 ':' i == 40896 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40897 'B' i == 40903 '(' state: in_rhs  token: BOTTOM
+skip: false tstart == 40903 '(' i == 40904 'A' state: in_rhs  token: (
+skip: false tstart == 40904 'A' i == 40905 ')' state: rhs_alias_1  token: A
+skip: false tstart == 40905 ')' i == 40906 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40906 '.' i == 40907 '
+' state: in_rhs  token: .
+skip: false tstart == 40908 'e' i == 40912 '(' state: waiting_for_decl_or_rule  token: edge
+skip: false tstart == 40912 '(' i == 40913 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40913 'A' i == 40914 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40914 ')' i == 40915 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40916 ':' i == 40919 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40920 'S' i == 40925 '(' state: in_rhs  token: START
+skip: false tstart == 40925 '(' i == 40926 'A' state: in_rhs  token: (
+skip: false tstart == 40926 'A' i == 40927 ')' state: rhs_alias_1  token: A
+skip: false tstart == 40927 ')' i == 40928 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40928 '.' i == 40929 '
+' state: in_rhs  token: .
+skip: false tstart == 40930 'e' i == 40934 '(' state: waiting_for_decl_or_rule  token: edge
+skip: false tstart == 40934 '(' i == 40935 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40935 'A' i == 40936 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40936 ')' i == 40937 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40938 ':' i == 40941 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40942 'E' i == 40945 '(' state: in_rhs  token: END
+skip: false tstart == 40945 '(' i == 40946 'A' state: in_rhs  token: (
+skip: false tstart == 40946 'A' i == 40947 ')' state: rhs_alias_1  token: A
+skip: false tstart == 40947 ')' i == 40948 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40948 '.' i == 40949 '
+' state: in_rhs  token: .
+skip: false tstart == 40950 'e' i == 40954 '(' state: waiting_for_decl_or_rule  token: edge
+skip: false tstart == 40954 '(' i == 40955 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40955 'A' i == 40956 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40956 ')' i == 40957 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40958 ':' i == 40961 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40962 'R' i == 40967 '(' state: in_rhs  token: RIGHT
+skip: false tstart == 40967 '(' i == 40968 'A' state: in_rhs  token: (
+skip: false tstart == 40968 'A' i == 40969 ')' state: rhs_alias_1  token: A
+skip: false tstart == 40969 ')' i == 40970 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40970 '.' i == 40971 '
+' state: in_rhs  token: .
+skip: false tstart == 40972 'e' i == 40976 '(' state: waiting_for_decl_or_rule  token: edge
+skip: false tstart == 40976 '(' i == 40977 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 40977 'A' i == 40978 ')' state: lhs_alias_1  token: A
+skip: false tstart == 40978 ')' i == 40979 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 40980 ':' i == 40983 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 40984 'L' i == 40988 '(' state: in_rhs  token: LEFT
+skip: false tstart == 40988 '(' i == 40989 'A' state: in_rhs  token: (
+skip: false tstart == 40989 'A' i == 40990 ')' state: rhs_alias_1  token: A
+skip: false tstart == 40990 ')' i == 40991 '.' state: rhs_alias_2  token: )
+skip: false tstart == 40991 '.' i == 40992 '
+' state: in_rhs  token: .
+skip: false tstart == 40994 'o' i == 41000 '(' state: waiting_for_decl_or_rule  token: object
+skip: false tstart == 41000 '(' i == 41001 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41001 'A' i == 41002 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41002 ')' i == 41003 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41004 ':' i == 41007 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41008 'o' i == 41018 '(' state: in_rhs  token: objectname
+skip: false tstart == 41018 '(' i == 41019 'A' state: in_rhs  token: (
+skip: false tstart == 41019 'A' i == 41020 ')' state: rhs_alias_1  token: A
+skip: false tstart == 41020 ')' i == 41021 '.' state: rhs_alias_2  token: )
+skip: false tstart == 41021 '.' i == 41022 '
+' state: in_rhs  token: .
+skip: false tstart == 41023 'o' i == 41029 '(' state: waiting_for_decl_or_rule  token: object
+skip: false tstart == 41029 '(' i == 41030 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41030 'A' i == 41031 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41031 ')' i == 41032 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41033 ':' i == 41036 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41037 'n' i == 41040 '(' state: in_rhs  token: nth
+skip: false tstart == 41040 '(' i == 41041 'N' state: in_rhs  token: (
+skip: false tstart == 41041 'N' i == 41042 ')' state: rhs_alias_1  token: N
+skip: false tstart == 41042 ')' i == 41043 '.' state: rhs_alias_2  token: )
+skip: false tstart == 41043 '.' i == 41044 ' ' state: in_rhs  token: .
+skip: false tstart == 41065 '{' i == 41091 '}' state: waiting_for_decl_or_rule  token: {A = pik_find_nth(p,0,&N);
+skip: true tstart == 41093 'o' i == 41099 '(' state: waiting_for_decl_or_rule  token: object
+skip: false tstart == 41099 '(' i == 41100 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41100 'A' i == 41101 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41101 ')' i == 41102 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41103 ':' i == 41106 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41107 'n' i == 41110 '(' state: in_rhs  token: nth
+skip: false tstart == 41110 '(' i == 41111 'N' state: in_rhs  token: (
+skip: false tstart == 41111 'N' i == 41112 ')' state: rhs_alias_1  token: N
+skip: false tstart == 41112 ')' i == 41113 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41114 'O' i == 41116 '|' state: in_rhs  token: OF
+skip: false tstart == 41116 '|' i == 41118 'N' state: in_rhs  token: |I
+skip: false tstart == 41118 'N' i == 41119 ' ' state: in_rhs  token: N
+skip: false tstart == 41120 'o' i == 41126 '(' state: in_rhs  token: object
+skip: false tstart == 41126 '(' i == 41127 'B' state: in_rhs  token: (
+skip: false tstart == 41127 'B' i == 41128 ')' state: rhs_alias_1  token: B
+skip: false tstart == 41128 ')' i == 41129 '.' state: rhs_alias_2  token: )
+skip: false tstart == 41129 '.' i == 41130 ' ' state: in_rhs  token: .
+skip: false tstart == 41135 '{' i == 41161 '}' state: waiting_for_decl_or_rule  token: {A = pik_find_nth(p,B,&N);
+skip: true tstart == 41164 'o' i == 41174 '(' state: waiting_for_decl_or_rule  token: objectname
+skip: false tstart == 41174 '(' i == 41175 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41175 'A' i == 41176 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41176 ')' i == 41177 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41178 ':' i == 41181 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41182 'T' i == 41186 '.' state: in_rhs  token: THIS
+skip: false tstart == 41186 '.' i == 41187 ' ' state: in_rhs  token: .
+skip: false tstart == 41206 '{' i == 41218 '}' state: waiting_for_decl_or_rule  token: {A = p->cur;
+skip: true tstart == 41220 'o' i == 41230 '(' state: waiting_for_decl_or_rule  token: objectname
+skip: false tstart == 41230 '(' i == 41231 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41231 'A' i == 41232 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41232 ')' i == 41233 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41234 ':' i == 41237 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41238 'P' i == 41247 '(' state: in_rhs  token: PLACENAME
+skip: false tstart == 41247 '(' i == 41248 'N' state: in_rhs  token: (
+skip: false tstart == 41248 'N' i == 41249 ')' state: rhs_alias_1  token: N
+skip: false tstart == 41249 ')' i == 41250 '.' state: rhs_alias_2  token: )
+skip: false tstart == 41250 '.' i == 41251 ' ' state: in_rhs  token: .
+skip: false tstart == 41262 '{' i == 41291 '}' state: waiting_for_decl_or_rule  token: {A = pik_find_byname(p,0,&N);
+skip: true tstart == 41293 'o' i == 41303 '(' state: waiting_for_decl_or_rule  token: objectname
+skip: false tstart == 41303 '(' i == 41304 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41304 'A' i == 41305 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41305 ')' i == 41306 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41307 ':' i == 41310 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41311 'o' i == 41321 '(' state: in_rhs  token: objectname
+skip: false tstart == 41321 '(' i == 41322 'B' state: in_rhs  token: (
+skip: false tstart == 41322 'B' i == 41323 ')' state: rhs_alias_1  token: B
+skip: false tstart == 41323 ')' i == 41324 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41325 'D' i == 41330 ' ' state: in_rhs  token: DOT_U
+skip: false tstart == 41331 'P' i == 41340 '(' state: in_rhs  token: PLACENAME
+skip: false tstart == 41340 '(' i == 41341 'N' state: in_rhs  token: (
+skip: false tstart == 41341 'N' i == 41342 ')' state: rhs_alias_1  token: N
+skip: false tstart == 41342 ')' i == 41343 '.' state: rhs_alias_2  token: )
+skip: false tstart == 41343 '.' i == 41344 '
+' state: in_rhs  token: .
+skip: false tstart == 41387 '{' i == 41416 '}' state: waiting_for_decl_or_rule  token: {A = pik_find_byname(p,B,&N);
+skip: true tstart == 41419 'n' i == 41422 '(' state: waiting_for_decl_or_rule  token: nth
+skip: false tstart == 41422 '(' i == 41423 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41423 'A' i == 41424 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41424 ')' i == 41425 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41426 ':' i == 41429 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41430 'N' i == 41433 '(' state: in_rhs  token: NTH
+skip: false tstart == 41433 '(' i == 41434 'N' state: in_rhs  token: (
+skip: false tstart == 41434 'N' i == 41435 ')' state: rhs_alias_1  token: N
+skip: false tstart == 41435 ')' i == 41436 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41437 'C' i == 41446 '(' state: in_rhs  token: CLASSNAME
+skip: false tstart == 41446 '(' i == 41447 'I' state: in_rhs  token: (
+skip: false tstart == 41447 'I' i == 41449 ')' state: rhs_alias_1  token: ID
+skip: false tstart == 41449 ')' i == 41450 '.' state: rhs_alias_2  token: )
+skip: false tstart == 41450 '.' i == 41451 ' ' state: in_rhs  token: .
+skip: false tstart == 41457 '{' i == 41495 '}' state: waiting_for_decl_or_rule  token: {A=ID; A.eCode = pik_nth_value(p,&N); 
+skip: true tstart == 41497 'n' i == 41500 '(' state: waiting_for_decl_or_rule  token: nth
+skip: false tstart == 41500 '(' i == 41501 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41501 'A' i == 41502 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41502 ')' i == 41503 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41504 ':' i == 41507 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41508 'N' i == 41511 '(' state: in_rhs  token: NTH
+skip: false tstart == 41511 '(' i == 41512 'N' state: in_rhs  token: (
+skip: false tstart == 41512 'N' i == 41513 ')' state: rhs_alias_1  token: N
+skip: false tstart == 41513 ')' i == 41514 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41515 'L' i == 41519 ' ' state: in_rhs  token: LAST
+skip: false tstart == 41520 'C' i == 41529 '(' state: in_rhs  token: CLASSNAME
+skip: false tstart == 41529 '(' i == 41530 'I' state: in_rhs  token: (
+skip: false tstart == 41530 'I' i == 41532 ')' state: rhs_alias_1  token: ID
+skip: false tstart == 41532 ')' i == 41533 '.' state: rhs_alias_2  token: )
+skip: false tstart == 41533 '.' i == 41534 ' ' state: in_rhs  token: .
+skip: false tstart == 41535 '{' i == 41574 '}' state: waiting_for_decl_or_rule  token: {A=ID; A.eCode = -pik_nth_value(p,&N); 
+skip: true tstart == 41576 'n' i == 41579 '(' state: waiting_for_decl_or_rule  token: nth
+skip: false tstart == 41579 '(' i == 41580 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41580 'A' i == 41581 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41581 ')' i == 41582 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41583 ':' i == 41586 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41587 'L' i == 41591 ' ' state: in_rhs  token: LAST
+skip: false tstart == 41592 'C' i == 41601 '(' state: in_rhs  token: CLASSNAME
+skip: false tstart == 41601 '(' i == 41602 'I' state: in_rhs  token: (
+skip: false tstart == 41602 'I' i == 41604 ')' state: rhs_alias_1  token: ID
+skip: false tstart == 41604 ')' i == 41605 '.' state: rhs_alias_2  token: )
+skip: false tstart == 41605 '.' i == 41606 ' ' state: in_rhs  token: .
+skip: false tstart == 41614 '{' i == 41634 '}' state: waiting_for_decl_or_rule  token: {A=ID; A.eCode = -1;
+skip: true tstart == 41636 'n' i == 41639 '(' state: waiting_for_decl_or_rule  token: nth
+skip: false tstart == 41639 '(' i == 41640 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41640 'A' i == 41641 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41641 ')' i == 41642 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41643 ':' i == 41646 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41647 'L' i == 41651 '(' state: in_rhs  token: LAST
+skip: false tstart == 41651 '(' i == 41652 'I' state: in_rhs  token: (
+skip: false tstart == 41652 'I' i == 41654 ')' state: rhs_alias_1  token: ID
+skip: false tstart == 41654 ')' i == 41655 '.' state: rhs_alias_2  token: )
+skip: false tstart == 41655 '.' i == 41656 ' ' state: in_rhs  token: .
+skip: false tstart == 41674 '{' i == 41694 '}' state: waiting_for_decl_or_rule  token: {A=ID; A.eCode = -1;
+skip: true tstart == 41696 'n' i == 41699 '(' state: waiting_for_decl_or_rule  token: nth
+skip: false tstart == 41699 '(' i == 41700 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41700 'A' i == 41701 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41701 ')' i == 41702 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41703 ':' i == 41706 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41707 'N' i == 41710 '(' state: in_rhs  token: NTH
+skip: false tstart == 41710 '(' i == 41711 'N' state: in_rhs  token: (
+skip: false tstart == 41711 'N' i == 41712 ')' state: rhs_alias_1  token: N
+skip: false tstart == 41712 ')' i == 41713 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41714 'L' i == 41716 '(' state: in_rhs  token: LB
+skip: false tstart == 41716 '(' i == 41717 'I' state: in_rhs  token: (
+skip: false tstart == 41717 'I' i == 41719 ')' state: rhs_alias_1  token: ID
+skip: false tstart == 41719 ')' i == 41720 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41721 'R' i == 41723 '.' state: in_rhs  token: RB
+skip: false tstart == 41723 '.' i == 41724 ' ' state: in_rhs  token: .
+skip: false tstart == 41734 '{' i == 41771 '}' state: waiting_for_decl_or_rule  token: {A=ID; A.eCode = pik_nth_value(p,&N);
+skip: true tstart == 41773 'n' i == 41776 '(' state: waiting_for_decl_or_rule  token: nth
+skip: false tstart == 41776 '(' i == 41777 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41777 'A' i == 41778 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41778 ')' i == 41779 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41780 ':' i == 41783 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41784 'N' i == 41787 '(' state: in_rhs  token: NTH
+skip: false tstart == 41787 '(' i == 41788 'N' state: in_rhs  token: (
+skip: false tstart == 41788 'N' i == 41789 ')' state: rhs_alias_1  token: N
+skip: false tstart == 41789 ')' i == 41790 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41791 'L' i == 41795 ' ' state: in_rhs  token: LAST
+skip: false tstart == 41796 'L' i == 41798 '(' state: in_rhs  token: LB
+skip: false tstart == 41798 '(' i == 41799 'I' state: in_rhs  token: (
+skip: false tstart == 41799 'I' i == 41801 ')' state: rhs_alias_1  token: ID
+skip: false tstart == 41801 ')' i == 41802 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41803 'R' i == 41805 '.' state: in_rhs  token: RB
+skip: false tstart == 41805 '.' i == 41806 ' ' state: in_rhs  token: .
+skip: false tstart == 41811 '{' i == 41849 '}' state: waiting_for_decl_or_rule  token: {A=ID; A.eCode = -pik_nth_value(p,&N);
+skip: true tstart == 41851 'n' i == 41854 '(' state: waiting_for_decl_or_rule  token: nth
+skip: false tstart == 41854 '(' i == 41855 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41855 'A' i == 41856 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41856 ')' i == 41857 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41858 ':' i == 41861 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41862 'L' i == 41866 ' ' state: in_rhs  token: LAST
+skip: false tstart == 41867 'L' i == 41869 '(' state: in_rhs  token: LB
+skip: false tstart == 41869 '(' i == 41870 'I' state: in_rhs  token: (
+skip: false tstart == 41870 'I' i == 41872 ')' state: rhs_alias_1  token: ID
+skip: false tstart == 41872 ')' i == 41873 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41874 'R' i == 41876 '.' state: in_rhs  token: RB
+skip: false tstart == 41876 '.' i == 41877 ' ' state: in_rhs  token: .
+skip: false tstart == 41889 '{' i == 41910 '}' state: waiting_for_decl_or_rule  token: {A=ID; A.eCode = -1; 
+skip: true tstart == 41913 'e' i == 41917 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 41917 '(' i == 41918 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41918 'A' i == 41919 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41919 ')' i == 41920 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41921 ':' i == 41924 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41925 'e' i == 41929 '(' state: in_rhs  token: expr
+skip: false tstart == 41929 '(' i == 41930 'X' state: in_rhs  token: (
+skip: false tstart == 41930 'X' i == 41931 ')' state: rhs_alias_1  token: X
+skip: false tstart == 41931 ')' i == 41932 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41933 'P' i == 41937 ' ' state: in_rhs  token: PLUS
+skip: false tstart == 41938 'e' i == 41942 '(' state: in_rhs  token: expr
+skip: false tstart == 41942 '(' i == 41943 'Y' state: in_rhs  token: (
+skip: false tstart == 41943 'Y' i == 41944 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 41944 ')' i == 41945 '.' state: rhs_alias_2  token: )
+skip: false tstart == 41945 '.' i == 41946 ' ' state: in_rhs  token: .
+skip: false tstart == 41963 '{' i == 41970 '}' state: waiting_for_decl_or_rule  token: {A=X+Y;
+skip: true tstart == 41972 'e' i == 41976 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 41976 '(' i == 41977 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 41977 'A' i == 41978 ')' state: lhs_alias_1  token: A
+skip: false tstart == 41978 ')' i == 41979 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 41980 ':' i == 41983 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 41984 'e' i == 41988 '(' state: in_rhs  token: expr
+skip: false tstart == 41988 '(' i == 41989 'X' state: in_rhs  token: (
+skip: false tstart == 41989 'X' i == 41990 ')' state: rhs_alias_1  token: X
+skip: false tstart == 41990 ')' i == 41991 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 41992 'M' i == 41997 ' ' state: in_rhs  token: MINUS
+skip: false tstart == 41998 'e' i == 42002 '(' state: in_rhs  token: expr
+skip: false tstart == 42002 '(' i == 42003 'Y' state: in_rhs  token: (
+skip: false tstart == 42003 'Y' i == 42004 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 42004 ')' i == 42005 '.' state: rhs_alias_2  token: )
+skip: false tstart == 42005 '.' i == 42006 ' ' state: in_rhs  token: .
+skip: false tstart == 42022 '{' i == 42029 '}' state: waiting_for_decl_or_rule  token: {A=X-Y;
+skip: true tstart == 42031 'e' i == 42035 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42035 '(' i == 42036 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42036 'A' i == 42037 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42037 ')' i == 42038 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42039 ':' i == 42042 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42043 'e' i == 42047 '(' state: in_rhs  token: expr
+skip: false tstart == 42047 '(' i == 42048 'X' state: in_rhs  token: (
+skip: false tstart == 42048 'X' i == 42049 ')' state: rhs_alias_1  token: X
+skip: false tstart == 42049 ')' i == 42050 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42051 'S' i == 42055 ' ' state: in_rhs  token: STAR
+skip: false tstart == 42056 'e' i == 42060 '(' state: in_rhs  token: expr
+skip: false tstart == 42060 '(' i == 42061 'Y' state: in_rhs  token: (
+skip: false tstart == 42061 'Y' i == 42062 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 42062 ')' i == 42063 '.' state: rhs_alias_2  token: )
+skip: false tstart == 42063 '.' i == 42064 ' ' state: in_rhs  token: .
+skip: false tstart == 42081 '{' i == 42088 '}' state: waiting_for_decl_or_rule  token: {A=X*Y;
+skip: true tstart == 42090 'e' i == 42094 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42094 '(' i == 42095 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42095 'A' i == 42096 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42096 ')' i == 42097 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42098 ':' i == 42101 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42102 'e' i == 42106 '(' state: in_rhs  token: expr
+skip: false tstart == 42106 '(' i == 42107 'X' state: in_rhs  token: (
+skip: false tstart == 42107 'X' i == 42108 ')' state: rhs_alias_1  token: X
+skip: false tstart == 42108 ')' i == 42109 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42110 'S' i == 42115 '(' state: in_rhs  token: SLASH
+skip: false tstart == 42115 '(' i == 42116 'E' state: in_rhs  token: (
+skip: false tstart == 42116 'E' i == 42117 ')' state: rhs_alias_1  token: E
+skip: false tstart == 42117 ')' i == 42118 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42119 'e' i == 42123 '(' state: in_rhs  token: expr
+skip: false tstart == 42123 '(' i == 42124 'Y' state: in_rhs  token: (
+skip: false tstart == 42124 'Y' i == 42125 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 42125 ')' i == 42126 '.' state: rhs_alias_2  token: )
+skip: false tstart == 42126 '.' i == 42127 ' ' state: in_rhs  token: .
+skip: false tstart == 42140 '{' i == 42226 '}' state: waiting_for_decl_or_rule  token: {
+  if( Y==0.0 ){ pik_error(p, &E, "division by ze...
+skip: true tstart == 42228 'e' i == 42232 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42232 '(' i == 42233 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42233 'A' i == 42234 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42234 ')' i == 42235 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42236 ':' i == 42239 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42240 'M' i == 42245 ' ' state: in_rhs  token: MINUS
+skip: false tstart == 42246 'e' i == 42250 '(' state: in_rhs  token: expr
+skip: false tstart == 42250 '(' i == 42251 'X' state: in_rhs  token: (
+skip: false tstart == 42251 'X' i == 42252 ')' state: rhs_alias_1  token: X
+skip: false tstart == 42252 ')' i == 42253 '.' state: rhs_alias_2  token: )
+skip: false tstart == 42253 '.' i == 42254 ' ' state: in_rhs  token: .
+skip: false tstart == 42255 '[' i == 42256 'U' state: waiting_for_decl_or_rule  token: [
+skip: false tstart == 42256 'U' i == 42262 ']' state: precedence_mark_1  token: UMINUS
+skip: false tstart == 42262 ']' i == 42263 ' ' state: precedence_mark_2  token: ]
+skip: false tstart == 42278 '{' i == 42284 '}' state: waiting_for_decl_or_rule  token: {A=-X;
+skip: true tstart == 42286 'e' i == 42290 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42290 '(' i == 42291 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42291 'A' i == 42292 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42292 ')' i == 42293 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42294 ':' i == 42297 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42298 'P' i == 42302 ' ' state: in_rhs  token: PLUS
+skip: false tstart == 42303 'e' i == 42307 '(' state: in_rhs  token: expr
+skip: false tstart == 42307 '(' i == 42308 'X' state: in_rhs  token: (
+skip: false tstart == 42308 'X' i == 42309 ')' state: rhs_alias_1  token: X
+skip: false tstart == 42309 ')' i == 42310 '.' state: rhs_alias_2  token: )
+skip: false tstart == 42310 '.' i == 42311 ' ' state: in_rhs  token: .
+skip: false tstart == 42312 '[' i == 42313 'U' state: waiting_for_decl_or_rule  token: [
+skip: false tstart == 42313 'U' i == 42319 ']' state: precedence_mark_1  token: UMINUS
+skip: false tstart == 42319 ']' i == 42320 ' ' state: precedence_mark_2  token: ]
+skip: false tstart == 42336 '{' i == 42341 '}' state: waiting_for_decl_or_rule  token: {A=X;
+skip: true tstart == 42343 'e' i == 42347 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42347 '(' i == 42348 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42348 'A' i == 42349 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42349 ')' i == 42350 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42351 ':' i == 42354 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42355 'L' i == 42357 ' ' state: in_rhs  token: LP
+skip: false tstart == 42358 'e' i == 42362 '(' state: in_rhs  token: expr
+skip: false tstart == 42362 '(' i == 42363 'X' state: in_rhs  token: (
+skip: false tstart == 42363 'X' i == 42364 ')' state: rhs_alias_1  token: X
+skip: false tstart == 42364 ')' i == 42365 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42366 'R' i == 42368 '.' state: in_rhs  token: RP
+skip: false tstart == 42368 '.' i == 42369 ' ' state: in_rhs  token: .
+skip: false tstart == 42393 '{' i == 42398 '}' state: waiting_for_decl_or_rule  token: {A=X;
+skip: true tstart == 42400 'e' i == 42404 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42404 '(' i == 42405 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42405 'A' i == 42406 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42406 ')' i == 42407 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42408 ':' i == 42411 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42412 'L' i == 42414 ' ' state: in_rhs  token: LP
+skip: false tstart == 42415 'F' i == 42419 '|' state: in_rhs  token: FILL
+skip: false tstart == 42419 '|' i == 42424 'R' state: in_rhs  token: |COLO
+skip: false tstart == 42424 'R' i == 42425 '|' state: in_rhs  token: R
+skip: false tstart == 42425 '|' i == 42434 'R' state: in_rhs  token: |TEXTCOLO
+skip: false tstart == 42434 'R' i == 42435 '|' state: in_rhs  token: R
+skip: false tstart == 42435 '|' i == 42444 'S' state: in_rhs  token: |THICKNES
+skip: false tstart == 42444 'S' i == 42445 '(' state: in_rhs  token: S
+skip: false tstart == 42445 '(' i == 42446 'X' state: in_rhs  token: (
+skip: false tstart == 42446 'X' i == 42447 ')' state: rhs_alias_1  token: X
+skip: false tstart == 42447 ')' i == 42448 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42449 'R' i == 42451 '.' state: in_rhs  token: RP
+skip: false tstart == 42451 '.' i == 42452 ' ' state: in_rhs  token: .
+skip: false tstart == 42453 '{' i == 42474 '}' state: waiting_for_decl_or_rule  token: {A=pik_get_var(p,&X);
+skip: true tstart == 42476 'e' i == 42480 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42480 '(' i == 42481 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42481 'A' i == 42482 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42482 ')' i == 42483 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42484 ':' i == 42487 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42488 'N' i == 42494 '(' state: in_rhs  token: NUMBER
+skip: false tstart == 42494 '(' i == 42495 'N' state: in_rhs  token: (
+skip: false tstart == 42495 'N' i == 42496 ')' state: rhs_alias_1  token: N
+skip: false tstart == 42496 ')' i == 42497 '.' state: rhs_alias_2  token: )
+skip: false tstart == 42497 '.' i == 42498 ' ' state: in_rhs  token: .
+skip: false tstart == 42526 '{' i == 42542 '}' state: waiting_for_decl_or_rule  token: {A=pik_atof(&N);
+skip: true tstart == 42544 'e' i == 42548 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42548 '(' i == 42549 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42549 'A' i == 42550 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42550 ')' i == 42551 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42552 ':' i == 42555 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42556 'I' i == 42558 '(' state: in_rhs  token: ID
+skip: false tstart == 42558 '(' i == 42559 'N' state: in_rhs  token: (
+skip: false tstart == 42559 'N' i == 42560 ')' state: rhs_alias_1  token: N
+skip: false tstart == 42560 ')' i == 42561 '.' state: rhs_alias_2  token: )
+skip: false tstart == 42561 '.' i == 42562 ' ' state: in_rhs  token: .
+skip: false tstart == 42594 '{' i == 42615 '}' state: waiting_for_decl_or_rule  token: {A=pik_get_var(p,&N);
+skip: true tstart == 42617 'e' i == 42621 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42621 '(' i == 42622 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42622 'A' i == 42623 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42623 ')' i == 42624 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42625 ':' i == 42628 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42629 'F' i == 42634 '(' state: in_rhs  token: FUNC1
+skip: false tstart == 42634 '(' i == 42635 'F' state: in_rhs  token: (
+skip: false tstart == 42635 'F' i == 42636 ')' state: rhs_alias_1  token: F
+skip: false tstart == 42636 ')' i == 42637 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42638 'L' i == 42640 ' ' state: in_rhs  token: LP
+skip: false tstart == 42641 'e' i == 42645 '(' state: in_rhs  token: expr
+skip: false tstart == 42645 '(' i == 42646 'X' state: in_rhs  token: (
+skip: false tstart == 42646 'X' i == 42647 ')' state: rhs_alias_1  token: X
+skip: false tstart == 42647 ')' i == 42648 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42649 'R' i == 42651 '.' state: in_rhs  token: RP
+skip: false tstart == 42651 '.' i == 42652 ' ' state: in_rhs  token: .
+skip: false tstart == 42667 '{' i == 42693 '}' state: waiting_for_decl_or_rule  token: {A = pik_func(p,&F,X,0.0);
+skip: true tstart == 42695 'e' i == 42699 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42699 '(' i == 42700 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42700 'A' i == 42701 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42701 ')' i == 42702 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42703 ':' i == 42706 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42707 'F' i == 42712 '(' state: in_rhs  token: FUNC2
+skip: false tstart == 42712 '(' i == 42713 'F' state: in_rhs  token: (
+skip: false tstart == 42713 'F' i == 42714 ')' state: rhs_alias_1  token: F
+skip: false tstart == 42714 ')' i == 42715 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42716 'L' i == 42718 ' ' state: in_rhs  token: LP
+skip: false tstart == 42719 'e' i == 42723 '(' state: in_rhs  token: expr
+skip: false tstart == 42723 '(' i == 42724 'X' state: in_rhs  token: (
+skip: false tstart == 42724 'X' i == 42725 ')' state: rhs_alias_1  token: X
+skip: false tstart == 42725 ')' i == 42726 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42727 'C' i == 42732 ' ' state: in_rhs  token: COMMA
+skip: false tstart == 42733 'e' i == 42737 '(' state: in_rhs  token: expr
+skip: false tstart == 42737 '(' i == 42738 'Y' state: in_rhs  token: (
+skip: false tstart == 42738 'Y' i == 42739 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 42739 ')' i == 42740 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42741 'R' i == 42743 '.' state: in_rhs  token: RP
+skip: false tstart == 42743 '.' i == 42744 ' ' state: in_rhs  token: .
+skip: false tstart == 42745 '{' i == 42769 '}' state: waiting_for_decl_or_rule  token: {A = pik_func(p,&F,X,Y);
+skip: true tstart == 42771 'e' i == 42775 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42775 '(' i == 42776 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42776 'A' i == 42777 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42777 ')' i == 42778 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42779 ':' i == 42782 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42783 'D' i == 42787 ' ' state: in_rhs  token: DIST
+skip: false tstart == 42788 'L' i == 42790 ' ' state: in_rhs  token: LP
+skip: false tstart == 42791 'p' i == 42799 '(' state: in_rhs  token: position
+skip: false tstart == 42799 '(' i == 42800 'X' state: in_rhs  token: (
+skip: false tstart == 42800 'X' i == 42801 ')' state: rhs_alias_1  token: X
+skip: false tstart == 42801 ')' i == 42802 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42803 'C' i == 42808 ' ' state: in_rhs  token: COMMA
+skip: false tstart == 42809 'p' i == 42817 '(' state: in_rhs  token: position
+skip: false tstart == 42817 '(' i == 42818 'Y' state: in_rhs  token: (
+skip: false tstart == 42818 'Y' i == 42819 ')' state: rhs_alias_1  token: Y
+skip: false tstart == 42819 ')' i == 42820 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42821 'R' i == 42823 '.' state: in_rhs  token: RP
+skip: false tstart == 42823 '.' i == 42824 ' ' state: in_rhs  token: .
+skip: false tstart == 42825 '{' i == 42846 '}' state: waiting_for_decl_or_rule  token: {A = pik_dist(&X,&Y);
+skip: true tstart == 42848 'e' i == 42852 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42852 '(' i == 42853 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42853 'A' i == 42854 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42854 ')' i == 42855 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42856 ':' i == 42859 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42860 'p' i == 42866 '(' state: in_rhs  token: place2
+skip: false tstart == 42866 '(' i == 42867 'B' state: in_rhs  token: (
+skip: false tstart == 42867 'B' i == 42868 ')' state: rhs_alias_1  token: B
+skip: false tstart == 42868 ')' i == 42869 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42870 'D' i == 42876 ' ' state: in_rhs  token: DOT_XY
+skip: false tstart == 42877 'X' i == 42878 '.' state: in_rhs  token: X
+skip: false tstart == 42878 '.' i == 42879 ' ' state: in_rhs  token: .
+skip: false tstart == 42898 '{' i == 42907 '}' state: waiting_for_decl_or_rule  token: {A = B.x;
+skip: true tstart == 42909 'e' i == 42913 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42913 '(' i == 42914 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42914 'A' i == 42915 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42915 ')' i == 42916 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42917 ':' i == 42920 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42921 'p' i == 42927 '(' state: in_rhs  token: place2
+skip: false tstart == 42927 '(' i == 42928 'B' state: in_rhs  token: (
+skip: false tstart == 42928 'B' i == 42929 ')' state: rhs_alias_1  token: B
+skip: false tstart == 42929 ')' i == 42930 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42931 'D' i == 42937 ' ' state: in_rhs  token: DOT_XY
+skip: false tstart == 42938 'Y' i == 42939 '.' state: in_rhs  token: Y
+skip: false tstart == 42939 '.' i == 42940 ' ' state: in_rhs  token: .
+skip: false tstart == 42959 '{' i == 42968 '}' state: waiting_for_decl_or_rule  token: {A = B.y;
+skip: true tstart == 42970 'e' i == 42974 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 42974 '(' i == 42975 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 42975 'A' i == 42976 ')' state: lhs_alias_1  token: A
+skip: false tstart == 42976 ')' i == 42977 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 42978 ':' i == 42981 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 42982 'o' i == 42988 '(' state: in_rhs  token: object
+skip: false tstart == 42988 '(' i == 42989 'B' state: in_rhs  token: (
+skip: false tstart == 42989 'B' i == 42990 ')' state: rhs_alias_1  token: B
+skip: false tstart == 42990 ')' i == 42991 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 42992 'D' i == 42997 ' ' state: in_rhs  token: DOT_L
+skip: false tstart == 42998 'n' i == 43009 '(' state: in_rhs  token: numproperty
+skip: false tstart == 43009 '(' i == 43010 'P' state: in_rhs  token: (
+skip: false tstart == 43010 'P' i == 43011 ')' state: rhs_alias_1  token: P
+skip: false tstart == 43011 ')' i == 43012 '.' state: rhs_alias_2  token: )
+skip: false tstart == 43012 '.' i == 43013 ' ' state: in_rhs  token: .
+skip: false tstart == 43020 '{' i == 43045 '}' state: waiting_for_decl_or_rule  token: {A=pik_property_of(B,&P);
+skip: true tstart == 43047 'e' i == 43051 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 43051 '(' i == 43052 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 43052 'A' i == 43053 ')' state: lhs_alias_1  token: A
+skip: false tstart == 43053 ')' i == 43054 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 43055 ':' i == 43058 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 43059 'o' i == 43065 '(' state: in_rhs  token: object
+skip: false tstart == 43065 '(' i == 43066 'B' state: in_rhs  token: (
+skip: false tstart == 43066 'B' i == 43067 ')' state: rhs_alias_1  token: B
+skip: false tstart == 43067 ')' i == 43068 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 43069 'D' i == 43074 ' ' state: in_rhs  token: DOT_L
+skip: false tstart == 43075 'd' i == 43087 '(' state: in_rhs  token: dashproperty
+skip: false tstart == 43087 '(' i == 43088 'P' state: in_rhs  token: (
+skip: false tstart == 43088 'P' i == 43089 ')' state: rhs_alias_1  token: P
+skip: false tstart == 43089 ')' i == 43090 '.' state: rhs_alias_2  token: )
+skip: false tstart == 43090 '.' i == 43091 ' ' state: in_rhs  token: .
+skip: false tstart == 43097 '{' i == 43122 '}' state: waiting_for_decl_or_rule  token: {A=pik_property_of(B,&P);
+skip: true tstart == 43124 'e' i == 43128 '(' state: waiting_for_decl_or_rule  token: expr
+skip: false tstart == 43128 '(' i == 43129 'A' state: waiting_for_arrow  token: (
+skip: false tstart == 43129 'A' i == 43130 ')' state: lhs_alias_1  token: A
+skip: false tstart == 43130 ')' i == 43131 ' ' state: lhs_alias_2  token: )
+skip: false tstart == 43132 ':' i == 43135 ' ' state: lhs_alias_3  token: ::=
+skip: false tstart == 43136 'o' i == 43142 '(' state: in_rhs  token: object
+skip: false tstart == 43142 '(' i == 43143 'B' state: in_rhs  token: (
+skip: false tstart == 43143 'B' i == 43144 ')' state: rhs_alias_1  token: B
+skip: false tstart == 43144 ')' i == 43145 ' ' state: rhs_alias_2  token: )
+skip: false tstart == 43146 'D' i == 43151 ' ' state: in_rhs  token: DOT_L
+skip: false tstart == 43152 'c' i == 43165 '(' state: in_rhs  token: colorproperty
+skip: false tstart == 43165 '(' i == 43166 'P' state: in_rhs  token: (
+skip: false tstart == 43166 'P' i == 43167 ')' state: rhs_alias_1  token: P
+skip: false tstart == 43167 ')' i == 43168 '.' state: rhs_alias_2  token: )
+skip: false tstart == 43168 '.' i == 43169 ' ' state: in_rhs  token: .
+skip: false tstart == 43174 '{' i == 43199 '}' state: waiting_for_decl_or_rule  token: {A=pik_property_of(B,&P);
+skip: true tstart == 43203 '%' i == 43204 'c' state: waiting_for_decl_or_rule  token: %
+skip: false tstart == 43204 'c' i == 43208 ' ' state: waiting_for_decl_keyword  token: code
+skip: false tstart == 43209 '{' i == 201702 '}' state: waiting_for_decl_arg  token: {
+
+
+/* Chart of the 148 official CSS color names w...
+got here
+alloc 158528 bytes
+alloc ok
+post alloc
+zIdx is 6 less than n, not 20
+skip: true lemon for great justice!

@@ -179,6 +179,24 @@ const Symbol = struct {
         starter.name = "!!!Invalid";
         break :start starter;
     };
+
+    pub fn create(allocator: Allocator) !*Symbol {
+        const sp = try allocator.create(Symbol);
+        errdefer allocator.destroy(sp);
+        sp.* = .empty;
+        // I think it's possible to ask for just an address and not get one,
+        // and even a zero-sized address should be book-kept, so we'll do it
+        // straight:
+        sp.firstset = try allocator.alloc(bool, 0);
+        errdefer allocator.free(sp.firstset);
+        sp.destructor = try allocator.alloc(u8, 0);
+        errdefer allocator.free(sp.destructor);
+        sp.datatype = try allocator.alloc(u8, 0);
+        errdefer allocator.free(sp.datatype);
+        sp.subsym = try allocator.alloc(*Symbol, 0);
+        errdefer allocator.free(sp.subsym);
+        return sp;
+    }
 };
 
 /// Each production rule in the grammar is stored in the following structure.
@@ -533,6 +551,53 @@ const Lemon = struct {
         .nolineosflag = false,
         .argv = &.{},
     };
+
+    pub fn create(allocator: Allocator) !*Lemon {
+        const gp = try allocator.create(Lemon);
+        errdefer allocator.destroy(gp);
+        gp.sorted = try allocator.alloc(*Symbol, 0);
+        errdefer allocator.free(gp.sorted);
+        gp.name = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.name);
+        gp.arg = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.arg);
+        gp.ctx = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.ctx);
+        gp.tokentype = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.tokentype);
+        gp.vartype = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.vartype);
+        gp.start = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.start);
+        gp.stacksize = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.stacksize);
+        gp.include = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.include);
+        gp.@"error" = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.@"error");
+        gp.overflow = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.overflow);
+        gp.failure = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.failure);
+        gp.accept = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.accept);
+        gp.extracode = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.extracode);
+        gp.tokendest = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.tokendest);
+        gp.vardest = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.vardest);
+        gp.filename = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.filename);
+        gp.outname = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.outname);
+        gp.tokenprefix = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.tokenprefix);
+        gp.reallocFunc = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.reallocFunc);
+        gp.argv = try allocator.alloc([]u8, 0);
+        return gp;
+    }
 };
 
 //| [324] Action stuff
@@ -765,7 +830,7 @@ const ActTable = struct {
 //| [1500] ErrorMsg
 
 fn ErrorMsg(filename: []const u8, lineno: usize, comptime fmt: []const u8, args: anytype) void {
-    std.debug.print("{s}:{d}", .{ filename, lineno });
+    std.debug.print("{s}:{d}: ", .{ filename, lineno });
     std.debug.print(fmt, args);
     std.debug.print("{s}", .{"\n"});
 }
@@ -845,8 +910,6 @@ pub const PState = struct {
     firstrule: ?*Rule,
     /// Pointer to the most recently parsed rule
     lastrule: ?*Rule,
-    /// String intern pool
-    strsafe: StrSafe,
 
     pub const empty: PState = .{
         .allocator = undefined,
@@ -872,15 +935,18 @@ pub const PState = struct {
         .preccounter = 0,
         .firstrule = null,
         .lastrule = null,
-        .strsafe = undefined,
     };
 
-    pub fn create(allocator: Allocator, gp: *Lemon, strsafe: StrSafe) !*PState {
+    pub fn create(allocator: Allocator, gp: *Lemon) !*PState {
         var psp = try allocator.create(PState);
+        errdefer allocator.destroy(psp);
         psp.* = .empty;
         psp.allocator = allocator;
         psp.gp = gp;
-        psp.strsafe = strsafe;
+        psp.rhs = try allocator.alloc(*Symbol, MAXRHS);
+        errdefer allocator.free(psp.rhs);
+        psp.alias = try allocator.alloc([]const u8, MAXRHS);
+        errdefer allocator.free(psp.alias);
         return psp;
     }
 
@@ -894,16 +960,22 @@ pub const PState = struct {
 };
 
 fn parseonetoken(psp: *PState, x_init: []const u8) !void {
-    const x = try psp.strsafe.intern(x_init);
+    const x = try Strsafe(x_init);
     // This seems to be presumed (?)
     assert(x.len != 0);
+    std.debug.print("state: {s}  ", .{@tagName(psp.state)});
+    if (x.len < 50) {
+        std.debug.print("token: {s}\n", .{x});
+    } else {
+        std.debug.print("token: {s}...\n", .{x[0..50]});
+    }
     state: switch (psp.state) {
         .initialize => { // TODO: Probably just do this first yeah
             psp.prevrule = null;
             psp.preccounter = 0;
             psp.firstrule, psp.lastrule = .{ null, null };
             psp.gp.nrule = 0;
-            continue :state .waiting_for_decl_keyword;
+            continue :state .waiting_for_decl_or_rule;
         },
         .waiting_for_decl_or_rule => {
             if (x[0] == '%') {
@@ -1084,7 +1156,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     psp.errorcnt += 1;
                     psp.state = .resync_after_rule_error;
                 }
-            } else if (x[0] == '(' and psp.nrhs == 0) {
+            } else if (x[0] == '(' and psp.nrhs > 0) {
                 psp.state = .rhs_alias_1;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
@@ -1324,14 +1396,21 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     };
                     n += psp.filename.len + nBack;
                 }
+                std.debug.print("got here\n", .{});
                 // We put this back on declargslot and PSP once we know how long the
                 // slice actually should be.
                 const zBuf = zbuf: {
-                    if (declargslot.*.len == 0)
-                        break :zbuf try psp.allocator.alloc(u8, n)
-                    else
+                    if (declargslot.*.len == 0) {
+                        std.debug.print("alloc {d} bytes\n", .{n});
+                        const new_buf = try psp.allocator.alloc(u8, n);
+                        std.debug.print("alloc ok\n", .{});
+                        break :zbuf new_buf;
+                    } else {
+                        std.debug.print("realloc\n", .{});
                         break :zbuf try psp.allocator.realloc(declargslot.*, n);
+                    }
                 };
+                std.debug.print("post alloc\n", .{});
                 @memcpy(zBuf[0..zOld.len], zOld);
                 zIdx += zOld.len;
                 if (addLineMacro) {
@@ -1553,10 +1632,13 @@ const declarations = std.StaticStringMap(Declaration).initComptime(directive_lis
 fn scan(ps: *PState, fb: [:0]const u8) !void {
     var i: usize = 0;
     var lineno: usize = 1;
-    var skip: bool = false; // True when we advance one more before loop
     scanning: while (i < fb.len) {
+        var skip: bool = false; // True when we advance one more before loop
         if (fb[i] == '\n') lineno += 1;
-        if (isSpace(fb[i])) continue :scanning; // Skip all whitespace
+        if (isSpace(fb[i])) {
+            i += 1;
+            continue :scanning;
+        } // Skip all whitespace
         // Skip C++ style comments
         if (fb[i] == '/' and fb[i + 1] == '/') {
             i += 2;
@@ -1578,6 +1660,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
             i += 1;
             if (fb[i] != 0) continue :scanning;
         }
+        std.debug.print("tstart == {d} '{u}' ", .{ i, fb[i] });
         ps.tokenstart = i; // Mark the beginning of the token
         ps.tokenlineno = lineno; // Linenumber on which token begins
         if (fb[i] == '"') { // String literals
@@ -1636,7 +1719,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
                 skip = true; // Clip end of C blocks also
             }
         } else if (isAlnum(fb[i])) {
-            while (fb[i] != 0 and isAlnum(fb[i])) : (i += 1) {}
+            while (fb[i] != 0 and (isAlnum(fb[i]) or fb[i] == '_')) : (i += 1) {}
         } else if (i + 2 < fb.len and fb[i] == ':' and fb[i + 1] == ':' and fb[i + 2] == '=') {
             i += 3;
         } else if (fb[i] == '/' or fb[i] == '|' and isAlpha(fb[i + 1])) {
@@ -1646,7 +1729,9 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
             i += 1;
         }
         const x = fb[ps.tokenstart..i];
+        std.debug.print("i == {d} '{u}' ", .{ i, fb[i] });
         try parseonetoken(ps, x);
+        std.debug.print("skip: {any} ", .{skip});
         if (skip) i += 1; // End byte of string and code tokens.
     }
 }
@@ -1731,16 +1816,16 @@ pub fn main() !void {
         std.debug.print("didnt read to end of file {s}\n", .{filename});
         std.process.exit(1);
     }
-    const lemon = try allocator.create(Lemon);
-    lemon.* = .empty;
-    var pstate = try allocator.create(PState);
-    pstate.* = .empty;
+    const lemon = try Lemon.create(allocator);
+    var pstate = try PState.create(allocator, lemon);
     pstate.gp = lemon;
+    pstate.filename = filename;
 
     try scan(pstate, filebuf);
 
     std.debug.print("lemon for great justice!\n", .{});
-    std.process.cleanExit();
+    //std.process.cleanExit();
+    std.process.exit(0);
 }
 
 test "exe mentioned" {
@@ -1823,8 +1908,7 @@ const SymbolSafe = struct {
             return sym;
         }
         try symsafe.safe.ensureUnusedCapacity(symsafe.allocator, 1);
-        const sp = try symsafe.allocator.create(Symbol);
-        sp.* = .empty;
+        const sp = try Symbol.create(symsafe.allocator);
         sp.name = x;
         symsafe.safe.putAssumeCapacity(x, sp);
         return sp;
