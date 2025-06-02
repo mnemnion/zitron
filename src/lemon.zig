@@ -873,6 +873,49 @@ pub const PState = struct {
     lastrule: ?*Rule,
     /// String intern pool
     strsafe: StrSafe,
+
+    pub const empty: PState = .{
+        .allocator = undefined,
+        .filename = "",
+        .tokenlineno = 0,
+        .errorcnt = 0,
+        .gp = undefined,
+        .state = .initialize,
+        .fallback = null,
+        .tkclass = &Symbol.empty,
+        .lhs = &Symbol.empty,
+        .lhsalias = &Symbol.empty,
+        .nrhs = 0,
+        .rhs = &.{},
+        .alias = &.{""},
+        .prevrule = null,
+        .declkeyword = "",
+        .declargslot = null,
+        .insertLineMacro = false,
+        .decllinenoslot = null,
+        .declassoc = .unk,
+        .preccounter = 0,
+        .firstrule = null,
+        .lastrule = null,
+        .strsafe = undefined,
+    };
+
+    pub fn create(allocator: Allocator, gp: *Lemon, strsafe: StrSafe) !*PState {
+        var psp = try allocator.create(PState);
+        psp.* = .empty;
+        psp.allocator = allocator;
+        psp.gp = gp;
+        psp.strsafe = strsafe;
+        return psp;
+    }
+
+    // No clue how to dispose of things yet. But I think the answer is that Symbols all
+    // live in the intern pool, with the strings, and we just nuke 'em at the end.
+    // So...
+
+    pub fn destroy(ps: *PState) void {
+        ps.allocator.destroy(ps);
+    }
 };
 
 const StrSafe = struct {
@@ -1069,10 +1112,9 @@ fn parseonetoken(psp: *PState) !void {
                     msp.name = origmsp.name;
                     psp.rhs[psp.nrhs - 1] = msp;
                 }
-                // TODO: This assumes there is a symbol after the pipe. That's probably true but we
-                // should check the tokenizer at some point.
                 msp.nsubsym += 1;
                 msp.subsym = try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
+                // We know x[1] exists and is terminal-shaped, so this is valid:
                 msp.subsym[msp.nsubsym - 1] = Symbol_new(x[1..]);
                 if (isLower(x[1]) || isLower(msp.subsym[0].name[0])) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
@@ -1309,7 +1351,8 @@ fn parseonetoken(psp: *PState) !void {
                     psp.tokenlineno > 1 and
                     (psp.decllinenoslot == null or psp.decllinenoslot.?.* != 0);
                 if (addLineMacro) {
-                    const nBack = std.mem.count(u8, psp.filename, "\\");
+                    var nBack = std.mem.count(u8, psp.filename, "\\");
+                    nBack += std.mem.count(u8, psp.filename, '"');
                     zLine = std.fmt.bufPrint(zBuffer, "#line {d} ", .{psp.tokenlineno}) catch |err| {
                         // Should be literally impossible but ¯\_(ツ)_/¯
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
@@ -1330,6 +1373,9 @@ fn parseonetoken(psp: *PState) !void {
                 @memcpy(zBuf[0..zOld.len], zOld);
                 zIdx += zOld.len;
                 if (addLineMacro) {
+                    // TODO: there's no reason to do this repeatedly for every loop,
+                    // the file name is not going to change.  This should be
+                    // calculated once on load and the value put on gp, *Lemon.
                     if (zIdx > 0 and zBuf[zIdx - 1] != '\n') {
                         zBuf[zIdx] = '\n';
                         zIdx += 1;
@@ -1338,7 +1384,7 @@ fn parseonetoken(psp: *PState) !void {
                     zIdx += zLine.len + 1;
                     zBuf[zIdx - 1] = '"';
                     for (0..psp.filename.len) |i| {
-                        if (psp.filename[i] == '\\') {
+                        if (psp.filename[i] == '\\' or psp.filename[i] == '"') {
                             zBuf[zIdx] = '\\';
                             zIdx += 1;
                         }
@@ -1537,7 +1583,7 @@ const directive_list = [_]struct { []const u8, Declaration }{
 const declarations = std.StaticStringMap(Declaration).initComptime(directive_list);
 
 /// Lemon puts the scanner loop in `main`, I prefer it separate.
-fn scan(ps: *PState, fb: []const u8) !void {
+fn scan(ps: *PState, fb: [:0]const u8) !void {
     var i: usize = 0;
     var lineno: usize = 1;
     var skip: bool = false; // True when we advance one more before loop
@@ -1545,34 +1591,34 @@ fn scan(ps: *PState, fb: []const u8) !void {
         if (fb[i] == '\n') lineno += 1;
         if (isSpace(fb[i])) continue :scanning; // Skip all whitespace
         // Skip C++ style comments
-        if (fb[i] == '/' and i + 1 < fb.len and fb[i + 1] == '/') {
+        if (fb[i] == '/' and fb[i + 1] == '/') {
             i += 2;
-            while (i < fb.len and fb[i] != '\n') : (i += 1) {}
-            if (i < fb.len) {
+            while (fb[i] != '\n' and fb[i] != 0) : (i += 1) {}
+            if (fb[i] != 0) {
                 i += 1;
                 continue :scanning;
             } else break :scanning;
         }
         // Skip C style comments
-        if (fb[i] == '/' and i + 1 < fb.len and fb[i + 1] == '*') {
+        if (fb[i] == '/' and fb[i + 1] == '*') {
             i += 2;
-            if (i < fb.len) break :scanning;
+            if (fb[i] != 0) break :scanning;
             if (fb[i] == '*') i += 1;
-            if (i < fb.len) break :scanning;
-            while (i < fb.len and (fb[i] != '/' or fb[i - 1] != '*')) : (i += 1) {
+            if (fb[i] != 0) break :scanning;
+            while (fb[i] != 0 and (fb[i] != '/' or fb[i - 1] != '*')) : (i += 1) {
                 if (fb[i] == '\n') lineno += 1;
             }
             i += 1;
-            if (i < fb.len) continue :scanning;
+            if (fb[i] != 0) continue :scanning;
         }
         ps.tokenstart = i; // Mark the beginning of the token
         ps.tokenlineno = lineno; // Linenumber on which token begins
         if (fb[i] == '"') { // String literals
             i += 1;
-            while (i < fb.len and fb[i] != '"') : (i += 1) {
+            while (fb[i] != 0 and fb[i] != '"') : (i += 1) {
                 if (fb[i] == '\n') lineno += 1;
             }
-            if (i >= fb.len) {
+            if (fb[i] == 0) {
                 ErrorMsg(ps.filename, ps.tokenlineno, "" ++
                     "String starting on this line is not terminated before " ++
                     "the end of the file.", .{});
@@ -1584,7 +1630,7 @@ fn scan(ps: *PState, fb: []const u8) !void {
         } else if (fb[i] == '{') { // A block of C code
             var level: usize = 1;
             i += 1;
-            while (i < fb.len and (level > 1 or fb[i] != '}')) : (i += 1) {
+            while (fb[i] != 0 and (level > 1 or fb[i] != '}')) : (i += 1) {
                 if (fb[i] == '\n') lineno += 1 //
                 else if (fb[i] == '{') level += 1 //
                 else if (fb[i] == '}') level -= 1 //
@@ -1592,26 +1638,26 @@ fn scan(ps: *PState, fb: []const u8) !void {
                     // Skip C comments
                     i += 2;
                     var prev: u8 = 0;
-                    while (i < fb.len and (fb[i] != '/' or prev != '*')) : (i += 1) {
+                    while (fb[i] != 0 and (fb[i] != '/' or prev != '*')) : (i += 1) {
                         if (fb[i] == '\n') lineno += 1;
                         prev = fb[i];
                     }
-                } else if (fb[i] == '/' and i + 1 < fb.len and fb[i + 1] == '/') {
+                } else if (fb[i] == '/' and fb[i + 1] == '/') {
                     // Skip C++ comments too
                     i += 2;
-                    while (i < fb.len and fb[i] != '\n') : (i += 1) {}
+                    while (fb[i] != 0 and fb[i] != '\n') : (i += 1) {}
                 } else if (fb[i] == '"' or fb[i] == '\'') {
                     // String or character literals (since the latter can have " in it)
                     const startchar = fb[i];
                     var prevc = 0;
                     i += 1;
-                    while (i < fb.len and (fb[i] != startchar or prevc == '\\')) : (i += 1) {
+                    while (fb[i] != 0 and (fb[i] != startchar or prevc == '\\')) : (i += 1) {
                         if (fb[i] == '\n') lineno += 1;
                         if (prevc == '\\')
                             prevc = 0
                         else
                             prevc = fb[i]; // clever
-                    } // This is meant to accept valid C, not verify that the string is valid C
+                    }
                 }
             }
             if (i == fb.len and fb[i - 1] != '}') {
@@ -1623,12 +1669,12 @@ fn scan(ps: *PState, fb: []const u8) !void {
                 skip = true; // Clip end of C blocks also
             }
         } else if (isAlnum(fb[i])) {
-            while (i < fb.len and isAlnum(fb[i])) : (i += 1) {}
+            while (fb[i] != 0 and isAlnum(fb[i])) : (i += 1) {}
         } else if (i + 2 < fb.len and fb[i] == ':' and fb[i + 1] == ':' and fb[i + 2] == '=') {
             i += 3;
-        } else if (i + 1 < fb.len and fb[i] == '/' or fb[i] == '|' and isAlpha(fb[i])) {
+        } else if (fb[i] == '/' or fb[i] == '|' and isAlpha(fb[i + 1])) {
             i += 2;
-            while (i < fb.len and (isAlnum(fb[i + 1]) or fb[i + 1] == '_')) : (i += 1) {}
+            while (fb[i] != 0 and (isAlnum(fb[i + 1]) or fb[i + 1] == '_')) : (i += 1) {}
         } else { //  All other (one character) operators
             i += 1;
         }
