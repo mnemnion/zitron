@@ -239,21 +239,33 @@ const Config = struct {
     /// The rule upon which the configuration is based
     rp: *Rule,
     /// The parse point
-    dot: int,
+    dot: u32,
     /// Follow-set for this configuration only
     fws: []bool,
     /// Follow-set forward propagation links
-    fplp: ?*PLink = null,
+    fplp: ?*PLink,
     /// Follow-set backwards propagation links
-    bplp: ?*PLink = null,
+    bplp: ?*PLink,
     /// Pointer to state which contains this
-    stp: ?*State = null,
+    stp: ?*State,
     /// used during followset and shift computations
-    status: ConfigStatus = .incomplete,
+    status: ConfigStatus,
     /// Next configuration in the state
-    next: ?*Config = null,
+    next: ?*Config,
     /// The next basis configuration
-    bp: ?*Config = null,
+    bp: ?*Config,
+
+    pub const empty: Config = .{
+        .rp = undefined,
+        .dot = 0,
+        .fws = &.{},
+        .fplp = null,
+        .bplp = null,
+        .stp = null, // ??
+        .status = .incomplete,
+        .next = null,
+        .bp = null,
+    };
 };
 
 const E_Action = enum(u4) {
@@ -1619,24 +1631,38 @@ pub fn main() void {
     }
     const allocator = dbga.allocator();
     action_allocator = ActionAllocator.init(std.heap.page_allocator);
-    defer action_allocator.reset();
+    defer action_allocator.deinit();
     ConfigList_init(allocator, .init(std.heap.page_allocator));
-    defer config_lists.pool.reset();
+    defer config_lists.pool.deinit();
     config_lists.allocator = allocator;
     Strsafe_init(allocator);
     defer Strsafe_free();
     Symbol_init(allocator);
     defer Symbol_free();
 
+    var args = try std.process.argsWithAllocator(allocator);
+    defer args.deinit();
+    var maybe_filename: ?[]const u8 = null;
+    _ = args.next(); // lemon, presumably
+    while (args.next()) |arg| {
+        maybe_filename = arg;
+    }
+    if (maybe_filename == null) {
+        std.debug.print("lemon.zig needs a filename\n", .{});
+        std.process.exit(1);
+    }
+    const filename = maybe_filename.?;
+    _ = filename;
+
     std.debug.print("lemon for great justice!\n", .{});
-    std.process.exit(0);
+    std.process.cleanExit();
 }
 
 test "exe mentioned" {
     std.debug.print("hello from lemon main\n", .{});
 }
 
-// Global State
+//| Global State
 //
 // lemon.c uses some judicious static globals, and if only to
 // ease porting, lemon.zig does likewise.
@@ -1674,7 +1700,7 @@ const StrSafe = struct {
     }
 };
 
-fn Strsafe_init(allocator: Allocator) !void {
+fn Strsafe_init(allocator: Allocator) void {
     if (is_a_strsafe) return; // I don't think this happens..
     defer is_a_strsafe = true;
     str_safe = .init(allocator);
@@ -1833,14 +1859,14 @@ fn Configlist_add(rp: *Rule, dot: int) !*Config {
     const maybe_cfp = config_lists.config_table.getKey(&model);
     if (maybe_cfp) |cfp| return cfp;
     var cfp = try newconfig();
-    cfp.* = .{};
+    cfp.* = .empty;
     cfp.rp = rp;
     cfp.dot = dot;
     cfp.fws = try config_lists.allocator.alloc(bool, set_size);
     @memset(cfp.fws, false);
     config_lists.currentend.* = cfp;
     config_lists.currentend = &cfp.next;
-    config_lists.config_table.put(config_lists.allocator, cfp, {});
+    try config_lists.config_table.put(config_lists.allocator, cfp, {});
     return cfp;
 }
 
@@ -1852,7 +1878,7 @@ fn Configlist_addbasis(rp: *Rule, dot: int) !*Config {
     const maybe_cfp = config_lists.config_table.getKey(&model);
     if (maybe_cfp) |cfp| return cfp;
     var cfp = try newconfig();
-    cfp.* = .{}; // TODO: should 'really' be an .empty
+    cfp.* = .empty;
     cfp.rp = rp;
     cfp.dot = dot;
     cfp.fws = try config_lists.allocator.alloc(bool, set_size);
@@ -1861,7 +1887,7 @@ fn Configlist_addbasis(rp: *Rule, dot: int) !*Config {
     config_lists.currentend = cfp.next;
     config_lists.basisend.* = cfp;
     config_lists.basisend = &cfp.bp;
-    config_lists.config_table.put(config_lists.allocator, cfp, {});
+    try config_lists.config_table.put(config_lists.allocator, cfp, {});
     return cfp;
 }
 
