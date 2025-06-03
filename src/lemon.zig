@@ -28,6 +28,10 @@ const isSpace = std.ascii.isWhitespace;
 
 const assert = std.debug.assert;
 
+const exit = std.process.exit;
+
+const logger = std.log.scoped(.lemon);
+
 fn dbgassert(ok: bool) void {
     if (builtin.mode == .Debug) {
         assert(ok);
@@ -37,6 +41,7 @@ fn dbgassert(ok: bool) void {
 // Various print control variables
 
 const p_print = false;
+const p_errcnt = true;
 
 // NOTE: This is not, in fact, how strcmp works.  If it turns out
 // I need anything other than != 0 and == 0 from strcmp, which I doubt,
@@ -517,7 +522,7 @@ const Lemon = struct {
     printPreprocessed: bool,
     has_fallback: bool,
     nolineosflag: bool,
-    argv: [][]u8,
+    argv: [][:0]u8,
 
     pub const empty: Lemon = .{
         .sorted = &.{},
@@ -573,6 +578,7 @@ const Lemon = struct {
     pub fn create(allocator: Allocator) !*Lemon {
         const gp = try allocator.create(Lemon);
         errdefer allocator.destroy(gp);
+        gp.* = .empty;
         gp.sorted = try allocator.alloc(*Symbol, 0);
         errdefer allocator.free(gp.sorted);
         gp.name = try allocator.alloc(u8, 0);
@@ -613,7 +619,7 @@ const Lemon = struct {
         errdefer allocator.free(gp.tokenprefix);
         gp.reallocFunc = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.reallocFunc);
-        gp.argv = try allocator.alloc([]u8, 0);
+        gp.argv = undefined; // populated by std.process.argsAlloc.
         return gp;
     }
 
@@ -1018,6 +1024,9 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
     } else {
         std.debug.print("token: {s}...\n", .{x[0..50]});
     };
+    if (p_errcnt) if (psp.gp.errorcnt > 0) {
+        std.debug.print("error count: {d}\n", .{psp.gp.errorcnt});
+    };
     state: switch (psp.state) {
         .initialize => { // TODO: Probably just do this first yeah
             psp.prevrule = null;
@@ -1030,7 +1039,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
             if (x[0] == '%') {
                 psp.state = .waiting_for_decl_keyword;
             } else if (isLower(x[0])) {
-                // psp.lhs = Symbol_new(x);
+                psp.lhs = try Symbol_new(x);
                 psp.nrhs = 0;
                 psp.lhsalias = "";
                 psp.state = .waiting_for_arrow;
@@ -1181,7 +1190,8 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 var msp = psp.rhs[psp.nrhs - 1];
                 if (msp.type != .multiterminal) {
                     const origmsp = msp;
-                    msp = try psp.allocator.create(Symbol);
+                    msp = try Symbol.create(psp.allocator);
+                    errdefer msp.destroy(psp.allocator);
                     msp.* = .empty;
                     msp.type = .multiterminal;
                     msp.nsubsym = 1;
@@ -1191,6 +1201,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     psp.rhs[psp.nrhs - 1] = msp;
                     // These go on a separate freelist
                     const fl = try psp.allocator.create(SymFreelist);
+                    errdefer comptime unreachable;
                     fl.* = .{
                         .sp = msp,
                         .next = null,
@@ -1203,12 +1214,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     }
                 }
                 msp.nsubsym += 1;
-                msp.subsym = subsym: {
-                    if (msp.subsym.len == 0)
-                        break :subsym try psp.allocator.alloc(*Symbol, 1)
-                    else
-                        break :subsym try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
-                };
+                msp.subsym = try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
                 // We know x[1] exists and is terminal-shaped, so this is valid:
                 msp.subsym[msp.nsubsym - 1] = try Symbol_new(x[1..]);
                 if (isLower(x[1]) or isLower(msp.subsym[0].name[0])) {
@@ -1428,7 +1434,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 // NOTE: This is a difficult translation, because we eschew two
                 // Cisms: the null sentinel, and (consequently) bare char *. So
                 // idiomatic Zig looks quite different.
-                var zBuffer: [50]u8 = undefined;
+                var zBuffer: [50]u8 = undefined; // Line macro buffer
                 // The code assumes declargslot is pointing at something, so null should be
                 // unreachable here:
                 const declargslot = psp.declargslot.?;
@@ -1458,21 +1464,9 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     }; // 3 for ", ", \n:
                     n += zLine.len + psp.filename.len + nBack + 3;
                 }
-                if (p_print) std.debug.print("got here\n", .{});
                 // We put this back on declargslot and PSP once we know how long the
                 // slice actually should be.
-                const zBuf = zbuf: {
-                    if (declargslot.*.len == 0) {
-                        if (p_print) std.debug.print("alloc {d} bytes\n", .{n});
-                        const new_buf = try psp.allocator.alloc(u8, n);
-                        if (p_print) std.debug.print("alloc ok\n", .{});
-                        break :zbuf new_buf;
-                    } else {
-                        if (p_print) std.debug.print("realloc\n", .{});
-                        break :zbuf try psp.allocator.realloc(declargslot.*, n);
-                    }
-                };
-                if (p_print) std.debug.print("post alloc\n", .{});
+                const zBuf = try psp.allocator.realloc(declargslot.*, n);
                 @memcpy(zBuf[0..zOld.len], zOld);
                 zIdx += zOld.len;
                 if (addLineMacro) {
@@ -1505,9 +1499,8 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 zIdx += zNew.len;
                 // Finally, we put it all where it's pointed:
                 declargslot.* = zBuf;
-                assert(zIdx == zBuf.len);
-                // I think we need this, otherwise why zOld?
-                psp.declargslot = declargslot;
+                dbgassert(zIdx == zBuf.len);
+                dbgassert(psp.declargslot == declargslot);
                 psp.state = .waiting_for_decl_or_rule;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
@@ -1686,7 +1679,7 @@ const directive_list = [_]struct { []const u8, Declaration }{
 
 const declarations = std.StaticStringMap(Declaration).initComptime(directive_list);
 
-/// Lemon puts the scanner loop in `main`, I prefer it separate.
+/// Lemon puts the scanner loop in `Parse`, I prefer it separate.
 fn scan(ps: *PState, fb: [:0]const u8) !void {
     var i: usize = 0;
     var lineno: usize = 1;
@@ -1854,24 +1847,24 @@ pub fn main() !void {
 
     defer {
         while (sym_freelist) |free| {
-            allocator.destroy(free.sp);
+            free.sp.destroy(allocator);
             sym_freelist = free.next;
             allocator.destroy(free);
         }
     }
 
-    var args = try std.process.argsWithAllocator(allocator);
-    defer args.deinit();
-    var maybe_filename: ?[]const u8 = null;
-    _ = args.next(); // lemon, presumably
-    while (args.next()) |arg| {
-        maybe_filename = arg;
-    }
-    if (maybe_filename == null) {
-        std.debug.print("lemon.zig needs a filename\n", .{});
-        std.process.exit(1);
-    }
-    const filename = maybe_filename.?;
+    const args = try std.process.argsAlloc(allocator);
+    // TODO: Quirk-compatible flags parser.  Do this last-ish.
+    // [1636-1689] - todo
+    defer std.process.argsFree(allocator, args);
+    const filename: []const u8 = file: {
+        if (args.len >= 1) {
+            break :file args[1];
+        } else {
+            std.debug.print("lemon.zig needs a filename\n", .{});
+            std.process.exit(1);
+        }
+    };
     const file = try std.fs.cwd().openFile(filename, .{});
     defer file.close();
     const end_pos = try file.getEndPos();
@@ -1882,18 +1875,32 @@ pub fn main() !void {
         std.debug.print("didnt read to end of file {s}\n", .{filename});
         std.process.exit(1);
     }
-    const lemon = try Lemon.create(allocator);
-    defer lemon.destroy(allocator);
-    var pstate = try PState.create(allocator, lemon);
+    const lem = try Lemon.create(allocator);
+    defer lem.destroy(allocator);
+    lem.argv = args;
+    // lem.basisflag = basisflag;
+    // lem.nolineosflag = nolineenosflag;
+    // lem.printPreprocessed = printPP;
+    _ = try Symbol_new("$"); // Why?
+    // TODO: Write a full parse file and move the file opening stuff there,
+    // with the Pstate, etc.
+    var pstate = try PState.create(allocator, lem);
     defer pstate.destroy();
-    pstate.gp = lemon;
+    pstate.gp = lem;
     pstate.filename = filename;
 
     try scan(pstate, filebuf);
+    if (lem.printPreprocessed or lem.errorcnt > 0) {
+        logger.err("exiting due to preprocess only or too many errors", .{});
+        exit(@truncate(lem.errorcnt));
+    }
+    if (lem.nrule == 0) {
+        logger.err("Empty grammar.", .{});
+        exit(1);
+    }
 
     std.debug.print("lemon for great justice!\n", .{});
     std.process.cleanExit();
-    // std.process.exit(0);
 }
 
 test "exe mentioned" {
@@ -1983,6 +1990,10 @@ const SymbolSafe = struct {
     }
 };
 
+//| Some symbols (due to multiterminals) have the same name as others,
+//| specifically their [0] subsym. So we can't keep them in the SymbolSafe:
+//| we create a separate freelist to store them.
+
 const SymFreelist = struct {
     sp: *Symbol,
     next: ?*SymFreelist,
@@ -2003,12 +2014,8 @@ fn Symbol_init(allocator: Allocator) void {
 fn Symbol_free() void {
     dbgassert(is_symbol_map);
     defer is_symbol_map = false;
-    // The assumption we make: symbol_map owns the values,
-    // having created them, but not the keys (belonging to
-    // strsafe), or any of the references, mostly belonging to
-    // strsafe as well.
     for (symbol_map.safe.values()) |v| {
-        symbol_map.allocator.destroy(v);
+        v.destroy(symbol_map.allocator);
     }
     symbol_map.safe.deinit(symbol_map.allocator);
 }
