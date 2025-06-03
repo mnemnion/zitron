@@ -9,6 +9,7 @@ got here
 alloc 30556 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 30565 '%' i == 30566 'n' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30566 'n' i == 30570 ' ' state: waiting_for_decl_keyword  token: name
 skip: false tstart == 30571 'p' i == 30581 '
@@ -17,6 +18,7 @@ got here
 alloc 30 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: false tstart == 30582 '%' i == 30583 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30583 't' i == 30595 ' ' state: waiting_for_decl_keyword  token: token_prefix
 skip: false tstart == 30596 'T' i == 30598 '
@@ -25,6 +27,7 @@ got here
 alloc 22 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: false tstart == 30599 '%' i == 30600 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30600 't' i == 30610 ' ' state: waiting_for_decl_keyword  token: token_type
 skip: false tstart == 30611 '{' i == 30618 '}' state: waiting_for_decl_arg  token: {PToken
@@ -32,6 +35,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 30620 '%' i == 30621 'e' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30621 'e' i == 30634 ' ' state: waiting_for_decl_keyword  token: extra_context
 skip: false tstart == 30635 '{' i == 30642 '}' state: waiting_for_decl_arg  token: {Pik *p
@@ -39,6 +43,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 30645 '%' i == 30646 'f' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30646 'f' i == 30654 ' ' state: waiting_for_decl_keyword  token: fallback
 skip: false tstart == 30655 'I' i == 30657 ' ' state: waiting_for_fallback_id  token: ID
@@ -76,6 +81,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 30788 '%' i == 30789 'd' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30789 'd' i == 30799 ' ' state: waiting_for_decl_keyword  token: destructor
 skip: false tstart == 30800 's' i == 30814 ' ' state: waiting_for_destructor_symbol  token: statement_list
@@ -84,6 +90,7 @@ got here
 alloc 41 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 30839 '%' i == 30840 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30840 't' i == 30844 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 30845 's' i == 30854 ' ' state: waiting_for_datatype_symbol  token: statement
@@ -92,6 +99,7 @@ got here
 alloc 25 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 30863 '%' i == 30864 'd' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30864 'd' i == 30874 ' ' state: waiting_for_decl_keyword  token: destructor
 skip: false tstart == 30875 's' i == 30884 ' ' state: waiting_for_destructor_symbol  token: statement
@@ -100,6 +108,7 @@ got here
 alloc 40 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 30908 '%' i == 30909 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30909 't' i == 30913 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 30914 'u' i == 30931 ' ' state: waiting_for_datatype_symbol  token: unnamed_statement
@@ -108,6 +117,7 @@ got here
 alloc 25 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 30940 '%' i == 30941 'd' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30941 'd' i == 30951 ' ' state: waiting_for_decl_keyword  token: destructor
 skip: false tstart == 30952 'u' i == 30969 ' ' state: waiting_for_destructor_symbol  token: unnamed_statement
@@ -116,6 +126,7 @@ got here
 alloc 40 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 30993 '%' i == 30994 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 30994 't' i == 30998 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 30999 'b' i == 31007 ' ' state: waiting_for_datatype_symbol  token: basetype
@@ -124,6 +135,7 @@ got here
 alloc 25 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31016 '%' i == 31017 'd' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31017 'd' i == 31027 ' ' state: waiting_for_decl_keyword  token: destructor
 skip: false tstart == 31028 'b' i == 31036 ' ' state: waiting_for_destructor_symbol  token: basetype
@@ -132,6 +144,7 @@ got here
 alloc 40 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31060 '%' i == 31061 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31061 't' i == 31065 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31066 'e' i == 31070 ' ' state: waiting_for_datatype_symbol  token: expr
@@ -140,6 +153,7 @@ got here
 alloc 24 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31078 '%' i == 31079 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31079 't' i == 31083 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31084 'n' i == 31095 ' ' state: waiting_for_datatype_symbol  token: numproperty
@@ -148,6 +162,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31105 '%' i == 31106 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31106 't' i == 31110 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31111 'e' i == 31115 ' ' state: waiting_for_datatype_symbol  token: edge
@@ -156,6 +171,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31125 '%' i == 31126 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31126 't' i == 31130 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31131 'd' i == 31140 ' ' state: waiting_for_datatype_symbol  token: direction
@@ -164,6 +180,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31150 '%' i == 31151 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31151 't' i == 31155 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31156 'd' i == 31168 ' ' state: waiting_for_datatype_symbol  token: dashproperty
@@ -172,6 +189,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31178 '%' i == 31179 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31179 't' i == 31183 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31184 'c' i == 31197 ' ' state: waiting_for_datatype_symbol  token: colorproperty
@@ -180,6 +198,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31207 '%' i == 31208 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31208 't' i == 31212 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31213 'l' i == 31224 ' ' state: waiting_for_datatype_symbol  token: locproperty
@@ -188,6 +207,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31234 '%' i == 31235 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31235 't' i == 31239 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31240 'p' i == 31248 ' ' state: waiting_for_datatype_symbol  token: position
@@ -196,6 +216,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31258 '%' i == 31259 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31259 't' i == 31263 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31264 'p' i == 31269 ' ' state: waiting_for_datatype_symbol  token: place
@@ -204,6 +225,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31279 '%' i == 31280 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31280 't' i == 31284 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31285 'o' i == 31291 ' ' state: waiting_for_datatype_symbol  token: object
@@ -212,6 +234,7 @@ got here
 alloc 25 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31300 '%' i == 31301 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31301 't' i == 31305 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31306 'o' i == 31316 ' ' state: waiting_for_datatype_symbol  token: objectname
@@ -220,6 +243,7 @@ got here
 alloc 25 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31325 '%' i == 31326 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31326 't' i == 31330 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31331 'n' i == 31334 ' ' state: waiting_for_datatype_symbol  token: nth
@@ -228,6 +252,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31344 '%' i == 31345 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31345 't' i == 31349 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31350 't' i == 31362 ' ' state: waiting_for_datatype_symbol  token: textposition
@@ -236,6 +261,7 @@ got here
 alloc 29 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31375 '%' i == 31376 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31376 't' i == 31380 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31381 'r' i == 31387 ' ' state: waiting_for_datatype_symbol  token: rvalue
@@ -244,6 +270,7 @@ got here
 alloc 24 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31395 '%' i == 31396 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31396 't' i == 31400 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31401 'l' i == 31407 ' ' state: waiting_for_datatype_symbol  token: lvalue
@@ -252,6 +279,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31417 '%' i == 31418 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31418 't' i == 31422 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31423 'e' i == 31427 ' ' state: waiting_for_datatype_symbol  token: even
@@ -260,6 +288,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31437 '%' i == 31438 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31438 't' i == 31442 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31443 'r' i == 31450 ' ' state: waiting_for_datatype_symbol  token: relexpr
@@ -268,6 +297,7 @@ got here
 alloc 24 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31458 '%' i == 31459 't' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31459 't' i == 31463 ' ' state: waiting_for_decl_keyword  token: type
 skip: false tstart == 31464 'o' i == 31474 ' ' state: waiting_for_datatype_symbol  token: optrelexpr
@@ -276,26 +306,27 @@ got here
 alloc 24 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 31483 '%' i == 31484 's' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31484 's' i == 31496 ' ' state: waiting_for_decl_keyword  token: syntax_error
 skip: false tstart == 31497 '{' i == 31651 '}' state: waiting_for_decl_arg  token: {
   if( TOKEN.z && TOKEN.z[0] ){
     pik_error(p, ...
 got here
-alloc 189 bytes
+alloc 199 bytes
 alloc ok
 post alloc
-zIdx is 7 less than n, not 20
+zIdx is 17 less than n
 skip: true tstart == 31653 '%' i == 31654 's' state: waiting_for_decl_or_rule  token: %
 skip: false tstart == 31654 's' i == 31668 ' ' state: waiting_for_decl_keyword  token: stack_overflow
 skip: false tstart == 31669 '{' i == 31715 '}' state: waiting_for_decl_arg  token: {
   pik_error(p, 0, "parser stack overflow");
 
 got here
-alloc 81 bytes
+alloc 91 bytes
 alloc ok
 post alloc
-zIdx is 7 less than n, not 20
+zIdx is 17 less than n
 skip: true tstart == 31718 'd' i == 31726 ' ' state: waiting_for_decl_or_rule  token: document
 skip: false tstart == 31727 ':' i == 31730 ' ' state: waiting_for_arrow  token: ::=
 skip: false tstart == 31731 's' i == 31745 '(' state: in_rhs  token: statement_list
@@ -729,6 +760,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 34649 's' i == 34657 '(' state: waiting_for_decl_or_rule  token: savelist
 skip: false tstart == 34657 '(' i == 34658 'A' state: waiting_for_arrow  token: (
 skip: false tstart == 34658 'A' i == 34659 ')' state: lhs_alias_1  token: A
@@ -1742,6 +1774,7 @@ got here
 alloc 26 bytes
 alloc ok
 post alloc
+zIdx is 20 less than n
 skip: true tstart == 40483 'p' i == 40488 '(' state: waiting_for_decl_or_rule  token: place
 skip: false tstart == 40488 '(' i == 40489 'A' state: waiting_for_arrow  token: (
 skip: false tstart == 40489 'A' i == 40490 ')' state: lhs_alias_1  token: A
@@ -2371,8 +2404,8 @@ skip: false tstart == 43209 '{' i == 201702 '}' state: waiting_for_decl_arg  tok
 
 /* Chart of the 148 official CSS color names w...
 got here
-alloc 158528 bytes
+alloc 158539 bytes
 alloc ok
 post alloc
-zIdx is 6 less than n, not 20
+zIdx is 17 less than n
 skip: true lemon for great justice!

@@ -34,6 +34,10 @@ fn dbgassert(ok: bool) void {
     }
 }
 
+// Various print control variables
+
+const p_print = false;
+
 // NOTE: This is not, in fact, how strcmp works.  If it turns out
 // I need anything other than != 0 and == 0 from strcmp, which I doubt,
 // I can decide how to handle that then.
@@ -197,6 +201,14 @@ const Symbol = struct {
         errdefer allocator.free(sp.subsym);
         return sp;
     }
+
+    pub fn destroy(sp: *Symbol, allocator: Allocator) void {
+        allocator.free(sp.firstset);
+        allocator.free(sp.destructor);
+        allocator.free(sp.datatype);
+        allocator.free(sp.subsym);
+        allocator.destroy(sp);
+    }
 };
 
 /// Each production rule in the grammar is stored in the following structure.
@@ -247,6 +259,12 @@ const Rule = struct {
     next: ?*Rule,
 
     pub const empty = std.mem.zeroInit(Rule, .{ .lhs = undefined });
+
+    pub fn destroy(rp: *Rule, allocator: Allocator) void {
+        allocator.free(rp.rhs);
+        allocator.free(rp.rhsalias);
+        allocator.destroy(rp);
+    }
 };
 
 const ConfigStatus = enum {
@@ -597,6 +615,30 @@ const Lemon = struct {
         errdefer allocator.free(gp.reallocFunc);
         gp.argv = try allocator.alloc([]u8, 0);
         return gp;
+    }
+
+    pub fn destroy(gp: *Lemon, allocator: Allocator) void {
+        allocator.free(gp.sorted);
+        allocator.free(gp.name);
+        allocator.free(gp.arg);
+        allocator.free(gp.ctx);
+        allocator.free(gp.tokentype);
+        allocator.free(gp.vartype);
+        allocator.free(gp.start);
+        allocator.free(gp.stacksize);
+        allocator.free(gp.include);
+        allocator.free(gp.@"error");
+        allocator.free(gp.overflow);
+        allocator.free(gp.failure);
+        allocator.free(gp.accept);
+        allocator.free(gp.extracode);
+        allocator.free(gp.tokendest);
+        allocator.free(gp.vardest);
+        allocator.free(gp.filename);
+        allocator.free(gp.outname);
+        allocator.free(gp.tokenprefix);
+        allocator.free(gp.reallocFunc);
+        allocator.destroy(gp);
     }
 };
 
@@ -953,8 +995,15 @@ pub const PState = struct {
     // No clue how to dispose of things yet. But I think the answer is that Symbols all
     // live in the intern pool, with the strings, and we just nuke 'em at the end.
     // So...
-
     pub fn destroy(ps: *PState) void {
+        ps.allocator.free(ps.rhs);
+        ps.allocator.free(ps.alias);
+        var rule_p = ps.firstrule;
+        while (rule_p) |r| {
+            const next = r.next;
+            r.destroy(ps.allocator);
+            rule_p = next;
+        }
         ps.allocator.destroy(ps);
     }
 };
@@ -963,12 +1012,12 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
     const x = try Strsafe(x_init);
     // This seems to be presumed (?)
     assert(x.len != 0);
-    std.debug.print("state: {s}  ", .{@tagName(psp.state)});
-    if (x.len < 50) {
+    if (p_print) std.debug.print("state: {s}  ", .{@tagName(psp.state)});
+    if (p_print) if (x.len < 50) {
         std.debug.print("token: {s}\n", .{x});
     } else {
         std.debug.print("token: {s}...\n", .{x[0..50]});
-    }
+    };
     state: switch (psp.state) {
         .initialize => { // TODO: Probably just do this first yeah
             psp.prevrule = null;
@@ -1140,6 +1189,18 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     msp.subsym[0] = origmsp;
                     msp.name = origmsp.name;
                     psp.rhs[psp.nrhs - 1] = msp;
+                    // These go on a separate freelist
+                    const fl = try psp.allocator.create(SymFreelist);
+                    fl.* = .{
+                        .sp = msp,
+                        .next = null,
+                    };
+                    if (sym_freelist) |free| {
+                        fl.next = free;
+                        sym_freelist = fl;
+                    } else {
+                        sym_freelist = fl;
+                    }
                 }
                 msp.nsubsym += 1;
                 msp.subsym = subsym: {
@@ -1374,11 +1435,12 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 const zOld: []const u8 = declargslot.*;
                 const zNew = if (x[0] == '"' or x[0] == '{') x[1..] else x;
                 var zLine: []u8 = zBuffer[0..0];
-                // To close the slice, we have to track bytes written:
+                // To build the new slice, we have to track bytes written:
                 var zIdx: usize = 0;
-                // The original code leaves some buffer here, for some reason, so n
-                // is not, and will not become, the valid length of declargslot.*
-                var n = zOld.len + zNew.len + 20; // For...?
+                // The original code leaves some buffer here, because C
+                // makes it difficult to count sprintf statements.  A problem
+                // we do not have.
+                var n = zOld.len + zNew.len;
                 // Do we need a line macro?
                 const addLineMacro = !psp.gp.nolineosflag and
                     psp.insertLineMacro and
@@ -1393,24 +1455,24 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                             "Buffer overflow on #line directive print: {s}", .{@errorName(err)});
                         psp.errorcnt += 1;
                         break :slice zBuffer[0..0];
-                    };
-                    n += psp.filename.len + nBack;
+                    }; // 3 for ", ", \n:
+                    n += zLine.len + psp.filename.len + nBack + 3;
                 }
-                std.debug.print("got here\n", .{});
+                if (p_print) std.debug.print("got here\n", .{});
                 // We put this back on declargslot and PSP once we know how long the
                 // slice actually should be.
                 const zBuf = zbuf: {
                     if (declargslot.*.len == 0) {
-                        std.debug.print("alloc {d} bytes\n", .{n});
+                        if (p_print) std.debug.print("alloc {d} bytes\n", .{n});
                         const new_buf = try psp.allocator.alloc(u8, n);
-                        std.debug.print("alloc ok\n", .{});
+                        if (p_print) std.debug.print("alloc ok\n", .{});
                         break :zbuf new_buf;
                     } else {
-                        std.debug.print("realloc\n", .{});
+                        if (p_print) std.debug.print("realloc\n", .{});
                         break :zbuf try psp.allocator.realloc(declargslot.*, n);
                     }
                 };
-                std.debug.print("post alloc\n", .{});
+                if (p_print) std.debug.print("post alloc\n", .{});
                 @memcpy(zBuf[0..zOld.len], zOld);
                 zIdx += zOld.len;
                 if (addLineMacro) {
@@ -1441,13 +1503,9 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 };
                 @memcpy(zBuf[zIdx..][0..zNew.len], zNew);
                 zIdx += zNew.len;
-                // Finally, we can put a cap on declargslot:
-                declargslot.* = zBuf[0..zIdx];
-                // Let's check if that spurious 20 actually comes into play:
-                if (zIdx != cast(isize, n) - 20) {
-                    // TODO: Remove the extra bytes once this pans out.
-                    std.debug.print("zIdx is {d} less than n, not 20\n", .{cast(isize, n) - cast(isize, zIdx)});
-                }
+                // Finally, we put it all where it's pointed:
+                declargslot.* = zBuf;
+                assert(zIdx == zBuf.len);
                 // I think we need this, otherwise why zOld?
                 psp.declargslot = declargslot;
                 psp.state = .waiting_for_decl_or_rule;
@@ -1660,7 +1718,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
             i += 1;
             if (fb[i] != 0) continue :scanning;
         }
-        std.debug.print("tstart == {d} '{u}' ", .{ i, fb[i] });
+        if (p_print) std.debug.print("tstart == {d} '{u}' ", .{ i, fb[i] });
         ps.tokenstart = i; // Mark the beginning of the token
         ps.tokenlineno = lineno; // Linenumber on which token begins
         if (fb[i] == '"') { // String literals
@@ -1729,9 +1787,9 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
             i += 1;
         }
         const x = fb[ps.tokenstart..i];
-        std.debug.print("i == {d} '{u}' ", .{ i, fb[i] });
+        if (p_print) std.debug.print("i == {d} '{u}' ", .{ i, fb[i] });
         try parseonetoken(ps, x);
-        std.debug.print("skip: {any} ", .{skip});
+        if (p_print) std.debug.print("skip: {any} ", .{skip});
         if (skip) i += 1; // End byte of string and code tokens.
     }
 }
@@ -1794,6 +1852,14 @@ pub fn main() !void {
     Symbol_init(allocator);
     defer Symbol_free();
 
+    defer {
+        while (sym_freelist) |free| {
+            allocator.destroy(free.sp);
+            sym_freelist = free.next;
+            allocator.destroy(free);
+        }
+    }
+
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
     var maybe_filename: ?[]const u8 = null;
@@ -1817,15 +1883,17 @@ pub fn main() !void {
         std.process.exit(1);
     }
     const lemon = try Lemon.create(allocator);
+    defer lemon.destroy(allocator);
     var pstate = try PState.create(allocator, lemon);
+    defer pstate.destroy();
     pstate.gp = lemon;
     pstate.filename = filename;
 
     try scan(pstate, filebuf);
 
     std.debug.print("lemon for great justice!\n", .{});
-    //std.process.cleanExit();
-    std.process.exit(0);
+    std.process.cleanExit();
+    // std.process.exit(0);
 }
 
 test "exe mentioned" {
@@ -1914,6 +1982,13 @@ const SymbolSafe = struct {
         return sp;
     }
 };
+
+const SymFreelist = struct {
+    sp: *Symbol,
+    next: ?*SymFreelist,
+};
+
+threadlocal var sym_freelist: ?*SymFreelist = null;
 
 threadlocal var symbol_map: SymbolSafe = undefined;
 threadlocal var is_symbol_map = false;
