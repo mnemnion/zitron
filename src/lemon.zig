@@ -162,7 +162,7 @@ const Symbol = struct {
     destructor: []u8,
     /// Line number for start of destructor.  Set to
     /// -1 for duplicate destructors.
-    destLineno: int,
+    destLineno: ?u32,
     /// The data type of information held by this
     /// object. Only used if type==NONTERMINAL
     datatype: []u8,
@@ -181,21 +181,44 @@ const Symbol = struct {
     /// Array (slice) of constituent symbols
     subsym: []*Symbol,
 
-    pub const empty: Symbol = std.mem.zeroInit(Symbol, .{});
+    pub const empty: Symbol = .{
+        .name = "",
+        .index = 0,
+        .type = .nonterminal,
+        .rule = null,
+        .fallback = null,
+        .prec = null,
+        .assoc = .unk,
+        .lambda = false,
+        .firstset = undefined,
+        .usecnt = 0,
+        .destructor = undefined,
+        .destLineno = null,
+        .datatype = undefined,
+        .dtnum = 0,
+        .bContent = false,
+        .nsubsym = 0,
+        .subsym = undefined,
+    };
 
+    // Valid, if dodgy, mutable Symbol pointer target:
     pub var start: Symbol = start: {
         var starter: Symbol = .empty;
         starter.name = "!!!Invalid";
         break :start starter;
     };
 
-    pub fn create(allocator: Allocator) !*Symbol {
+    pub fn create(allocator: Allocator, name: []const u8) !*Symbol {
         const sp = try allocator.create(Symbol);
         errdefer allocator.destroy(sp);
         sp.* = .empty;
-        // I think it's possible to ask for just an address and not get one,
-        // and even a zero-sized address should be book-kept, so we'll do it
-        // straight:
+        //| [5446]
+        sp.name = name;
+        dbgassert(sp.name.len > 0);
+        if (isUpper(name[0])) {
+            sp.type = .terminal;
+        }
+        // These do return a pointer, conceivably that can fail?
         sp.firstset = try allocator.alloc(bool, 0);
         errdefer allocator.free(sp.firstset);
         sp.destructor = try allocator.alloc(u8, 0);
@@ -264,6 +287,12 @@ const Rule = struct {
     next: ?*Rule,
 
     pub const empty = std.mem.zeroInit(Rule, .{ .lhs = undefined });
+
+    pub fn create(allocator: Allocator) !void {
+        const rp = try allocator.create(Rule);
+        rp.* = .empty;
+        return rp;
+    }
 
     pub fn destroy(rp: *Rule, allocator: Allocator) void {
         allocator.free(rp.rhs);
@@ -949,7 +978,7 @@ pub const PState = struct {
     /// Add `#line` before declaration insert
     insertLineMacro: bool,
     /// Where to write declaration line number
-    decllinenoslot: ?*int,
+    decllinenoslot: ?*?u32, // The destination on Symbol is itself nullable.
     /// Assign this association to decl arguments
     declassoc: E_Assoc,
     /// Assign this precedence to decl arguments
@@ -1150,8 +1179,8 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 // Note that the original code allocates one contiguous block of
                 // bytes, doling them out to the three separate allocations below.
                 // Not without regret, I am not, at this time, willing to follow suit.
-                const rp = try psp.allocator.create(Rule);
-                rp.* = .empty;
+                const rp = try Rule.create(psp.allocator);
+                errdefer rp.destroy(psp.allocator);
                 rp.ruleline = psp.tokenlineno;
                 rp.rhs = try psp.allocator.alloc(*Symbol, psp.nrhs);
                 rp.rhsalias = try psp.allocator.alloc([]const u8, psp.nrhs);
@@ -1190,14 +1219,12 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 var msp = psp.rhs[psp.nrhs - 1];
                 if (msp.type != .multiterminal) {
                     const origmsp = msp;
-                    msp = try Symbol.create(psp.allocator);
+                    msp = try Symbol.create(psp.allocator, origmsp.name);
                     errdefer msp.destroy(psp.allocator);
-                    msp.* = .empty;
                     msp.type = .multiterminal;
                     msp.nsubsym = 1;
                     msp.subsym = try psp.allocator.alloc(*Symbol, 1);
                     msp.subsym[0] = origmsp;
-                    msp.name = origmsp.name;
                     psp.rhs[psp.nrhs - 1] = msp;
                     // These go on a separate freelist
                     const fl = try psp.allocator.create(SymFreelist);
@@ -2096,8 +2123,7 @@ const SymbolSafe = struct {
             return sym;
         }
         try symsafe.safe.ensureUnusedCapacity(symsafe.allocator, 1);
-        const sp = try Symbol.create(symsafe.allocator);
-        sp.name = x;
+        const sp = try Symbol.create(symsafe.allocator, x);
         symsafe.safe.putAssumeCapacity(x, sp);
         return sp;
     }
@@ -2189,7 +2215,9 @@ threadlocal var is_a_configlists = false;
 
 fn newconfig() !*Config {
     dbgassert(is_a_configlists);
-    return config_lists.pool.create();
+    const cp = config_lists.pool.create();
+    cp.* = .empty;
+    return cp;
 }
 
 fn deleteconfig(cfp: *Config) void {
@@ -2227,7 +2255,6 @@ fn Configlist_add(rp: *Rule, dot: int) !*Config {
     const maybe_cfp = config_lists.config_table.getKey(&model);
     if (maybe_cfp) |cfp| return cfp;
     var cfp = try newconfig();
-    cfp.* = .empty;
     cfp.rp = rp;
     cfp.dot = dot;
     cfp.fws = try config_lists.allocator.alloc(bool, set_size);
@@ -2246,7 +2273,6 @@ fn Configlist_addbasis(rp: *Rule, dot: int) !*Config {
     const maybe_cfp = config_lists.config_table.getKey(&model);
     if (maybe_cfp) |cfp| return cfp;
     var cfp = try newconfig();
-    cfp.* = .empty;
     cfp.rp = rp;
     cfp.dot = dot;
     cfp.fws = try config_lists.allocator.alloc(bool, set_size);
