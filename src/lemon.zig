@@ -26,6 +26,8 @@ const isAlnum = std.ascii.isAlphanumeric;
 const isAlpha = std.ascii.isAlphabetic;
 const isSpace = std.ascii.isWhitespace;
 
+const sort = std.mem.sort;
+
 const assert = std.debug.assert;
 
 const exit = std.process.exit;
@@ -42,6 +44,7 @@ fn dbgassert(ok: bool) void {
 
 const p_print = false;
 const p_errcnt = true;
+const p_symbols = false;
 
 // NOTE: This is not, in fact, how strcmp works.  If it turns out
 // I need anything other than != 0 and == 0 from strcmp, which I doubt,
@@ -140,7 +143,7 @@ const Symbol = struct {
     /// Name of the symbol
     name: []const u8,
     /// Index number for this symbol
-    index: int,
+    index: u32,
     /// Symbols are all either terminal or nonterminal
     type: SymbolType = .terminal,
     /// Linked list of rules of this (if an NT)
@@ -288,7 +291,7 @@ const Rule = struct {
 
     pub const empty = std.mem.zeroInit(Rule, .{ .lhs = undefined });
 
-    pub fn create(allocator: Allocator) !void {
+    pub fn create(allocator: Allocator) !*Rule {
         const rp = try allocator.create(Rule);
         rp.* = .empty;
         return rp;
@@ -948,7 +951,7 @@ pub const PState = struct {
     /// Line number at which current token starts
     tokenlineno: usize,
     /// Number of errors so far
-    errorcnt: int,
+    errorcnt: usize,
     /// Start index of current token
     tokenstart: usize,
     /// Global state vector
@@ -1042,6 +1045,20 @@ pub const PState = struct {
         ps.allocator.destroy(ps);
     }
 };
+
+// TODO: move the file stuff here, and use a stack psp like the OG
+fn Parse(psp: *PState, filebuf: [:0]const u8) !void {
+    // /* Make an initial pass through the file to handle %ifdef and %ifndef */
+    // preprocess_input(filebuf);
+    // if( gp->printPreprocessed ){
+    //   printf("%s\n", filebuf);
+    //   return;
+    // }
+    //
+    try scan(psp, filebuf);
+    psp.gp.rule = psp.firstrule.?;
+    psp.gp.errorcnt = psp.errorcnt;
+}
 
 fn parseonetoken(psp: *PState, x_init: []const u8) !void {
     const x = try Strsafe(x_init);
@@ -1802,7 +1819,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
             i += 3;
         } else if (fb[i] == '/' or fb[i] == '|' and isAlpha(fb[i + 1])) {
             i += 2;
-            while (fb[i] != 0 and (isAlnum(fb[i + 1]) or fb[i + 1] == '_')) : (i += 1) {}
+            while (fb[i] != 0 and (isAlnum(fb[i]) or fb[i] == '_')) : (i += 1) {}
         } else { //  All other (one character) operators
             i += 1;
         }
@@ -1934,7 +1951,7 @@ pub fn main() !void {
     pstate.gp = lem;
     pstate.filename = filename;
 
-    try scan(pstate, filebuf);
+    try Parse(pstate, filebuf);
     if (lem.printPreprocessed or lem.errorcnt > 0) {
         logger.err("exiting due to preprocess only or too many errors", .{});
         exit(@truncate(lem.errorcnt));
@@ -1948,15 +1965,84 @@ pub fn main() !void {
     // Count and index the symbols of the grammar
     _ = try Symbol_new("{default}");
     lem.symbols = Symbol_arrayof();
-    // TODO: sort here
-    // NOTE: What happens is: upper case first, then lower case, then
-    // Multiterminals.  Which is.. weird because, well no, multiterminals
-    // can end up in the Symbol buffer due to %token_class.
-    // Right now the purpose is to count these things, and I'm thinking
-    // that the Symbol safe can do that itself, right?  Do book-keeping
-    // where it happens?  We'd get a cross check.
-    //
-    // assert(strcmp(lem.symbols[lem.symbols - 1].name, "{default}"));
+    sort(*Symbol, lem.symbols, {}, Symbol_lessThanFn);
+    if (p_symbols) for (lem.symbols) |symbol| {
+        std.debug.print("{s} ", .{symbol.name});
+    };
+    for (lem.symbols, 0..) |sym, i| {
+        sym.index = @intCast(i);
+    }
+    {
+        var i: usize = lem.symbols.len;
+        while (lem.symbols[i - 1].type == .multiterminal) : (i -= 1) {}
+        dbgassert(strcmp(lem.symbols[i - 1].name, "{default}"));
+        lem.nsymbol = i - 1;
+        i = 1;
+        while (isUpper(lem.symbols[i].name[0])) : (i += 1) {}
+        lem.nterminal = i;
+    }
+    {
+        // Assign sequential rule numbers.  Start with 0.  Put rules that have no
+        // reduce action C-code associated with them last, so that the switch()
+        // statement that selects reduction actions will have a smaller jump table.
+        // NOTE: the original code does all this assigning, then sorts. I don't
+        // see why, since we create the order right here.  We can just:
+        var rnum: usize = 0; // Was this `i` in the OG? Bet your sweet ass
+        var rp: ?*Rule = lem.rule;
+        var action_head: ?*Rule = null;
+        var action_tail: ?*Rule = null;
+        var no_act_head: ?*Rule = null;
+        var no_act_tail: ?*Rule = null;
+        while (rp) |rule| : (rp = rule.next) {
+            if (rule.code.len > 0) {
+                rule.iRule = @intCast(rnum);
+                rnum += 1;
+                if (action_head == null) {
+                    action_head = rule;
+                    action_tail = rule;
+                } else {
+                    // By the above, we have the action
+                    // tail, so
+                    action_tail.?.next = rule;
+                    action_tail = rule;
+                }
+            } else {
+                rule.iRule = -1;
+                if (no_act_head == null) {
+                    no_act_head = rule;
+                    no_act_tail = rule;
+                } else {
+                    no_act_tail.?.next = rule;
+                    no_act_tail = rule;
+                }
+            }
+        } // Cut the tails:
+        if (action_tail) |act_tail| act_tail.next = null;
+        if (no_act_tail) |no_act| no_act.next = null;
+        lem.nruleWithAction = rnum;
+        rp = no_act_head; // this works correctly even if there are no no-action rules
+        while (rp) |rule| : (rp = rule.next) {
+            dbgassert(rule.code.len == 0);
+            // TODO: This should mean we can just use a u32 for iRule
+            dbgassert(rule.iRule == -1);
+            rule.iRule = @intCast(rnum);
+            rnum += 1;
+        }
+        lem.startRule = lem.rule;
+        // We must have at least one rule so this works too:
+        lem.rule = if (action_head) |act_head| act_head else no_act_head.?;
+        if (action_head) |_| {
+            // Means we have an action_tail too:
+            action_tail.?.next = no_act_head;
+            no_act_tail = null;
+        } // Sorted?
+        rp = lem.startRule;
+        if (builtin.mode == .Debug) while (rp) |rule| : (rp = rule.next) {
+            if (rule.next) |next| {
+                dbgassert(rule.iRule + 1 == next.iRule);
+            }
+        };
+    }
     // [1726]
     // /* Assign sequential rule numbers.  Start with 0.  Put rules that have no
     // ** reduce action C-code associated with them last, so that the switch()
@@ -2176,6 +2262,30 @@ fn Symbol_find(str: []const u8) ?*Symbol {
 fn Symbol_arrayof() []*Symbol {
     dbgassert(is_symbol_map);
     return symbol_map.safe.values();
+}
+
+// /* Compare two symbols for sorting purposes.  Return negative,
+// ** zero, or positive if a is less then, equal to, or greater
+// ** than b.
+// **
+// ** Symbols that begin with upper case letters (terminals or tokens)
+// ** must sort before symbols that begin with lower case letters
+// ** (non-terminals).  And MULTITERMINAL symbols (created using the
+// ** %token_class directive) must sort at the very end. Other than
+// ** that, the order does not matter.
+// **
+// ** We find experimentally that leaving the symbols in their original
+// ** order (the order they appeared in the grammar file) gives the
+// ** smallest parser tables in SQLite.
+// */
+
+//| [5840]
+//
+fn Symbol_lessThanFn(_: void, a: *Symbol, b: *Symbol) bool {
+    const a_val: u8 = if (a.type == .multiterminal) 3 else if (a.name[0] > 'Z') 2 else 1;
+    const b_val: u8 = if (b.type == .multiterminal) 3 else if (b.name[0] > 'Z') 2 else 1;
+    if (a_val < b_val) return true else if (a_val > b_val) return false;
+    return (a.index < b.index);
 }
 
 //| [1300] configlist.c
