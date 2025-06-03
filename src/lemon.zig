@@ -471,7 +471,7 @@ const Lemon = struct {
     /// Number of errors
     errorcnt: usize,
     /// The error symbol
-    errorsym: ?*Symbol,
+    errsym: ?*Symbol,
     ///  Token that matches anything
     wildcard: ?*Symbol,
     /// Name of the generated parser
@@ -542,7 +542,7 @@ const Lemon = struct {
         .maxAction = 0,
         .symbols = &.{},
         .errorcnt = 0,
-        .errorsym = null,
+        .errsym = null,
         .wildcard = null,
         .name = &.{},
         .arg = &.{},
@@ -1829,6 +1829,7 @@ fn SetUnion(s1: []bool, s2: []bool) bool {
 }
 
 pub fn main() !void {
+    // We begin, as always, with the Allocator Dance
     var dbga: std.heap.DebugAllocator(.{}) = .init;
     defer {
         _ = dbga.detectLeaks();
@@ -1852,6 +1853,23 @@ pub fn main() !void {
             allocator.destroy(free);
         }
     }
+
+    // These need to exist so that some later argument parser can
+    // assign them.  That that point of course, variable, but one
+    // damn thing at a damn time.
+    const version = false;
+    const rpflag = false;
+    const basisflag = false;
+    const compress = false;
+    const quiet = false;
+    const statistics = false;
+    const mhflag = false;
+    const nolinenosflag = false;
+    const noResort = false;
+    const sqlFlag = false;
+    const printPP = false;
+    // Reconcile Zig to this unfortunate situation:
+    _ = .{ version, rpflag, basisflag, compress, quiet, statistics, mhflag, nolinenosflag, noResort, sqlFlag, printPP };
 
     const args = try std.process.argsAlloc(allocator);
     // TODO: Quirk-compatible flags parser.  Do this last-ish.
@@ -1878,9 +1896,9 @@ pub fn main() !void {
     const lem = try Lemon.create(allocator);
     defer lem.destroy(allocator);
     lem.argv = args;
-    // lem.basisflag = basisflag;
-    // lem.nolineosflag = nolineenosflag;
-    // lem.printPreprocessed = printPP;
+    lem.basisflag = basisflag;
+    lem.nolineosflag = nolinenosflag;
+    lem.printPreprocessed = printPP;
     _ = try Symbol_new("$"); // Why?
     // TODO: Write a full parse file and move the file opening stuff there,
     // with the Pstate, etc.
@@ -1898,7 +1916,102 @@ pub fn main() !void {
         logger.err("Empty grammar.", .{});
         exit(1);
     }
+    lem.errsym = Symbol_find("error");
 
+    // Count and index the symbols of the grammar
+    _ = try Symbol_new("{default}");
+    lem.symbols = Symbol_arrayof();
+    // TODO: sort here
+    // NOTE: What happens is: upper case first, then lower case, then
+    // Multiterminals.  Which is.. weird because, well no, multiterminals
+    // can end up in the Symbol buffer due to %token_class.
+    // Right now the purpose is to count these things, and I'm thinking
+    // that the Symbol safe can do that itself, right?  Do book-keeping
+    // where it happens?  We'd get a cross check.
+    //
+    // assert(strcmp(lem.symbols[lem.symbols - 1].name, "{default}"));
+    // [1726]
+    // /* Assign sequential rule numbers.  Start with 0.  Put rules that have no
+    // ** reduce action C-code associated with them last, so that the switch()
+    // ** statement that selects reduction actions will have a smaller jump table.
+    // */
+    //
+    // /* Generate a reprint of the grammar, if requested on the command line */
+    // else
+    //
+    { // This is the bulk of the remaining work:
+        //
+        // /* Initialize the size for all follow and first sets */
+        // TODO: done
+        //
+        // SetSize(lem.nterminal+1);
+        //
+        // /* Find the precedence for every production rule (that has one) */
+        // FindRulePrecedences(&lem);
+        //
+        // /* Compute the lambda-nonterminals and the first-sets for every
+        // ** nonterminal */
+        // FindFirstSets(&lem);
+        //
+        // /* Compute all LR(0) states.  Also record follow-set propagation
+        // ** links so that the follow-set can be computed later */
+        //  lem.nstate = 0;
+        // FindStates(&lem);
+        // lem.sorted = State_arrayof();
+        //
+        // /* Tie up loose ends on the propagation links */
+        // FindLinks(&lem);
+        //
+        // /* Compute the follow set of every reducible configuration */
+        // FindFollowSets(&lem);
+        //
+        // /* Compute the action tables */
+        // FindActions(&lem);
+        //
+        // /* Compress the action tables */
+        // if( compress==0 ) CompressTables(&lem);
+        //
+        // /* Reorder and renumber the states so that states with fewer choices
+        // ** occur at the end.  This is an optimization that helps make the
+        // ** generated parser tables smaller. */
+        // if( noResort==0 ) ResortStates(&lem);
+        //
+        // /* Generate a report of the parser generated.  (the "y.output" file) */
+        // if( !quiet ) ReportOutput(&lem);
+        //
+        // /* Generate the source code for the parser */
+        // ReportTable(&lem, mhflag, sqlFlag);
+        //
+        // /* Produce a header file for use by the scanner.  (This step is
+        // ** omitted if the "-m" option is used because makeheaders will
+        // ** generate the file for us.) */
+        // if( !mhflag ) ReportHeader(&lem);
+    }
+    // The finale looks like this:
+    //
+    // if( statistics ){
+    //   printf("Parser statistics:\n");
+    //   stats_line("terminal symbols", lem.nterminal);
+    //   stats_line("non-terminal symbols", lem.nsymbol - lem.nterminal);
+    //   stats_line("total symbols", lem.nsymbol);
+    //   stats_line("rules", lem.nrule);
+    //   stats_line("states", lem.nxstate);
+    //   stats_line("conflicts", lem.nconflict);
+    //   stats_line("action table entries", lem.nactiontab);
+    //   stats_line("lookahead table entries", lem.nlookaheadtab);
+    //   stats_line("total table size (bytes)", lem.tablesize);
+    // }
+    // if( lem.nconflict > 0 ){
+    //   fprintf(stderr,"%d parsing conflicts.\n",lem.nconflict);
+    // }
+    //
+    // /* return 0 on success, 1 on failure. */
+    // exitcode = ((lem.errorcnt > 0) || (lem.nconflict > 0)) ? 1 : 0;
+    // exit(exitcode);
+    // return (exitcode);
+    //
+    // Which is adequately straightforward imho.
+    //
     std.debug.print("lemon for great justice!\n", .{});
     std.process.cleanExit();
 }
@@ -2023,6 +2136,10 @@ fn Symbol_free() void {
 fn Symbol_new(str: []const u8) !*Symbol {
     dbgassert(is_symbol_map);
     return symbol_map.intern(str);
+}
+
+fn Symbol_count() usize {
+    return symbol_map.safe.count();
 }
 
 fn Symbol_find(str: []const u8) ?*Symbol {
