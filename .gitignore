@@ -1,4 +1,7 @@
 // Ignore build artifacts
 .zig-cache/
 zig-out/
-dump.out
+*.out
+samples/*.c
+samples/*.h
+samples/*.out

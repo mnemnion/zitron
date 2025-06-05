@@ -2246,8 +2246,89 @@ pub fn main() !void {
     std.process.cleanExit();
 }
 
-test "exe mentioned" {
-    std.debug.print("hello from lemon main\n", .{});
+//| [1809] MergeSort
+//|
+//| This will be the sharpest deviation from Lemon.  Although the technique
+//| used to achieve a type-generic merge sort is feasible in Zig (and is
+//| very clever), we're better off returning a brace of functions, given the
+//| type information we need.
+//|
+//| We take the type, the name of the field pointing to the next item in the
+//| list, and a compare function which returns true if a is `<=` b.  The
+//| equality tie-breaker is important, because it gives us sort stability.
+//|
+//| We then specialize the functions accordingly, returning the one we need.
+//|
+//| NOTE: to self: when you port this to Zelda, use std.math.Order, so we
+//| can add sorts in both directions and they'll both be stable.
+
+const LISTSIZE = 32;
+
+fn MergeSort(
+    T: type,
+    comptime next: []const u8,
+    lteFn: fn (a: *T, b: *T) bool,
+) fn (*T) *T {
+    return struct {
+        pub fn msort(a: *T) *T {
+            var ep: ?*T = null;
+            var set: [LISTSIZE]?*T = .{null} ** LISTSIZE;
+            var maybe_list: ?*T = a;
+            while (maybe_list) |list| {
+                ep = list;
+                maybe_list = @field(list, next);
+                @field(ep.?, next) = null;
+                var i: usize = 0;
+                // LISTSIZE - 1 reserves a slot for the end
+                while (i < LISTSIZE - 1 and set[i] != null) : (i += 1) {
+                    ep = merge(ep, set[i]);
+                    set[i] = null;
+                }
+                set[i] = ep; // here
+            }
+            ep = null;
+            for (0..LISTSIZE) |i| {
+                if (set[i]) |tail| {
+                    ep = merge(tail, ep);
+                }
+            }
+            return ep.?;
+        }
+
+        fn merge(maybe_a: ?*T, maybe_b: ?*T) *T {
+            if (maybe_a == null) return maybe_b;
+            if (maybe_b == null) return maybe_a;
+            var a: ?*T = maybe_a;
+            var b: ?*T = maybe_b;
+            const head: *T = if (lteFn(a.?, b.?)) head: {
+                const h = a.?;
+                a = @field(h, next);
+                break :head h;
+            } else head: {
+                const h = b.?;
+                b = @field(h, next);
+                break :head h;
+            };
+            var ptr: *T = head;
+            while (a) |a_ptr| while (b) |b_ptr| {
+                if (lteFn(a_ptr, b_ptr)) {
+                    @field(ptr, next) = a_ptr;
+                    ptr = a_ptr;
+                    a = @field(a_ptr, next);
+                } else {
+                    @field(ptr, next) = b_ptr;
+                    ptr = b_ptr;
+                    b = @field(b_ptr, next);
+                }
+            };
+            if (a) |a_ptr| {
+                @field(ptr, next) = a_ptr;
+            } else {
+                @field(ptr, next) = b;
+            }
+            return head;
+        }
+    }.msort;
 }
 
 fn sequenceRules(lem: *Lemon) void {
@@ -2579,3 +2660,7 @@ fn Configlist_addbasis(rp: *Rule, dot: int) !*Config {
 // Configlist_return
 // Configlist_basis
 // Configlist_eat
+
+test "exe mentioned" {
+    std.debug.print("hello from lemon main\n", .{});
+}
