@@ -463,6 +463,47 @@ const PLink = struct {
     next: *?PLink,
 };
 
+threadlocal var plink_freelist: MemoryPool(PLink) = undefined;
+threadlocal var is_plink_freelist = false;
+
+fn Plink_new() !*PLink {
+    dbgassert(is_plink_freelist);
+    return try plink_freelist.create();
+}
+
+/// Add a plink to a plink list
+fn Plink_add(plink: **PLink, cfp: *Config) !void {
+    const newlink = try Plink_new();
+    newlink.cfp = cfp;
+    newlink.next = plink.*;
+    plink.* = newlink;
+}
+
+/// Transfer every plink on the list "from" to the list "to"
+fn Plink_copy(to: **PLink, from_in: *PLink) void {
+    // NOTE: I don't actually understand the purpose of doing
+    // an iteration here?  I guess we don't have the list tail
+    // huh. ¯\_(ツ)_/¯
+    var from: ?*PLink = from_in;
+    var nextpl: ?*PLink = null;
+    while (from) |this_pl| {
+        nextpl = this_pl.next;
+        this_pl.next = to.*;
+        to.* = this_pl;
+        from = nextpl;
+    }
+}
+
+/// Delete every plink on the list
+fn Plink_Delete(plp_delete: *PLink) void {
+    var this_plp: ?*PLink = plp_delete;
+    while (this_plp) |plp| {
+        const plp_next = plp.next;
+        plink_freelist.destroy(plp);
+        this_plp = plp_next;
+    }
+}
+
 /// The state vector for the entire parser generator is recorded as
 /// follows.  (LEMON uses no global variables and makes little use of
 /// static variables.  Fields in the following structure can be thought
@@ -1012,7 +1053,7 @@ fn FindFirstSets(lemp: *Lemon) !void {
 // can be computed later.
 //
 fn FindStates(lemp: *Lemon) !void {
-    try ConfigList_init();
+    try Configlist_init();
     var sp: *Symbol = undefined;
     if (lemp.start.len > 0) {
         const maybe_sp = Symbol_find(lemp.start);
@@ -2055,15 +2096,22 @@ pub fn main() !void {
     // We begin, as always, with the Allocator Dance
     var dbga: std.heap.DebugAllocator(.{}) = .init;
     defer {
-        _ = dbga.detectLeaks();
         assert(.ok == dbga.deinit());
     }
+    // TODO: Use dbga for debug builds and page otherwise, use smp (?!)
+    // for not-pools.
     const allocator = dbga.allocator();
     action_allocator = ActionAllocator.init(std.heap.page_allocator);
     defer action_allocator.deinit();
-    ConfigList_init(allocator, .init(std.heap.page_allocator));
-    defer config_lists.pool.deinit();
-    config_lists.allocator = allocator;
+    Configlist_init(allocator, .init(std.heap.page_allocator));
+    defer cf_ls.pool.deinit();
+    cf_ls.allocator = allocator;
+    plink_freelist = .initPreheated(std.heap.page_allocator, 100) catch |err| return err;
+    is_plink_freelist = true;
+    defer {
+        plink_freelist.deinit();
+        is_plink_freelist = false;
+    }
     Strsafe_init(allocator);
     defer Strsafe_free();
     Symbol_init(allocator);
@@ -2264,12 +2312,16 @@ pub fn main() !void {
 
 const LISTSIZE = 32;
 
-fn MergeSort(
+fn mergeSortFn(
     T: type,
     comptime next: []const u8,
     lteFn: fn (a: *T, b: *T) bool,
 ) fn (*T) *T {
     return struct {
+        /// Takes a pointer to *T, the head of a linked list found with
+        /// t.next.  Merge sorts the list, returning a pointer to the
+        /// head of a sorted list containing the elements of the passed-
+        /// in list.
         pub fn msort(a: *T) *T {
             var ep: ?*T = null;
             var set: [LISTSIZE]?*T = .{null} ** LISTSIZE;
@@ -2297,7 +2349,11 @@ fn MergeSort(
             return ep.?;
         }
 
-        fn merge(maybe_a: ?*T, maybe_b: ?*T) *T {
+        // Merge two linked lists, given the head. Either the first or the
+        // second may be null: by construction, they will never both be
+        // null, but it's harmless to our purposes to return a `?*T`, so
+        // we wouldn't benefit from that fact and don't take advantage of it.
+        fn merge(maybe_a: ?*T, maybe_b: ?*T) ?*T {
             if (maybe_a == null) return maybe_b;
             if (maybe_b == null) return maybe_a;
             var a: ?*T = maybe_a;
@@ -2580,40 +2636,40 @@ const ConfigContext = struct {
 };
 
 //| so we only need one global:
-threadlocal var config_lists: ConfigLists = undefined;
+threadlocal var cf_ls: ConfigLists = undefined;
 threadlocal var is_a_configlists = false;
 
 fn newconfig() !*Config {
     dbgassert(is_a_configlists);
-    const cp = config_lists.pool.create();
+    const cp = cf_ls.pool.create();
     cp.* = .empty;
     return cp;
 }
 
 fn deleteconfig(cfp: *Config) void {
     dbgassert(is_a_configlists);
-    config_lists.pool.destroy(cfp);
+    cf_ls.pool.destroy(cfp);
 }
 
-fn ConfigList_init(allocator: Allocator, pool: MemoryPool(Config)) void {
+fn Configlist_init(allocator: Allocator, pool: MemoryPool(Config)) void {
     if (is_a_configlists) return;
     defer is_a_configlists = true;
-    config_lists.allocator = allocator;
-    config_lists.pool = pool;
-    config_lists.current = null;
-    config_lists.currentend = &config_lists.current;
-    config_lists.basis = null;
-    config_lists.basisend = &config_lists.basis;
-    config_lists.config_table = .empty;
+    cf_ls.allocator = allocator;
+    cf_ls.pool = pool;
+    cf_ls.current = null;
+    cf_ls.currentend = &cf_ls.current;
+    cf_ls.basis = null;
+    cf_ls.basisend = &cf_ls.basis;
+    cf_ls.config_table = .empty;
 }
 
-fn ConfigList_reset() void {
+fn Configlist_reset() void {
     dbgassert(is_a_configlists);
-    config_lists.current = null;
-    config_lists.currentend = &config_lists.current;
-    config_lists.basis = null;
-    config_lists.basisend = &config_lists.basis;
-    config_lists.config_table.clearRetainingCapacity();
+    cf_ls.current = null;
+    cf_ls.currentend = &cf_ls.current;
+    cf_ls.basis = null;
+    cf_ls.basisend = &cf_ls.basis;
+    cf_ls.config_table.clearRetainingCapacity();
 }
 
 /// Add another configuration to the configuration list
@@ -2622,16 +2678,16 @@ fn Configlist_add(rp: *Rule, dot: int) !*Config {
     var model: Config = undefined;
     model.rp = rp;
     model.dot = dot;
-    const maybe_cfp = config_lists.config_table.getKey(&model);
+    const maybe_cfp = cf_ls.config_table.getKey(&model);
     if (maybe_cfp) |cfp| return cfp;
     var cfp = try newconfig();
     cfp.rp = rp;
     cfp.dot = dot;
-    cfp.fws = try config_lists.allocator.alloc(bool, set_size);
+    cfp.fws = try cf_ls.allocator.alloc(bool, set_size);
     @memset(cfp.fws, false);
-    config_lists.currentend.* = cfp;
-    config_lists.currentend = &cfp.next;
-    try config_lists.config_table.put(config_lists.allocator, cfp, {});
+    cf_ls.currentend.* = cfp;
+    cf_ls.currentend = &cfp.next;
+    try cf_ls.config_table.put(cf_ls.allocator, cfp, {});
     return cfp;
 }
 
@@ -2640,28 +2696,113 @@ fn Configlist_addbasis(rp: *Rule, dot: int) !*Config {
     var model: Config = undefined;
     model.rp = rp;
     model.dot = dot;
-    const maybe_cfp = config_lists.config_table.getKey(&model);
+    const maybe_cfp = cf_ls.config_table.getKey(&model);
     if (maybe_cfp) |cfp| return cfp;
     var cfp = try newconfig();
     cfp.rp = rp;
     cfp.dot = dot;
-    cfp.fws = try config_lists.allocator.alloc(bool, set_size);
+    cfp.fws = try cf_ls.allocator.alloc(bool, set_size);
     @memset(cfp.fws, false);
-    config_lists.currentend.* = cfp;
-    config_lists.currentend = cfp.next;
-    config_lists.basisend.* = cfp;
-    config_lists.basisend = &cfp.bp;
-    try config_lists.config_table.put(config_lists.allocator, cfp, {});
+    cf_ls.currentend.* = cfp;
+    cf_ls.currentend = cfp.next;
+    cf_ls.basisend.* = cfp;
+    cf_ls.basisend = &cfp.bp;
+    try cf_ls.config_table.put(cf_ls.allocator, cfp, {});
     return cfp;
 }
 
-// TODO:
-// Configlist_closure(lemp: *Lemon) void {}
-// Configlist_sort
-// Configlist_sortbasis
-// Configlist_return
-// Configlist_basis
-// Configlist_eat
+// [5642]
+//
+/// Compare two configurations
+fn Configcmp(a: *Config, b: *Config) bool {
+    if (a.rp.index < b.rp.index) {
+        return true;
+    } else if (a.rp.index > b.rp.index) {
+        return false;
+    } else if (a.dot <= b.dot) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+/// Compute the closure of the configuration list
+fn Configlist_closure(lemp: *Lemon) void {
+    assert(cf_ls.currentend != null);
+    var this_cfp: ?*Config = cf_ls.current;
+    scan: while (this_cfp) |cfp| : (this_cfp = cfp.next) {
+        const rp = cfp.rp;
+        const dot = cfp.dot;
+        if (dot >= rp.nrhs) continue :scan;
+        const sp = rp.rhs[dot];
+        if (sp.rule == null and sp != lemp.errsym) {
+            ErrorMsg(lemp.filename, 0, "" ++
+                "Nonterminal \"{s}\" has no rules.", .{sp.name});
+            lemp.errorcnt += 1;
+        }
+        var this_newrp = sp.rule;
+        while (this_newrp) |newrp| : (this_newrp = newrp.nextlhs) {
+            const newcfp = try Configlist_add(newrp, 0);
+            dots: for (dot + 1..rp.nrhs) |i| {
+                const xsp = rp.rhs[i];
+                // TODO: refactor this: slice in for loop above,
+                // switch statement here:
+                if (xsp.type == .terminal) {
+                    SetAdd(newcfp.fws, xsp.index);
+                    break :dots;
+                } else if (xsp.type == .multiterminal) {
+                    for (0..xsp.nsubsym) |k| {
+                        SetAdd(newcfp.fws, xsp.nsubsym[k].index);
+                    }
+                    break :dots;
+                } else {
+                    SetUnion(newcfp.fws, xsp.firstset);
+                    if (!xsp.lambda) break :dots;
+                }
+                if (i == rp.nrhs) Plink_add(&cfp.fplp, newcfp);
+            }
+        }
+    }
+}
+
+const Configlist_msort = mergeSortFn(Config, "next", Configcmp);
+
+fn Configlist_sort() void {
+    cf_ls.current = Configlist_msort(cf_ls.currrent);
+    cf_ls.currenend = null;
+}
+
+const Configlist_msortBasis = mergeSortFn(Config, "bp", Configcmp);
+
+fn Configlist_sortbasis() void {
+    cf_ls.basis = Configlist_msortBasis(cf_ls.basis);
+    cf_ls.basisend = null;
+}
+
+fn Configlist_return() ?*Config {
+    const old = cf_ls.current;
+    cf_ls.current = null;
+    cf_ls.currentend = null;
+    return old;
+}
+
+fn Configlist_basis() ?*Config {
+    const old = cf_ls.basis;
+    cf_ls.basis = null;
+    cf_ls.basisend = null;
+    return old;
+}
+
+fn Configlist_eat(cfp: *Config, allocator: Allocator) void {
+    var nextcfp: ?*Config = cfp;
+    while (nextcfp) |this_cfp| {
+        nextcfp = this_cfp.next;
+        assert(this_cfp.fplp == null);
+        assert(this_cfp.bplp == null);
+        if (this_cfp.fws.len > 0) allocator.free(this_cfp.fws);
+        deleteconfig(this_cfp);
+    }
+}
 
 test "exe mentioned" {
     std.debug.print("hello from lemon main\n", .{});
