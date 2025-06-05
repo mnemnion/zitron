@@ -2279,12 +2279,14 @@ fn MergeSort(
                 maybe_list = @field(list, next);
                 @field(ep.?, next) = null;
                 var i: usize = 0;
-                // LISTSIZE - 1 reserves a slot for the end
-                while (i < LISTSIZE - 1 and set[i] != null) : (i += 1) {
+                stripe: while (set[i] != null) : ({
+                    if (i == LISTSIZE - 1) break :stripe;
+                    i += 1;
+                }) {
                     ep = merge(ep, set[i]);
                     set[i] = null;
                 }
-                set[i] = ep; // here
+                set[i] = ep;
             }
             ep = null;
             for (0..LISTSIZE) |i| {
@@ -2382,7 +2384,7 @@ fn sequenceRules(lem: *Lemon) void {
         // Means we have an action_tail too:
         action_tail.?.next = no_act_head;
         dbgassert(no_act_tail != null and no_act_tail.?.next == null);
-    } // Sorted?
+    } // Sorted!
     rp = lem.startRule;
     if (builtin.mode == .Debug) while (rp) |rule| : (rp = rule.next) {
         if (rule.next) |next| {
