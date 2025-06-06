@@ -1136,7 +1136,6 @@ fn FindFirstSets(lemp: *Lemon) !void {
 // can be computed later.
 //
 fn FindStates(lemp: *Lemon) !void {
-    try Configlist_init();
     var sp: *Symbol = undefined;
     if (lemp.start.len > 0) {
         const maybe_sp = Symbol_find(lemp.start);
@@ -1163,7 +1162,7 @@ fn FindStates(lemp: *Lemon) !void {
         for (rule.rhs) |rhs| {
             if (rhs == sp) {
                 ErrorMsg(lemp.filename, 0, "" ++
-                    "The start symbol \"%s\" occurs on the " ++
+                    "The start symbol \"{s}\" occurs on the " ++
                     "right-hand side of a rule. This will result in a parser which " ++
                     "does not work properly.", .{sp.name});
                 lemp.errorcnt += 1;
@@ -1186,8 +1185,8 @@ fn FindStates(lemp: *Lemon) !void {
     rp = sp.rule;
     while (rp) |rule| : (rp = rule.nextlhs) {
         rule.lhsStart = true;
-        const new_cfp = try Configlist_addbasis(rp, 0);
-        SetAdd(new_cfp.fws, false);
+        const new_cfp = try Configlist_addbasis(rule, 0);
+        _ = SetAdd(new_cfp.fws, 0);
     }
 
     // Compute the first state.  All other states will be
@@ -2269,7 +2268,7 @@ pub fn main() !void {
             std.process.exit(1);
         }
     };
-    const lem = try Lemon.create(allocator);
+    var lem = try Lemon.create(allocator);
     defer lem.destroy(allocator);
     lem.argv = args;
     lem.filename = filename;
@@ -2357,7 +2356,7 @@ pub fn main() !void {
     dbgassert(lem.nstate == 0);
     // Compute all LR(0) states.  Also record follow-set propagation
     // links so that the follow-set can be computed later
-
+    try FindStates(lem);
     { // This is the bulk of the remaining work:
         // /* Compute all LR(0) states.  Also record follow-set propagation
         // ** links so that the follow-set can be computed later */
@@ -2768,7 +2767,7 @@ threadlocal var is_a_configlists = false;
 
 fn newconfig() !*Config {
     dbgassert(is_a_configlists);
-    const cp = cf_ls.pool.create();
+    const cp = try cf_ls.pool.create();
     cp.* = .empty;
     return cp;
 }
@@ -2818,7 +2817,7 @@ fn Configlist_add(rp: *Rule, dot: int) !*Config {
     return cfp;
 }
 
-fn Configlist_addbasis(rp: *Rule, dot: int) !*Config {
+fn Configlist_addbasis(rp: *Rule, dot: u32) !*Config {
     dbgassert(is_a_configlists);
     var model: Config = undefined;
     model.rp = rp;
@@ -2831,7 +2830,7 @@ fn Configlist_addbasis(rp: *Rule, dot: int) !*Config {
     cfp.fws = try cf_ls.allocator.alloc(bool, set_size);
     @memset(cfp.fws, false);
     cf_ls.currentend.* = cfp;
-    cf_ls.currentend = cfp.next;
+    cf_ls.currentend = &cfp.next;
     cf_ls.basisend.* = cfp;
     cf_ls.basisend = &cfp.bp;
     try cf_ls.config_table.put(cf_ls.allocator, cfp, {});
