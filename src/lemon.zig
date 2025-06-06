@@ -548,6 +548,14 @@ fn State_arrayof() []*State {
     return state_map.safe.values();
 }
 
+fn State_free() void {
+    for (state_map.safe.values()) |stp| {
+        Configlist_eat(stp.cfp, state_map.allocator);
+        Configlist_eat(stp.bp, state_map.allocator);
+    }
+    state_map.safe.deinit(state_map.allocator);
+}
+
 /// A followset propagation link indicates that the contents of one
 /// configuration followset should be propagated to another whenever
 /// the first changes.
@@ -1260,7 +1268,7 @@ fn getstate(lemp: *Lemon) !*State {
         stp.statenum = lemp.nstate;
         lemp.nstate += 1;
         stp.ap = null;
-        _ = try State_insert(stp, stp.bp);
+        dbgassert(try State_insert(stp, stp.bp));
         // try  buildshifts(lemp, stp);
         return stp;
     }
@@ -1590,9 +1598,12 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 rp.lhsalias = psp.lhsalias;
                 rp.nrhs = psp.nrhs;
                 rp.noCode = true; // Can be falsified subsequently..
+                dbgassert(rp.precsym == null);
                 rp.index = psp.gp.nrule;
                 psp.gp.nrule += 1;
                 rp.nextlhs = rp.lhs.rule;
+                rp.lhs.rule = rp;
+                dbgassert(rp.next == null);
                 if (psp.firstrule == null) {
                     psp.firstrule = rp;
                     psp.lastrule = rp;
@@ -2268,7 +2279,9 @@ pub fn main() !void {
     action_allocator = ActionAllocator.init(std.heap.page_allocator);
     defer action_allocator.deinit();
     Configlist_init(allocator, .init(std.heap.page_allocator));
-    defer cf_ls.pool.deinit();
+    defer {
+        Configlist_reset();
+    }
     cf_ls.allocator = allocator;
     plink_freelist = .init(std.heap.page_allocator);
     is_plink_freelist = true;
@@ -2281,6 +2294,8 @@ pub fn main() !void {
     defer Strsafe_free();
     Symbol_init(allocator);
     defer Symbol_free();
+    try State_init(allocator);
+    defer State_free();
 
     defer {
         // Some rare symbols 'spill', because they can't be
@@ -2511,15 +2526,14 @@ fn mergeSortFn(
                 maybe_list = @field(list, next);
                 @field(ep.?, next) = null;
                 var i: usize = 0;
-                stripe: while (set[i] != null) : ({
-                    if (i == LISTSIZE - 1) break :stripe;
-                    i += 1;
-                }) {
+                while (i < LISTSIZE - 1 and set[i] != null) : (i += 1) {
                     ep = merge(ep, set[i]);
                     set[i] = null;
                 }
+                if (i == LISTSIZE) i -= 1;
                 set[i] = ep;
             }
+
             ep = null;
             for (0..LISTSIZE) |i| {
                 if (set[i]) |tail| {
@@ -2548,7 +2562,9 @@ fn mergeSortFn(
                 break :head h;
             };
             var ptr: *T = head;
-            while (a) |a_ptr| while (b) |b_ptr| {
+            while (a != null and b != null) {
+                const a_ptr = a.?;
+                const b_ptr = b.?;
                 if (lteFn(a_ptr, b_ptr)) {
                     @field(ptr, next) = a_ptr;
                     ptr = a_ptr;
@@ -2558,7 +2574,7 @@ fn mergeSortFn(
                     ptr = b_ptr;
                     b = @field(b_ptr, next);
                 }
-            };
+            }
             if (a) |a_ptr| {
                 @field(ptr, next) = a_ptr;
             } else {
@@ -2828,6 +2844,7 @@ fn newconfig() !*Config {
 
 fn deleteconfig(cfp: *Config) void {
     dbgassert(is_a_configlists);
+    cf_ls.allocator.free(cfp.fws);
     cf_ls.pool.destroy(cfp);
 }
 
@@ -2845,10 +2862,15 @@ fn Configlist_init(allocator: Allocator, pool: MemoryPool(Config)) void {
 
 fn Configlist_reset() void {
     dbgassert(is_a_configlists);
+    Configlist_eat(cf_ls.current, cf_ls.allocator);
     cf_ls.current = null;
     cf_ls.currentend = &cf_ls.current;
+    Configlist_eat(cf_ls.basis, cf_ls.allocator);
     cf_ls.basis = null;
     cf_ls.basisend = &cf_ls.basis;
+    for (cf_ls.config_table.keys()) |key| {
+        deleteconfig(key);
+    }
     cf_ls.config_table.clearRetainingCapacity();
 }
 
@@ -2876,8 +2898,10 @@ fn Configlist_addbasis(rp: *Rule, dot: u32) !*Config {
     var model: Config = undefined;
     model.rp = rp;
     model.dot = dot;
+    std.debug.print("adding basis: {s}:{d} dot({d})\n", .{ rp.lhs.name, rp.index, dot });
     const maybe_cfp = cf_ls.config_table.getKey(&model);
     if (maybe_cfp) |cfp| return cfp;
+    std.debug.print("   new basis config\n", .{});
     var cfp = try newconfig();
     cfp.rp = rp;
     cfp.dot = dot;
@@ -2914,31 +2938,33 @@ fn Configlist_closure(lemp: *Lemon) !void {
         const dot = cfp.dot;
         if (dot >= rp.nrhs) continue :scan;
         const sp = rp.rhs[dot];
-        if (sp.rule == null and sp != lemp.errsym) {
-            ErrorMsg(lemp.filename, 0, "" ++
-                "Nonterminal \"{s}\" has no rules.", .{sp.name});
-            lemp.errorcnt += 1;
-        }
-        var this_newrp = sp.rule;
-        while (this_newrp) |newrp| : (this_newrp = newrp.nextlhs) {
-            const newcfp = try Configlist_add(newrp, 0);
-            dots: for (dot + 1..rp.nrhs) |i| {
-                const xsp = rp.rhs[i];
-                // TODO: refactor this: slice in for loop above,
-                // switch statement here:
-                if (xsp.type == .terminal) {
-                    _ = SetAdd(newcfp.fws, xsp.index);
-                    break :dots;
-                } else if (xsp.type == .multiterminal) {
-                    for (xsp.subsym) |subsym| {
-                        _ = SetAdd(newcfp.fws, subsym.index);
+        if (sp.type == .nonterminal) {
+            if (sp.rule == null and sp != lemp.errsym) {
+                ErrorMsg(lemp.filename, 0, "" ++
+                    "Nonterminal \"{s}\" has no rules.", .{sp.name});
+                lemp.errorcnt += 1;
+            }
+            var this_newrp = sp.rule;
+            while (this_newrp) |newrp| : (this_newrp = newrp.nextlhs) {
+                const newcfp = try Configlist_add(newrp, 0);
+                dots: for (dot + 1..rp.nrhs) |i| {
+                    const xsp = rp.rhs[i];
+                    // TODO: refactor this: slice in for loop above,
+                    // switch statement here:
+                    if (xsp.type == .terminal) {
+                        _ = SetAdd(newcfp.fws, xsp.index);
+                        break :dots;
+                    } else if (xsp.type == .multiterminal) {
+                        for (xsp.subsym) |subsym| {
+                            _ = SetAdd(newcfp.fws, subsym.index);
+                        }
+                        break :dots;
+                    } else {
+                        _ = SetUnion(newcfp.fws, xsp.firstset);
+                        if (!xsp.lambda) break :dots;
                     }
-                    break :dots;
-                } else {
-                    _ = SetUnion(newcfp.fws, xsp.firstset);
-                    if (!xsp.lambda) break :dots;
+                    if (i == rp.nrhs) try Plink_add(&cfp.fplp, newcfp);
                 }
-                if (i == rp.nrhs) try Plink_add(&cfp.fplp, newcfp);
             }
         }
     }
