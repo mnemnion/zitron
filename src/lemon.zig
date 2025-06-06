@@ -49,7 +49,9 @@ const lemon_classic = true;
 // Various print control variables
 
 /// The main print control for lemon v. lemon comparison
-const p_check = true;
+const p_check = false;
+
+const p_debug = true;
 
 const p_print = false;
 const p_errcnt = true;
@@ -436,7 +438,7 @@ const Action = struct {
     //| I'm out of budget to make on-the-fly changes as I get to the hairiest part
     //| of the original.
 
-    pub fn addState(app: **Action, e_type: E_Action, sp: *Symbol, stp: *State) !void {
+    pub fn addState(app: *?*Action, e_type: E_Action, sp: *Symbol, stp: *State) !void {
         const newaction = try Action.new();
         newaction.next = app.*;
         app.* = newaction;
@@ -446,7 +448,7 @@ const Action = struct {
         newaction.x.stp = stp;
     }
 
-    pub fn addRule(app: **Action, e_type: E_Action, sp: *Symbol, rp: *Rule) !void {
+    pub fn addRule(app: *?*Action, e_type: E_Action, sp: *Symbol, rp: *Rule) !void {
         const newaction = try Action.new();
         newaction.next = app.*;
         app.* = newaction;
@@ -511,7 +513,7 @@ const StateContext = struct {
         var h: u32 = 0;
         var next_cfg: ?*Config = cfp;
         while (next_cfg) |a| {
-            h = h * 571 + a.rp.index * 37 + a.dot;
+            h = h *% 571 +% a.rp.index *% 37 +% a.dot;
             next_cfg = a.bp;
         }
         return h;
@@ -1295,6 +1297,7 @@ fn getstate(lemp: *Lemon) Allocator.Error!*State {
         Configlist_sort();
         const cfp = Configlist_return().?;
         const stp = try State_new();
+        dprint("reached newstate\n", .{});
         stp.bp = maybe_bp.?;
         stp.cfp = cfp;
         stp.statenum = lemp.nstate;
@@ -1331,12 +1334,21 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
     maybe_cfp = stp.cfp;
     //   /* Loop through all configurations of the state "stp".
     while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
+        dprint("outer config {s}: {s} dot ({d}) nrhs {d} len {d} ", .{
+            cfp.rp.lhs.name,
+            @tagName(cfp.status),
+            cfp.dot,
+            cfp.rp.nrhs,
+            cfp.rp.rhs.len,
+        });
         if (cfp.status == .complete) continue; // Already used by inner loop
         if (cfp.dot >= cfp.rp.rhs.len) continue; // Can't shift this config
         Configlist_reset(); // Reset the new config set
+        dprint("post reset, dot is {d} \n", .{cfp.dot});
         sp = cfp.rp.rhs[cfp.dot]; // Symbol after the dot
         var maybe_bcfp: ?*Config = cfp; // For the inner loop on config closure of "stp"
         while (maybe_bcfp) |bcfp| : (maybe_bcfp = bcfp.next) {
+            dprint("inner config {s}: {s}  ", .{ bcfp.rp.lhs.name, @tagName(bcfp.status) });
             if (bcfp.status == .complete) continue; // Already used
             if (bcfp.dot >= bcfp.rp.rhs.len) continue; // Can't shift this one
             const bsp = bcfp.rp.rhs[bcfp.dot]; //  Get symbol after dot
@@ -1345,6 +1357,7 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
             const newcfg = try Configlist_addbasis(bcfp.rp, bcfp.dot + 1);
             try Plink_add(&newcfg.bplp, bcfp);
         }
+        dprint("\n", .{});
         // /* Get a pointer to the state described by the basis configuration set
         // ** constructed in the preceding loop */
         const newstp = try getstate(lemp);
@@ -1352,10 +1365,10 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
         // ** on the symbol "sp" */
         if (sp.type == .multiterminal) {
             for (sp.subsym) |subsym| {
-                try Action.addState(&stp.ap.?, .shift, subsym, newstp);
+                try Action.addState(&stp.ap, .shift, subsym, newstp);
             }
         } else {
-            try Action.addState(&stp.ap.?, .shift, sp, newstp);
+            try Action.addState(&stp.ap, .shift, sp, newstp);
         }
     }
 }
@@ -2945,16 +2958,10 @@ fn Configlist_init(allocator: Allocator, pool: MemoryPool(Config)) void {
 
 fn Configlist_reset() void {
     dbgassert(is_a_configlists);
-    Configlist_eat(cf_ls.current, cf_ls.allocator);
     cf_ls.current = null;
     cf_ls.currentend = &cf_ls.current;
-    Configlist_eat(cf_ls.basis, cf_ls.allocator);
     cf_ls.basis = null;
     cf_ls.basisend = &cf_ls.basis;
-    for (cf_ls.config_table.keys()) |key| {
-        deleteconfig(key);
-    }
-    cf_ls.config_table.clearRetainingCapacity();
 }
 
 /// Add another configuration to the configuration list
