@@ -40,7 +40,12 @@ fn dbgassert(ok: bool) void {
     }
 }
 
+const dprint = std.debug.print;
+
 // Various print control variables
+
+/// The main print control for lemon v. lemon comparison
+const p_check = true;
 
 const p_print = false;
 const p_errcnt = true;
@@ -2314,6 +2319,14 @@ pub fn main() !void {
     SetSize(lem.nterminal + 1);
     // Find the precedence for every production rule (that has one)
     FindRulePrecedences(lem);
+    if (p_check) {
+        dprint("Sorted rules: lemon-zig\n", .{});
+        var rp: ?*Rule = lem.rule;
+        while (rp) |rule| : (rp = rule.next) {
+            dprint("{s} ({d})  ", .{ rule.lhs.name, rule.iRule });
+        }
+        dprint("\n", .{});
+    }
     if (p_symbols) {
         var rp: ?*Rule = lem.rule;
         while (rp) |rule| : (rp = rule.next) {

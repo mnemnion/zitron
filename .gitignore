@@ -5,3 +5,4 @@ zig-out/
 samples/*.c
 samples/*.h
 samples/*.out
+compare
