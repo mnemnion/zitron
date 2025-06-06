@@ -381,6 +381,10 @@ const E_Action = enum(u4) {
 };
 
 /// NOTE: This union is deduc'ed from the code at [3380]
+/// It is not currently in use, but it would be a good idea
+/// to go back later and make `action.x` into a tagged union,
+/// instead of a bare union with a separated type tag.  Too
+/// much deviation from the source for now.
 const ActUnion = union(E_Action) {
     shift: *State,
     accept,
@@ -404,7 +408,11 @@ threadlocal var action_age: usize = 0;
 const Action = struct {
     /// The look-ahead symbol
     sp: *Symbol = undefined,
-    x: ActUnion = ._not_initialized,
+    type: E_Action = ._not_initialized,
+    x: union {
+        stp: *State,
+        rp: *Rule,
+    } = undefined,
     /// SHIFTREDUCE optimization to this symbol
     spOpt: ?*Symbol = null,
     /// Next action for this state
@@ -422,14 +430,38 @@ const Action = struct {
         return act;
     }
 
-    //
+    //| NOTE: these two were originally one method, but I'm not in the mood to do
+    //| the casting and other paperwork to get Zig to cooperate with that.  All of
+    //| this code should get refactored later to change how that all works, but
+    //| I'm out of budget to make on-the-fly changes as I get to the hairiest part
+    //| of the original.
+
+    pub fn addState(app: **Action, e_type: E_Action, sp: *Symbol, stp: *State) !void {
+        const newaction = try Action.new();
+        newaction.next = app.*;
+        app.* = newaction;
+        newaction.type = e_type;
+        newaction.sp = sp;
+        // newaction.spOpt = null;
+        newaction.x.stp = stp;
+    }
+
+    pub fn addRule(app: **Action, e_type: E_Action, sp: *Symbol, rp: *Rule) !void {
+        const newaction = try Action.new();
+        newaction.next = app.*;
+        app.* = newaction;
+        newaction.type = e_type;
+        newaction.sp = sp;
+        // newaction.spOpt = null;
+        newaction.x.rp = rp;
+    }
 };
 
 /// Each state of the generated parser's finite state machine
 /// is encoded as an instance of the following structure.
 const State = struct {
     /// The basis configurations for this state
-    bp: *Config = undefined,
+    bp: ?*Config = null,
     /// All configurations in this set
     cfp: *Config = undefined,
     /// Sequential number for this state
@@ -1234,7 +1266,7 @@ fn FindStates(lemp: *Lemon) !void {
 // [967]
 // Return a pointer to a state which is described by the configuration
 // list which has been built from calls to Configlist_add.
-fn getstate(lemp: *Lemon) !*State {
+fn getstate(lemp: *Lemon) Allocator.Error!*State {
     // Extract the sorted basis of the new state.  The basis was constructed
     // by prior calls to "Configlist_addbasis()".
     Configlist_sortbasis();
@@ -1268,14 +1300,64 @@ fn getstate(lemp: *Lemon) !*State {
         stp.statenum = lemp.nstate;
         lemp.nstate += 1;
         stp.ap = null;
-        dbgassert(try State_insert(stp, stp.bp));
-        // try  buildshifts(lemp, stp);
+        dbgassert(try State_insert(stp, stp.bp.?));
+        try buildshifts(lemp, stp);
         return stp;
     }
 }
 
+///
+/// Return true if two symbols are the same.
+///
+fn same_symbol(a: *const Symbol, b: *const Symbol) bool {
+    if (a == b) return true;
+    if (a.type != .multiterminal) return false;
+    if (b.type != .multiterminal) return false;
+    if (a.subsym.len != b.subsym.len) return false;
+    for (a.subsym, b.subsym) |asub, bsub| {
+        if (asub != bsub) return false;
+    }
+    return true;
+}
+
 fn buildshifts(lemp: *Lemon, stp: *State) !void {
     _ = .{ lemp, stp };
+    var maybe_cfp: ?*Config = stp.cfp; // For looping thru the config closure of "stp"
+    // Initialize with a conveniently available symbol, this is never used:
+    var sp = stp.cfp.rp.lhs; // Symbol following the dot in configuration "cfp"
+    // /* Each configuration becomes complete after it contributes to a successor
+    // ** state.  Initially, all configurations are incomplete.
+    while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) cfp.status = .incomplete;
+    maybe_cfp = stp.cfp;
+    //   /* Loop through all configurations of the state "stp".
+    while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
+        if (cfp.status == .complete) continue; // Already used by inner loop
+        if (cfp.dot >= cfp.rp.rhs.len) continue; // Can't shift this config
+        Configlist_reset(); // Reset the new config set
+        sp = cfp.rp.rhs[cfp.dot]; // Symbol after the dot
+        var maybe_bcfp: ?*Config = cfp; // For the inner loop on config closure of "stp"
+        while (maybe_bcfp) |bcfp| : (maybe_bcfp = bcfp.next) {
+            if (bcfp.status == .complete) continue; // Already used
+            if (bcfp.dot >= bcfp.rp.rhs.len) continue; // Can't shift this one
+            const bsp = bcfp.rp.rhs[bcfp.dot]; //  Get symbol after dot
+            if (!same_symbol(bsp, sp)) continue; //  Must be same as for "cfp"
+            bcfp.status = .complete; //  Mark this config as used
+            const newcfg = try Configlist_addbasis(bcfp.rp, bcfp.dot + 1);
+            try Plink_add(&newcfg.bplp, bcfp);
+        }
+        // /* Get a pointer to the state described by the basis configuration set
+        // ** constructed in the preceding loop */
+        const newstp = try getstate(lemp);
+        // /* The state "newstp" is reached from the state "stp" by a shift action
+        // ** on the symbol "sp" */
+        if (sp.type == .multiterminal) {
+            for (sp.subsym) |subsym| {
+                try Action.addState(&stp.ap.?, .shift, subsym, newstp);
+            }
+        } else {
+            try Action.addState(&stp.ap.?, .shift, sp, newstp);
+        }
+    }
 }
 
 //| [1500] ErrorMsg
@@ -2486,7 +2568,8 @@ pub fn main() !void {
     //
     // Which is adequately straightforward imho.
     //
-    std.process.cleanExit();
+    //std.process.cleanExit();
+    std.process.exit(0);
 }
 
 //| [1809] MergeSort
@@ -2898,10 +2981,8 @@ fn Configlist_addbasis(rp: *Rule, dot: u32) !*Config {
     var model: Config = undefined;
     model.rp = rp;
     model.dot = dot;
-    std.debug.print("adding basis: {s}:{d} dot({d})\n", .{ rp.lhs.name, rp.index, dot });
     const maybe_cfp = cf_ls.config_table.getKey(&model);
     if (maybe_cfp) |cfp| return cfp;
-    std.debug.print("   new basis config\n", .{});
     var cfp = try newconfig();
     cfp.rp = rp;
     cfp.dot = dot;
