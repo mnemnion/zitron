@@ -420,13 +420,13 @@ const Action = struct {
 /// is encoded as an instance of the following structure.
 const State = struct {
     /// The basis configurations for this state
-    pb: *Config,
+    pb: *Config = undefined,
     /// All configurations in this set
-    cfp: *Config,
+    cfp: *Config = undefined,
     /// Sequential number for this state
-    statenum: int,
+    statenum: u32,
     /// List of actions for this state
-    ap: *Action,
+    ap: ?*Action,
     /// Number of actions on terminals
     nTknAct: u32,
     /// Number of actions on nonterminals
@@ -436,11 +436,13 @@ const State = struct {
     /// yy_action[] offset for nonterminals
     iNtOfst: ?u32,
     /// Default action is to REDUCE by this rule
-    iDfltReduce: int,
+    iDfltReduce: int, // Another ?u32 I think
     /// The default REDUCE rule.
     pDefltReduce: ?*Rule,
     /// True if this is an auto-reduce state
     autoreduce: bool,
+
+    pub const empty: State = std.mem.zeroInit(State);
 
     // [541]
     pub fn addAction(st: *State, sym: *Symbol, act_u: ActUnion) void {
@@ -452,6 +454,80 @@ const State = struct {
         newaction.x = act_u;
     }
 };
+
+const StateContext = struct {
+    pub fn hash(_: StateContext, cfp: *Config) u32 {
+        var h: u32 = 0;
+        var next_cfg: ?*Config = cfp;
+        while (next_cfg) |a| {
+            h = h * 571 + a.rp.index * 37 + a.rp.dot;
+            next_cfg = a.bp;
+        }
+        return h;
+    }
+
+    pub fn eql(_: StateContext, a_cfg: *Config, b_cfg: *Config) bool {
+        var this_a: ?*Config = a_cfg;
+        var this_b: ?*Config = b_cfg;
+        while (this_a != null and this_b != null) {
+            const a, const b = .{ this_a.?, this_b.? };
+            if (a.rp.index != b.rp.index or a.dot != b.dot) {
+                return false;
+            }
+            this_a, this_b = .{ a.next, b.next };
+        } else if ((this_a == null and this_b != null) or
+            (this_a != null and this_b == null))
+        {
+            return false;
+        }
+        return true;
+    }
+};
+
+//| [5681] State map stuff.
+
+const StateSafe = struct {
+    allocator: Allocator,
+    safe: ArrayHashMap(*Config, *State, StateContext, true),
+};
+
+threadlocal var state_map: StateSafe = undefined;
+threadlocal var is_state_map = false;
+
+fn State_init(allocator: Allocator) !void {
+    if (is_state_map) return;
+    defer is_state_map = true;
+    state_map.allocator = allocator;
+    state_map.safe = .empty;
+    try state_map.safe.ensureTotalCapacity(allocator, 128);
+}
+
+fn State_new() !*State {
+    const sp = try state_map.allocator.create(State);
+    sp.* = .empty;
+    return sp;
+}
+
+fn State_find(bp: *Config) ?*State {
+    dbgassert(is_state_map);
+    return state_map.safe.get(bp);
+}
+
+fn State_insert(data: *State, key: *Config) !bool {
+    dbgassert(is_state_map);
+    if (state_map.safe.getKey(key)) |_| return false;
+    try state_map.safe.put(state_map.allocator, key, data);
+    return true;
+}
+
+//| NOTE: These will be sorted, which invalidates the, uh, state,
+//| of the state_map.  I think that's ok though.  Tracking what
+//| of this data belongs to whom'st will be interesting.
+//|
+
+fn State_arrayof() []*State {
+    return state_map.safe.values();
+}
 
 /// A followset propagation link indicates that the contents of one
 /// configuration followset should be propagated to another whenever
@@ -495,7 +571,7 @@ fn Plink_copy(to: **PLink, from_in: *PLink) void {
 }
 
 /// Delete every plink on the list
-fn Plink_Delete(plp_delete: *PLink) void {
+fn Plink_delete(plp_delete: *PLink) void {
     var this_plp: ?*PLink = plp_delete;
     while (this_plp) |plp| {
         const plp_next = plp.next;
@@ -1117,7 +1193,17 @@ fn FindStates(lemp: *Lemon) !void {
 // Return a pointer to a state which is described by the configuration
 // list which has been built from calls to Configlist_add.
 fn getstate(lemp: *Lemon) !*State {
-    _ = lemp;
+    // Extract the sorted basis of the new state.  The basis was constructed
+    // by prior calls to "Configlist_addbasis()".
+    Configlist_sortbasis();
+    const bp = Configlist_basis();
+    const maybe_stp = State_find(bp);
+    if (maybe_stp) |stp| {
+        _ = stp;
+    } else {
+        // This really is a new state.  Construct all the details
+        Configlist_closure(lemp);
+    }
 }
 
 fn buildshifts(lemp: *Lemon, stp: *State) !void {
@@ -1264,7 +1350,23 @@ pub const PState = struct {
 };
 
 // TODO: move the file stuff here, and use a stack psp like the OG
-fn Parse(psp: *PState, filebuf: [:0]const u8) !void {
+fn Parse(psp: *PState) !void {
+    const file = if (std.fs.cwd().openFile(psp.filename, .{})) |f| file: {
+        break :file f;
+    } else |err| {
+        // TODO: nicer message here
+        std.debug.print("File open error {s}", .{@errorName(err)});
+        exit(@truncate(@intFromError(err)));
+    };
+    defer file.close();
+    const end_pos = try file.getEndPos();
+    const filebuf = try psp.allocator.allocSentinel(u8, end_pos, 0);
+    defer psp.allocator.free(filebuf);
+    const read_bytes = try file.readAll(filebuf);
+    if (read_bytes < end_pos) {
+        std.debug.print("didnt read to end of file {s}\n", .{psp.filename});
+        std.process.exit(1);
+    }
     // /* Make an initial pass through the file to handle %ifdef and %ifndef */
     // preprocess_input(filebuf);
     // if( gp->printPreprocessed ){
@@ -2100,24 +2202,30 @@ pub fn main() !void {
     }
     // TODO: Use dbga for debug builds and page otherwise, use smp (?!)
     // for not-pools.
+
+    // Set up pools.
     const allocator = dbga.allocator();
     action_allocator = ActionAllocator.init(std.heap.page_allocator);
     defer action_allocator.deinit();
     Configlist_init(allocator, .init(std.heap.page_allocator));
     defer cf_ls.pool.deinit();
     cf_ls.allocator = allocator;
-    plink_freelist = .initPreheated(std.heap.page_allocator, 100) catch |err| return err;
+    plink_freelist = .init(std.heap.page_allocator);
     is_plink_freelist = true;
     defer {
         plink_freelist.deinit();
         is_plink_freelist = false;
     }
+    try plink_freelist.preheat(100);
     Strsafe_init(allocator);
     defer Strsafe_free();
     Symbol_init(allocator);
     defer Symbol_free();
 
     defer {
+        // Some rare symbols 'spill', because they can't be
+        // stored in the Symbol intern map, we we free those
+        // here.
         while (sym_freelist) |free| {
             free.sp.destroy(allocator);
             sym_freelist = free.next;
@@ -2154,16 +2262,6 @@ pub fn main() !void {
             std.process.exit(1);
         }
     };
-    const file = try std.fs.cwd().openFile(filename, .{});
-    defer file.close();
-    const end_pos = try file.getEndPos();
-    const filebuf = try allocator.allocSentinel(u8, end_pos, 0);
-    defer allocator.free(filebuf);
-    const read_bytes = try file.readAll(filebuf);
-    if (read_bytes < end_pos) {
-        std.debug.print("didnt read to end of file {s}\n", .{filename});
-        std.process.exit(1);
-    }
     const lem = try Lemon.create(allocator);
     defer lem.destroy(allocator);
     lem.argv = args;
@@ -2178,7 +2276,7 @@ pub fn main() !void {
     pstate.gp = lem;
     pstate.filename = filename;
 
-    try Parse(pstate, filebuf);
+    try Parse(pstate);
     if (lem.printPreprocessed or lem.errorcnt > 0) {
         logger.err("exiting due to preprocess only or too many errors", .{});
         exit(@truncate(lem.errorcnt));
@@ -2778,7 +2876,8 @@ fn Configlist_sortbasis() void {
     cf_ls.basis = Configlist_msortBasis(cf_ls.basis);
     cf_ls.basisend = null;
 }
-
+/// Return a pointer to the head of the configuration list
+/// and reset the list.
 fn Configlist_return() ?*Config {
     const old = cf_ls.current;
     cf_ls.current = null;
@@ -2786,13 +2885,18 @@ fn Configlist_return() ?*Config {
     return old;
 }
 
-fn Configlist_basis() ?*Config {
+/// Return a pointer to the head of the configuration basis list
+/// and reset the list.
+fn Configlist_basis() *Config {
     const old = cf_ls.basis;
     cf_ls.basis = null;
     cf_ls.basisend = null;
-    return old;
+    // I think this is correct?
+    dbgassert(old != null);
+    return old.?;
 }
 
+/// Free all elements of the given configuration list.
 fn Configlist_eat(cfp: *Config, allocator: Allocator) void {
     var nextcfp: ?*Config = cfp;
     while (nextcfp) |this_cfp| {
