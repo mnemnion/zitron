@@ -661,7 +661,7 @@ const Lemon = struct {
     /// Code for the default non-terminal destructor
     vardest: []u8,
     /// Name of the input file
-    filename: []u8,
+    filename: []const u8,
     /// Name of the current output file
     outname: []u8,
     /// A prefix added to token names in the .h file
@@ -716,7 +716,7 @@ const Lemon = struct {
         .extracode = &.{},
         .tokendest = &.{},
         .vardest = &.{},
-        .filename = &.{},
+        .filename = "",
         .outname = &.{},
         .tokenprefix = &.{},
         .reallocFunc = &.{},
@@ -798,7 +798,6 @@ const Lemon = struct {
         allocator.free(gp.extracode);
         allocator.free(gp.tokendest);
         allocator.free(gp.vardest);
-        allocator.free(gp.filename);
         allocator.free(gp.outname);
         allocator.free(gp.tokenprefix);
         allocator.free(gp.reallocFunc);
@@ -2270,6 +2269,7 @@ pub fn main() !void {
     const lem = try Lemon.create(allocator);
     defer lem.destroy(allocator);
     lem.argv = args;
+    lem.filename = filename;
     lem.basisflag = basisflag;
     lem.nolineosflag = nolinenosflag;
     lem.printPreprocessed = printPP;
@@ -2319,24 +2319,38 @@ pub fn main() !void {
     SetSize(lem.nterminal + 1);
     // Find the precedence for every production rule (that has one)
     FindRulePrecedences(lem);
-    if (p_check) {
-        dprint("Sorted rules: lemon-zig\n", .{});
+    if (p_check or p_symbols) {
+        dprint("Sorted rules: {s}\n", .{lem.filename});
         var rp: ?*Rule = lem.rule;
         while (rp) |rule| : (rp = rule.next) {
             dprint("{s} ({d})  ", .{ rule.lhs.name, rule.iRule });
         }
         dprint("\n", .{});
     }
-    if (p_symbols) {
-        var rp: ?*Rule = lem.rule;
-        while (rp) |rule| : (rp = rule.next) {
-            if (rule.precsym) |prec|
-                std.debug.print("{s} precsym: {s}\n", .{ rule.lhs.name, prec.name });
-        }
-    }
     // Compute the lambda-nonterminals and the first-sets for every
     // nonterminal
     try FindFirstSets(lem);
+    if (p_check) {
+        var rp: ?*Rule = lem.rule;
+        while (rp) |rule| : (rp = rule.next) {
+            const s1 = rule.lhs;
+            dprint("lhs: {s} ({d})", .{ s1.name, s1.index });
+            if (s1.lambda) {
+                dprint(" LAMBDA", .{});
+            }
+            for (s1.firstset) |b| {
+                if (b) {
+                    dprint("+", .{});
+                } else {
+                    dprint(".", .{});
+                }
+            }
+            dprint("\n", .{});
+            for (rule.rhs, 0..) |s2, i| {
+                dprint("  {d}:{s} ({d})\n", .{ i, s2.name, s2.index });
+            }
+        }
+    }
     dbgassert(lem.nstate == 0);
     // Compute all LR(0) states.  Also record follow-set propagation
     // links so that the follow-set can be computed later
@@ -2401,7 +2415,6 @@ pub fn main() !void {
     //
     // Which is adequately straightforward imho.
     //
-    std.debug.print("lemon for great justice!\n", .{});
     std.process.cleanExit();
 }
 
