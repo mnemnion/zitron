@@ -1230,13 +1230,13 @@ fn getstate(lemp: *Lemon) !*State {
     // Extract the sorted basis of the new state.  The basis was constructed
     // by prior calls to "Configlist_addbasis()".
     Configlist_sortbasis();
-    const bp = Configlist_basis();
-    const maybe_stp = State_find(bp);
+    const maybe_bp = Configlist_basis();
+    const maybe_stp = if (maybe_bp) |bp| State_find(bp) else null;
     if (maybe_stp) |stp| {
         // A state with the same basis already exists!  Copy all the follow-set
         // propagation links from the state under construction into the
         // preexisting state, then return a pointer to the preexisting state
-        var maybe_x: ?*Config = bp;
+        var maybe_x: ?*Config = maybe_bp;
         var maybe_y: ?*Config = stp.bp;
         while (maybe_x) |x| while (maybe_y) |y| : ({
             maybe_x = x.bp;
@@ -1255,7 +1255,7 @@ fn getstate(lemp: *Lemon) !*State {
         Configlist_sort();
         const cfp = Configlist_return().?;
         const stp = try State_new();
-        stp.bp = bp;
+        stp.bp = maybe_bp.?;
         stp.cfp = cfp;
         stp.statenum = lemp.nstate;
         lemp.nstate += 1;
@@ -2947,14 +2947,14 @@ fn Configlist_closure(lemp: *Lemon) !void {
 const Configlist_msort = mergeSortFn(Config, "next", Configcmp);
 
 fn Configlist_sort() void {
-    cf_ls.current = Configlist_msort(cf_ls.current.?);
+    cf_ls.current = if (cf_ls.current) |cfp| Configlist_msort(cfp) else null;
     cf_ls.currentend.* = null;
 }
 
 const Configlist_msortBasis = mergeSortFn(Config, "bp", Configcmp);
 
 fn Configlist_sortbasis() void {
-    cf_ls.basis = Configlist_msortBasis(cf_ls.basis.?);
+    cf_ls.basis = if (cf_ls.basis) |bp| Configlist_msortBasis(bp) else null;
     cf_ls.basisend.* = null;
 }
 /// Return a pointer to the head of the configuration list
@@ -2968,13 +2968,11 @@ fn Configlist_return() ?*Config {
 
 /// Return a pointer to the head of the configuration basis list
 /// and reset the list.
-fn Configlist_basis() *Config {
+fn Configlist_basis() ?*Config {
     const old = cf_ls.basis;
     cf_ls.basis = null;
     cf_ls.basisend.* = null;
-    // I think this is correct?
-    dbgassert(old != null);
-    return old.?;
+    return old;
 }
 
 /// Free all elements of the given configuration list.
