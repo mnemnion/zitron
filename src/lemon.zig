@@ -42,6 +42,10 @@ fn dbgassert(ok: bool) void {
 
 const dprint = std.debug.print;
 
+//| NOTE: this should become a build flag
+
+const lemon_classic = true;
+
 // Various print control variables
 
 /// The main print control for lemon v. lemon comparison
@@ -275,7 +279,7 @@ const Rule = struct {
     /// Precedence symbol for this rule
     precsym: ?*Symbol,
     /// An index number for this rule
-    index: usize,
+    index: u32,
     /// Rule number as used in the generated tables
     iRule: u32,
     /// True if this rule has no associated C code
@@ -425,7 +429,7 @@ const Action = struct {
 /// is encoded as an instance of the following structure.
 const State = struct {
     /// The basis configurations for this state
-    pb: *Config = undefined,
+    bp: *Config = undefined,
     /// All configurations in this set
     cfp: *Config = undefined,
     /// Sequential number for this state
@@ -447,7 +451,17 @@ const State = struct {
     /// True if this is an auto-reduce state
     autoreduce: bool,
 
-    pub const empty: State = std.mem.zeroInit(State);
+    pub const empty: State = .{
+        .statenum = 0,
+        .ap = null,
+        .nTknAct = 0,
+        .nNtAct = 0,
+        .iTnkOfst = null,
+        .iNtOfst = null,
+        .iDfltReduce = -1,
+        .pDefltReduce = null,
+        .autoreduce = false,
+    };
 
     // [541]
     pub fn addAction(st: *State, sym: *Symbol, act_u: ActUnion) void {
@@ -465,13 +479,13 @@ const StateContext = struct {
         var h: u32 = 0;
         var next_cfg: ?*Config = cfp;
         while (next_cfg) |a| {
-            h = h * 571 + a.rp.index * 37 + a.rp.dot;
+            h = h * 571 + a.rp.index * 37 + a.dot;
             next_cfg = a.bp;
         }
         return h;
     }
 
-    pub fn eql(_: StateContext, a_cfg: *Config, b_cfg: *Config) bool {
+    pub fn eql(_: StateContext, a_cfg: *Config, b_cfg: *Config, _: usize) bool {
         var this_a: ?*Config = a_cfg;
         var this_b: ?*Config = b_cfg;
         while (this_a != null and this_b != null) {
@@ -541,7 +555,7 @@ const PLink = struct {
     /// The configuration to which linked
     cfp: *Config,
     /// The next propagate link
-    next: *?PLink,
+    next: ?*PLink,
 };
 
 threadlocal var plink_freelist: MemoryPool(PLink) = undefined;
@@ -553,7 +567,7 @@ fn Plink_new() !*PLink {
 }
 
 /// Add a plink to a plink list
-fn Plink_add(plink: **PLink, cfp: *Config) !void {
+fn Plink_add(plink: *?*PLink, cfp: *Config) !void {
     const newlink = try Plink_new();
     newlink.cfp = cfp;
     newlink.next = plink.*;
@@ -561,10 +575,7 @@ fn Plink_add(plink: **PLink, cfp: *Config) !void {
 }
 
 /// Transfer every plink on the list "from" to the list "to"
-fn Plink_copy(to: **PLink, from_in: *PLink) void {
-    // NOTE: I don't actually understand the purpose of doing
-    // an iteration here?  I guess we don't have the list tail
-    // huh. ¯\_(ツ)_/¯
+fn Plink_copy(to: *?*PLink, from_in: ?*PLink) void {
     var from: ?*PLink = from_in;
     var nextpl: ?*PLink = null;
     while (from) |this_pl| {
@@ -576,7 +587,7 @@ fn Plink_copy(to: **PLink, from_in: *PLink) void {
 }
 
 /// Delete every plink on the list
-fn Plink_delete(plp_delete: *PLink) void {
+fn Plink_delete(plp_delete: ?*PLink) void {
     var this_plp: ?*PLink = plp_delete;
     while (this_plp) |plp| {
         const plp_next = plp.next;
@@ -599,11 +610,11 @@ const Lemon = struct {
     /// First rule
     startRule: *Rule,
     /// Number of states
-    nstate: usize,
+    nstate: u32,
     /// nstate with tail degenerate states removed
-    nxstate: usize,
+    nxstate: u32,
     /// Number of rules
-    nrule: usize,
+    nrule: u32,
     /// Number of rules with actions
     nruleWithAction: usize,
     /// Number of terminal and nonterminal symbols
@@ -679,6 +690,18 @@ const Lemon = struct {
     has_fallback: bool,
     nolineosflag: bool,
     argv: [][:0]u8,
+
+    // TODO: we leave several things undefined here which are not
+    // guaranteed to be defined in the presence of bad inputs.
+    // This can be fixed by making dummy rules which point to
+    // dummy symbols, as threadlocal vars (but these we keep).
+    // --
+    // It is admittedly more convenient to have pointers be always
+    // nullable, when it comes to this kind of thing.  Although
+    // really this problem is created by that semantic more than it
+    // is solved by it, since in Zig we would take more pains while
+    // writing code like this to point at valid data as soon as we
+    // meaningfully can.
 
     pub const empty: Lemon = .{
         .allocator = undefined,
@@ -1136,24 +1159,25 @@ fn FindFirstSets(lemp: *Lemon) !void {
 // can be computed later.
 //
 fn FindStates(lemp: *Lemon) !void {
-    var sp: *Symbol = undefined;
-    if (lemp.start.len > 0) {
-        const maybe_sp = Symbol_find(lemp.start);
-        if (maybe_sp) |_| {
-            sp = lemp.startRule.lhs;
+    const sp: *Symbol = sp: {
+        if (lemp.start.len > 0) {
+            const maybe_sp = Symbol_find(lemp.start);
+            if (maybe_sp) |_| {
+                break :sp lemp.startRule.lhs;
+            } else {
+                ErrorMsg(lemp.filename, 0, "" ++
+                    "The specified start symbol \"{s}\" is not " ++
+                    "in a nonterminal of the grammar.  \"{s}\" will be used as the start " ++
+                    "symbol instead.", .{ lemp.start, lemp.startRule.lhs.name });
+                lemp.errorcnt += 1;
+                break :sp lemp.startRule.lhs;
+            }
         } else {
-            ErrorMsg(lemp.filename, 0, "" ++
-                "The specified start symbol \"{s}\" is not " ++
-                "in a nonterminal of the grammar.  \"{s}\" will be used as the start " ++
-                "symbol instead.", .{ lemp.start, lemp.startRule.lhs.name });
-            lemp.errorcnt += 1;
-            sp = lemp.startRule.lhs;
+            // OG checks if startRule pointer is defined, we (and it) ensure
+            // that it is before we get here.
+            break :sp lemp.startRule.lhs;
         }
-    } else {
-        // OG checks if startRule pointer is defined, we (and it) ensure
-        // that it is before we get here.
-        sp = lemp.startRule.lhs;
-    }
+    };
     // Make sure the start symbol doesn't occur on the right-hand side of
     // any rule.  Report an error if it does.  (YACC would generate a new
     // start symbol in this case.)
@@ -1166,8 +1190,12 @@ fn FindStates(lemp: *Lemon) !void {
                     "right-hand side of a rule. This will result in a parser which " ++
                     "does not work properly.", .{sp.name});
                 lemp.errorcnt += 1;
-            } // FIX ME:  Deal with multiterminals.  Like so:
-            if (rhs.type == .multiterminal) {
+            }
+            //| NOTE: the previous comparison says FIX ME:  Deal with multiterminals.
+            //| I think this is the fix, but we leave it out of lemon classic because
+            //| I aim to be mostly bug-compatible.  It's not actually clear this condition
+            //| can be triggered in any case.
+            if (!lemon_classic) if (rhs.type == .multiterminal) {
                 for (rhs.subsym) |subsym| {
                     if (subsym == sp) {
                         ErrorMsg(lemp.filename, 0, "" ++
@@ -1176,7 +1204,7 @@ fn FindStates(lemp: *Lemon) !void {
                         lemp.errorcnt += 1;
                     }
                 }
-            }
+            };
         }
     }
     // The basis configuration set for the first state
@@ -1205,10 +1233,36 @@ fn getstate(lemp: *Lemon) !*State {
     const bp = Configlist_basis();
     const maybe_stp = State_find(bp);
     if (maybe_stp) |stp| {
-        _ = stp;
+        // A state with the same basis already exists!  Copy all the follow-set
+        // propagation links from the state under construction into the
+        // preexisting state, then return a pointer to the preexisting state
+        var maybe_x: ?*Config = bp;
+        var maybe_y: ?*Config = stp.bp;
+        while (maybe_x) |x| while (maybe_y) |y| : ({
+            maybe_x = x.bp;
+            maybe_y = y.bp;
+        }) {
+            Plink_copy(&y.bplp, x.bplp);
+            Plink_delete(x.fplp);
+            x.fplp = null;
+            y.fplp = null;
+        };
+        Configlist_eat(Configlist_return(), lemp.allocator);
+        return stp;
     } else {
         // This really is a new state.  Construct all the details
-        Configlist_closure(lemp);
+        try Configlist_closure(lemp);
+        Configlist_sort();
+        const cfp = Configlist_return().?;
+        const stp = try State_new();
+        stp.bp = bp;
+        stp.cfp = cfp;
+        stp.statenum = lemp.nstate;
+        lemp.nstate += 1;
+        stp.ap = null;
+        _ = try State_insert(stp, stp.bp);
+        // try  buildshifts(lemp, stp);
+        return stp;
     }
 }
 
@@ -2799,7 +2853,7 @@ fn Configlist_reset() void {
 }
 
 /// Add another configuration to the configuration list
-fn Configlist_add(rp: *Rule, dot: int) !*Config {
+fn Configlist_add(rp: *Rule, dot: u32) !*Config {
     dbgassert(is_a_configlists);
     var model: Config = undefined;
     model.rp = rp;
@@ -2853,8 +2907,7 @@ fn Configcmp(a: *Config, b: *Config) bool {
 }
 
 /// Compute the closure of the configuration list
-fn Configlist_closure(lemp: *Lemon) void {
-    assert(cf_ls.currentend != null);
+fn Configlist_closure(lemp: *Lemon) !void {
     var this_cfp: ?*Config = cf_ls.current;
     scan: while (this_cfp) |cfp| : (this_cfp = cfp.next) {
         const rp = cfp.rp;
@@ -2874,18 +2927,18 @@ fn Configlist_closure(lemp: *Lemon) void {
                 // TODO: refactor this: slice in for loop above,
                 // switch statement here:
                 if (xsp.type == .terminal) {
-                    SetAdd(newcfp.fws, xsp.index);
+                    _ = SetAdd(newcfp.fws, xsp.index);
                     break :dots;
                 } else if (xsp.type == .multiterminal) {
-                    for (0..xsp.nsubsym) |k| {
-                        SetAdd(newcfp.fws, xsp.nsubsym[k].index);
+                    for (xsp.subsym) |subsym| {
+                        _ = SetAdd(newcfp.fws, subsym.index);
                     }
                     break :dots;
                 } else {
-                    SetUnion(newcfp.fws, xsp.firstset);
+                    _ = SetUnion(newcfp.fws, xsp.firstset);
                     if (!xsp.lambda) break :dots;
                 }
-                if (i == rp.nrhs) Plink_add(&cfp.fplp, newcfp);
+                if (i == rp.nrhs) try Plink_add(&cfp.fplp, newcfp);
             }
         }
     }
@@ -2894,22 +2947,22 @@ fn Configlist_closure(lemp: *Lemon) void {
 const Configlist_msort = mergeSortFn(Config, "next", Configcmp);
 
 fn Configlist_sort() void {
-    cf_ls.current = Configlist_msort(cf_ls.currrent);
-    cf_ls.currenend = null;
+    cf_ls.current = Configlist_msort(cf_ls.current.?);
+    cf_ls.currentend.* = null;
 }
 
 const Configlist_msortBasis = mergeSortFn(Config, "bp", Configcmp);
 
 fn Configlist_sortbasis() void {
-    cf_ls.basis = Configlist_msortBasis(cf_ls.basis);
-    cf_ls.basisend = null;
+    cf_ls.basis = Configlist_msortBasis(cf_ls.basis.?);
+    cf_ls.basisend.* = null;
 }
 /// Return a pointer to the head of the configuration list
 /// and reset the list.
 fn Configlist_return() ?*Config {
     const old = cf_ls.current;
     cf_ls.current = null;
-    cf_ls.currentend = null;
+    cf_ls.currentend.* = null;
     return old;
 }
 
@@ -2918,14 +2971,14 @@ fn Configlist_return() ?*Config {
 fn Configlist_basis() *Config {
     const old = cf_ls.basis;
     cf_ls.basis = null;
-    cf_ls.basisend = null;
+    cf_ls.basisend.* = null;
     // I think this is correct?
     dbgassert(old != null);
     return old.?;
 }
 
 /// Free all elements of the given configuration list.
-fn Configlist_eat(cfp: *Config, allocator: Allocator) void {
+fn Configlist_eat(cfp: ?*Config, allocator: Allocator) void {
     var nextcfp: ?*Config = cfp;
     while (nextcfp) |this_cfp| {
         nextcfp = this_cfp.next;
