@@ -1104,22 +1104,25 @@ fn FindFirstSets(lemp: *Lemon) !void {
     while (progress) {
         progress = false;
         var rp: ?*Rule = lemp.rule;
-        walk: while (rp) |rule| : (rp = rule.next) {
+        while (rp) |rule| : (rp = rule.next) {
             const s1 = rule.lhs;
-            for (rule.rhs) |s2| {
+            rhs: for (rule.rhs) |s2| {
                 if (s2.type == .terminal) {
-                    progress = progress or SetAdd(s1.firstset, s2.index);
-                    break :walk;
+                    const p = SetAdd(s1.firstset, s2.index);
+                    progress = progress or p;
+                    break :rhs;
                 } else if (s2.type == .multiterminal) {
                     for (s2.subsym) |ss2| {
-                        progress = progress or SetAdd(s1.firstset, ss2.index);
+                        const p = SetAdd(s1.firstset, ss2.index);
+                        progress = progress or p;
                     }
-                    break :walk;
+                    break :rhs;
                 } else if (s1 == s2) {
-                    if (s1.lambda == false) break :walk;
+                    if (s1.lambda == false) break :rhs;
                 } else {
-                    progress = progress or SetUnion(s1.firstset, s2.firstset);
-                    if (s2.lambda == false) break :walk;
+                    const p = SetUnion(s1.firstset, s2.firstset);
+                    progress = progress or p;
+                    if (s2.lambda == false) break :rhs;
                 }
             }
         }
@@ -2336,7 +2339,7 @@ pub fn main() !void {
             const s1 = rule.lhs;
             dprint("lhs: {s} ({d})", .{ s1.name, s1.index });
             if (s1.lambda) {
-                dprint(" LAMBDA", .{});
+                dprint(" LAMBDA ", .{});
             }
             for (s1.firstset) |b| {
                 if (b) {
