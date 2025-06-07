@@ -34,8 +34,10 @@ const exit = std.process.exit;
 
 const logger = std.log.scoped(.lemon);
 
+const is_debug = builtin.mode == .Debug;
+
 fn dbgassert(ok: bool) void {
-    if (builtin.mode == .Debug) {
+    if (is_debug) {
         assert(ok);
     }
 }
@@ -48,14 +50,21 @@ const lemon_classic = true;
 
 // Various print control variables
 
-/// The main print control for lemon v. lemon comparison
-const p_check = true;
+/// Prints which are already passing
+const p_check1 = true;
+/// Failing prints which I don't want to see
+const p_check2 = false;
+/// Prints I'm trying to get to pass
+const p_check_this = false;
+/// Possibly-useful prints which are ahead of the curve
+const p_check_next = false;
 
 const p_debug = false;
 
 const p_print = false;
 const p_errcnt = true;
 const p_symbols = false;
+const p_statefind = false;
 
 // NOTE: This is not, in fact, how strcmp works.  If it turns out
 // I need anything other than != 0 and == 0 from strcmp, which I doubt,
@@ -196,7 +205,7 @@ const Symbol = struct {
     subsym: []*Symbol,
 
     pub const empty: Symbol = .{
-        .name = "",
+        .name = "UNIN!TIALIZED",
         .index = 0,
         .type = .nonterminal,
         .rule = null,
@@ -520,22 +529,41 @@ const StateContext = struct {
     }
 
     pub fn eql(_: StateContext, a_cfg: *Config, b_cfg: *Config, _: usize) bool {
-        var this_a: ?*Config = a_cfg;
-        var this_b: ?*Config = b_cfg;
-        while (this_a != null and this_b != null) {
-            const a, const b = .{ this_a.?, this_b.? };
-            if (a.rp.index != b.rp.index or a.dot != b.dot) {
-                return false;
-            }
-            this_a, this_b = .{ a.next, b.next };
-        } else if ((this_a == null and this_b != null) or
-            (this_a != null and this_b == null))
-        {
-            return false;
+        var rc: i32 = 0;
+        var a: ?*Config = a_cfg;
+        var b: ?*Config = b_cfg;
+        while (rc == 0 and a != null and b != null) {
+            const a1: *Config = a.?;
+            const b1: *Config = b.?;
+            rc = cast(i32, a1.rp.index) - cast(i32, b1.rp.index);
+            if (rc == 0) rc = cast(i32, a1.dot) - cast(i32, b1.dot);
+            a = a1.bp;
+            b = b1.bp;
         }
-        return true;
+        if (rc == 0) {
+            if (a) |_| rc = 1;
+            if (b) |_| rc = -1;
+        }
+        return (rc == 0);
     }
 };
+//     pub fn eql2(_: StateContext, a_cfg: *Config, b_cfg: *Config, _: usize) bool {
+//         var this_a: ?*Config = a_cfg;
+//         var this_b: ?*Config = b_cfg;
+//         while (this_a != null and this_b != null) {
+//             const a, const b = .{ this_a.?, this_b.? };
+//             if (a.rp.index != b.rp.index or a.dot != b.dot) {
+//                 return false;
+//             }
+//             this_a, this_b = .{ a.next, b.next };
+//         } else if ((this_a == null and this_b != null) or
+//             (this_a != null and this_b == null))
+//         {
+//             return false;
+//         }
+//         return true;
+//     }
+// };
 
 //| [5681] State map stuff.
 
@@ -563,12 +591,23 @@ fn State_new() !*State {
 
 fn State_find(bp: *Config) ?*State {
     dbgassert(is_state_map);
-    return state_map.safe.get(bp);
+    if (p_statefind) {
+        dprint("Looking for {s}:{d}-{d}\n", .{ bp.rp.lhs.name, bp.rp.index, bp.dot });
+    }
+    const maybe_sp = state_map.safe.get(bp);
+    if (maybe_sp) |_| {
+        if (p_statefind) dprint("  Found\n", .{});
+    } else {
+        if (p_statefind) dprint("  Not found\n", .{});
+    }
+    return maybe_sp;
 }
 
 fn State_insert(data: *State, key: *Config) !bool {
     dbgassert(is_state_map);
+    if (p_statefind) dprint("Inserting {s}:{d}-{d}\n", .{ key.rp.lhs.name, key.rp.index, key.dot });
     if (state_map.safe.getKey(key)) |_| return false;
+    if (p_statefind) dprint("  Inserted\n", .{});
     try state_map.safe.put(state_map.allocator, key, data);
     return true;
 }
@@ -1265,6 +1304,8 @@ fn FindStates(lemp: *Lemon) !void {
     _ = try getstate(lemp);
 }
 
+threadlocal var state_count: usize = 0;
+
 // [967]
 // Return a pointer to a state which is described by the configuration
 // list which has been built from calls to Configlist_add.
@@ -1273,8 +1314,24 @@ fn getstate(lemp: *Lemon) Allocator.Error!*State {
     // by prior calls to "Configlist_addbasis()".
     Configlist_sortbasis();
     const maybe_bp = Configlist_basis();
+    if (p_check1) {
+        state_count += 1;
+        dprint("State basis {d}: ", .{state_count});
+        var mbp = maybe_bp;
+        while (mbp) |bp| : (mbp = bp.bp) {
+            if (bp.dot < bp.rp.rhs.len) {
+                dprint("{s}:{d} #({d}) {s} ", .{ bp.rp.lhs.name, bp.rp.iRule, bp.dot, bp.rp.rhs[bp.dot].name });
+            } else {
+                dprint("{s}:{d} #({d}) [end] ", .{ bp.rp.lhs.name, bp.rp.iRule, bp.dot });
+            }
+        }
+        dprint("\n", .{});
+    }
     const maybe_stp = if (maybe_bp) |bp| State_find(bp) else null;
     if (maybe_stp) |stp| {
+        if (p_check1) {
+            dprint("  state found: {d}\n", .{stp.statenum});
+        }
         // A state with the same basis already exists!  Copy all the follow-set
         // propagation links from the state under construction into the
         // preexisting state, then return a pointer to the preexisting state
@@ -1286,17 +1343,30 @@ fn getstate(lemp: *Lemon) Allocator.Error!*State {
             Plink_copy(&y.bplp, x.bplp);
             Plink_delete(x.fplp);
             x.fplp = null;
-            y.fplp = null;
-            maybe_x = x.next;
-            maybe_y = y.next;
+            x.bplp = null;
+            maybe_x = x.bp;
+            maybe_y = y.bp;
         }
         Configlist_eat(Configlist_return(), lemp.allocator);
         return stp;
     } else {
         // This really is a new state.  Construct all the details
+        if (p_check1) {
+            dprint("  state not found\n", .{});
+        }
         try Configlist_closure(lemp); //  Compute the configuration closure */
         Configlist_sort(); //  Sort the configuration closure */
         const cfp = Configlist_return().?; //  Get a pointer to the config list */
+        if (p_check1) {
+            dprint("cfp: ", .{});
+            var cfp_count: usize = 0;
+            var mcfp: ?*Config = cfp;
+            while (mcfp) |a_cfp| : (mcfp = a_cfp.next) {
+                cfp_count += 1;
+                dprint("*", .{});
+            }
+            dprint(" ({d})\n", .{cfp_count});
+        }
         const stp = try State_new(); //  A new state structure */
         stp.bp = maybe_bp.?;
         stp.cfp = cfp;
@@ -1324,13 +1394,17 @@ fn same_symbol(a: *const Symbol, b: *const Symbol) bool {
 }
 
 fn buildshifts(lemp: *Lemon, stp: *State) !void {
-    _ = .{ lemp, stp };
     var maybe_cfp: ?*Config = stp.cfp; // For looping thru the config closure of "stp"
     // Initialize with a conveniently available symbol, this is never used:
-    var sp = stp.cfp.rp.lhs; // Symbol following the dot in configuration "cfp"
     // /* Each configuration becomes complete after it contributes to a successor
     // ** state.  Initially, all configurations are incomplete.
-    while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) cfp.status = .incomplete;
+    if (p_check_next) {
+        dprint("buildshifts entry on stp {d}\n", .{stp.statenum});
+    }
+    while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
+        if (p_check_next) dprint("Reset cfg {d}-{d}\n", .{ cfp.rp.iRule, cfp.dot });
+        cfp.status = .incomplete;
+    }
     maybe_cfp = stp.cfp;
     //   /* Loop through all configurations of the state "stp".
     while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
@@ -1344,20 +1418,24 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
         if (cfp.status == .complete) continue; // Already used by inner loop
         if (cfp.dot >= cfp.rp.rhs.len) continue; // Can't shift this config
         Configlist_reset(); // Reset the new config set
-        if (p_debug) dprint("post reset, dot is {d} \n", .{cfp.dot});
-        sp = cfp.rp.rhs[cfp.dot]; // Symbol after the dot
+        const sp = cfp.rp.rhs[cfp.dot]; // Symbol following the dot in configuration "cfp"
         var maybe_bcfp: ?*Config = cfp; // For the inner loop on config closure of "stp"
         while (maybe_bcfp) |bcfp| : (maybe_bcfp = bcfp.next) {
-            if (p_debug) dprint("inner config {s}: {s}  ", .{ bcfp.rp.lhs.name, @tagName(bcfp.status) });
             if (bcfp.status == .complete) continue; // Already used
             if (bcfp.dot >= bcfp.rp.rhs.len) continue; // Can't shift this one
             const bsp = bcfp.rp.rhs[bcfp.dot]; //  Get symbol after dot
             if (!same_symbol(bsp, sp)) continue; //  Must be same as for "cfp"
             bcfp.status = .complete; //  Mark this config as used
+            if (p_check_next) {
+                dprint("  basis from {s}: {d} -> {d}\n", .{
+                    bcfp.rp.lhs.name,
+                    bcfp.dot,
+                    bcfp.dot + 1,
+                });
+            }
             const newcfg = try Configlist_addbasis(bcfp.rp, bcfp.dot + 1);
             try Plink_add(&newcfg.bplp, bcfp);
         }
-        if (p_debug) dprint("\n", .{});
         // /* Get a pointer to the state described by the basis configuration set
         // ** constructed in the preceding loop */
         const newstp = try getstate(lemp);
@@ -2485,7 +2563,7 @@ pub fn main() !void {
     SetSize(lem.nterminal + 1);
     // Find the precedence for every production rule (that has one)
     FindRulePrecedences(lem);
-    if (p_check or p_symbols) {
+    if (p_check1 or p_symbols) {
         dprint("Sorted rules: {s}\n", .{lem.filename});
         var rp: ?*Rule = lem.rule;
         while (rp) |rule| : (rp = rule.next) {
@@ -2496,7 +2574,7 @@ pub fn main() !void {
     // Compute the lambda-nonterminals and the first-sets for every
     // nonterminal
     try FindFirstSets(lem);
-    if (p_check) {
+    if (p_check1) {
         var rp: ?*Rule = lem.rule;
         while (rp) |rule| : (rp = rule.next) {
             const s1 = rule.lhs;
@@ -2512,6 +2590,7 @@ pub fn main() !void {
                 }
             }
             dprint("\n", .{});
+            dbgassert(rule.rhs.len == rule.nrhs);
             for (rule.rhs, 0..) |s2, i| {
                 dprint("  {d}:{s} ({d})\n", .{ i, s2.name, s2.index });
             }
@@ -2524,7 +2603,7 @@ pub fn main() !void {
     lem.sorted = State_arrayof();
     dbgassert(lem.sorted.len == lem.nstate);
     for (lem.sorted, 0..) |stp, i| {
-        if (p_check) {
+        if (p_check_next) {
             dprint("State {d} #{d}: ", .{ i, stp.statenum });
             if (stp.bp) |bp| {
                 dprint("{s}", .{bp.rp.lhs.name});
@@ -2630,6 +2709,13 @@ fn mergeSortFn(
             var ep: ?*T = null;
             var set: [LISTSIZE]?*T = .{null} ** LISTSIZE;
             var maybe_list: ?*T = a;
+            var before: usize = 0;
+            if (is_debug) {
+                while (maybe_list) |list| : (maybe_list = @field(list, next)) {
+                    before += 1;
+                }
+                maybe_list = a;
+            }
             while (maybe_list) |list| {
                 ep = list;
                 maybe_list = @field(list, next);
@@ -2647,6 +2733,16 @@ fn mergeSortFn(
             for (0..LISTSIZE) |i| {
                 if (set[i]) |tail| {
                     ep = merge(tail, ep);
+                }
+            }
+            var after: usize = 0;
+            if (is_debug) {
+                var maybe_ep = ep;
+                while (maybe_ep) |list| : (maybe_ep = @field(list, next)) {
+                    after += 1;
+                }
+                if (before != after) {
+                    std.debug.panic("list: before {d}, after {d}", .{ before, after });
                 }
             }
             return ep.?;
@@ -2953,7 +3049,6 @@ fn newconfig() !*Config {
 
 fn deleteconfig(cfp: *Config) void {
     dbgassert(is_a_configlists);
-    cf_ls.allocator.free(cfp.fws);
     cf_ls.pool.destroy(cfp);
 }
 
@@ -2975,6 +3070,7 @@ fn Configlist_reset() void {
     cf_ls.currentend = &cf_ls.current;
     cf_ls.basis = null;
     cf_ls.basisend = &cf_ls.basis;
+    cf_ls.config_table.clearRetainingCapacity();
 }
 
 /// Add another configuration to the configuration list
@@ -2983,13 +3079,29 @@ fn Configlist_add(rp: *Rule, dot: u32) !*Config {
     var model: Config = undefined;
     model.rp = rp;
     model.dot = dot;
+    if (p_check1) {
+        dprint("[{d},{d}] ", .{ rp.index, dot });
+    }
     const maybe_cfp = cf_ls.config_table.getKey(&model);
-    if (maybe_cfp) |cfp| return cfp;
+    if (p_check1) {
+        if (maybe_cfp) |_| {
+            dprint("+ ", .{});
+        } else {
+            dprint(". ", .{});
+        }
+    }
+    if (maybe_cfp) |cfp| {
+        return cfp;
+    }
     var cfp = try newconfig();
     cfp.rp = rp;
     cfp.dot = dot;
     cfp.fws = try cf_ls.allocator.alloc(bool, set_size);
     @memset(cfp.fws, false);
+    dbgassert(cfp.stp == null);
+    dbgassert(cfp.next == null);
+    dbgassert(cfp.fplp == null);
+    dbgassert(cfp.bplp == null);
     cf_ls.currentend.* = cfp;
     cf_ls.currentend = &cfp.next;
     try cf_ls.config_table.put(cf_ls.allocator, cfp, {});
@@ -3008,6 +3120,10 @@ fn Configlist_addbasis(rp: *Rule, dot: u32) !*Config {
     cfp.dot = dot;
     cfp.fws = try cf_ls.allocator.alloc(bool, set_size);
     @memset(cfp.fws, false);
+    dbgassert(cfp.stp == null);
+    dbgassert(cfp.next == null);
+    dbgassert(cfp.fplp == null);
+    dbgassert(cfp.bplp == null);
     cf_ls.currentend.* = cfp;
     cf_ls.currentend = &cfp.next;
     cf_ls.basisend.* = cfp;
@@ -3034,10 +3150,15 @@ fn Configcmp(a: *Config, b: *Config) bool {
 /// Compute the closure of the configuration list
 fn Configlist_closure(lemp: *Lemon) !void {
     var this_cfp: ?*Config = cf_ls.current;
+    var scan_count: usize = 0;
     scan: while (this_cfp) |cfp| : (this_cfp = cfp.next) {
+        scan_count += 1;
         const rp = cfp.rp;
         const dot = cfp.dot;
-        if (dot >= rp.nrhs) continue :scan;
+        if (p_check1) {
+            dprint("Closure: {s} #{d}\n", .{ rp.lhs.name, dot });
+        }
+        if (dot >= rp.rhs.len) continue :scan;
         const sp = rp.rhs[dot];
         if (sp.type == .nonterminal) {
             if (sp.rule == null and sp != lemp.errsym) {
@@ -3047,9 +3168,16 @@ fn Configlist_closure(lemp: *Lemon) !void {
             }
             var this_newrp = sp.rule;
             while (this_newrp) |newrp| : (this_newrp = newrp.nextlhs) {
+                if (p_check1) {
+                    dprint("    lhs {s}:{d} ", .{ newrp.lhs.name, newrp.index });
+                }
                 const newcfp = try Configlist_add(newrp, 0);
-                dots: for (dot + 1..rp.nrhs) |i| {
+                var i: usize = dot + 1;
+                dots: while (i < rp.nrhs) : (i += 1) {
                     const xsp = rp.rhs[i];
+                    if (p_check1) {
+                        dprint("{s}, ", .{xsp.name});
+                    }
                     // TODO: refactor this: slice in for loop above,
                     // switch statement here:
                     if (xsp.type == .terminal) {
@@ -3064,10 +3192,16 @@ fn Configlist_closure(lemp: *Lemon) !void {
                         _ = SetUnion(newcfp.fws, xsp.firstset);
                         if (!xsp.lambda) break :dots;
                     }
-                    if (i == rp.nrhs) try Plink_add(&cfp.fplp, newcfp);
+                }
+                if (i == rp.nrhs) try Plink_add(&cfp.fplp, newcfp);
+                if (p_check1) {
+                    dprint("\n", .{});
                 }
             }
         }
+    }
+    if (p_check1) {
+        dprint("    count {d}\n", .{scan_count});
     }
 }
 
@@ -3075,21 +3209,21 @@ const Configlist_msort = mergeSortFn(Config, "next", Configcmp);
 
 fn Configlist_sort() void {
     cf_ls.current = if (cf_ls.current) |cfp| Configlist_msort(cfp) else null;
-    cf_ls.currentend.* = null;
+    cf_ls.currentend = &cf_ls.current;
 }
 
 const Configlist_msortBasis = mergeSortFn(Config, "bp", Configcmp);
 
 fn Configlist_sortbasis() void {
     cf_ls.basis = if (cf_ls.basis) |bp| Configlist_msortBasis(bp) else null;
-    cf_ls.basisend.* = null;
+    cf_ls.basisend = &cf_ls.basis;
 }
 /// Return a pointer to the head of the configuration list
 /// and reset the list.
 fn Configlist_return() ?*Config {
     const old = cf_ls.current;
     cf_ls.current = null;
-    cf_ls.currentend.* = null;
+    cf_ls.currentend.* = cf_ls.current;
     return old;
 }
 
@@ -3098,7 +3232,7 @@ fn Configlist_return() ?*Config {
 fn Configlist_basis() ?*Config {
     const old = cf_ls.basis;
     cf_ls.basis = null;
-    cf_ls.basisend.* = null;
+    cf_ls.basisend.* = cf_ls.basis;
     return old;
 }
 
@@ -3107,8 +3241,8 @@ fn Configlist_eat(cfp: ?*Config, allocator: Allocator) void {
     var nextcfp: ?*Config = cfp;
     while (nextcfp) |this_cfp| {
         nextcfp = this_cfp.next;
-        assert(this_cfp.fplp == null);
-        assert(this_cfp.bplp == null);
+        dbgassert(this_cfp.fplp == null);
+        dbgassert(this_cfp.bplp == null);
         if (this_cfp.fws.len > 0) allocator.free(this_cfp.fws);
         deleteconfig(this_cfp);
     }
