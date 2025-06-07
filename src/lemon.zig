@@ -49,9 +49,9 @@ const lemon_classic = true;
 // Various print control variables
 
 /// The main print control for lemon v. lemon comparison
-const p_check = false;
+const p_check = true;
 
-const p_debug = true;
+const p_debug = false;
 
 const p_print = false;
 const p_errcnt = true;
@@ -1280,24 +1280,24 @@ fn getstate(lemp: *Lemon) Allocator.Error!*State {
         // preexisting state, then return a pointer to the preexisting state
         var maybe_x: ?*Config = maybe_bp;
         var maybe_y: ?*Config = stp.bp;
-        while (maybe_x) |x| while (maybe_y) |y| : ({
-            maybe_x = x.bp;
-            maybe_y = y.bp;
-        }) {
+        while (maybe_x != null and maybe_y != null) {
+            const x = maybe_x.?;
+            const y = maybe_y.?;
             Plink_copy(&y.bplp, x.bplp);
             Plink_delete(x.fplp);
             x.fplp = null;
             y.fplp = null;
-        };
+            maybe_x = x.next;
+            maybe_y = y.next;
+        }
         Configlist_eat(Configlist_return(), lemp.allocator);
         return stp;
     } else {
         // This really is a new state.  Construct all the details
-        try Configlist_closure(lemp);
-        Configlist_sort();
-        const cfp = Configlist_return().?;
-        const stp = try State_new();
-        dprint("reached newstate\n", .{});
+        try Configlist_closure(lemp); //  Compute the configuration closure */
+        Configlist_sort(); //  Sort the configuration closure */
+        const cfp = Configlist_return().?; //  Get a pointer to the config list */
+        const stp = try State_new(); //  A new state structure */
         stp.bp = maybe_bp.?;
         stp.cfp = cfp;
         stp.statenum = lemp.nstate;
@@ -1334,7 +1334,7 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
     maybe_cfp = stp.cfp;
     //   /* Loop through all configurations of the state "stp".
     while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
-        dprint("outer config {s}: {s} dot ({d}) nrhs {d} len {d} ", .{
+        if (p_debug) dprint("outer config {s}: {s} dot ({d}) nrhs {d} len {d} ", .{
             cfp.rp.lhs.name,
             @tagName(cfp.status),
             cfp.dot,
@@ -1344,11 +1344,11 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
         if (cfp.status == .complete) continue; // Already used by inner loop
         if (cfp.dot >= cfp.rp.rhs.len) continue; // Can't shift this config
         Configlist_reset(); // Reset the new config set
-        dprint("post reset, dot is {d} \n", .{cfp.dot});
+        if (p_debug) dprint("post reset, dot is {d} \n", .{cfp.dot});
         sp = cfp.rp.rhs[cfp.dot]; // Symbol after the dot
         var maybe_bcfp: ?*Config = cfp; // For the inner loop on config closure of "stp"
         while (maybe_bcfp) |bcfp| : (maybe_bcfp = bcfp.next) {
-            dprint("inner config {s}: {s}  ", .{ bcfp.rp.lhs.name, @tagName(bcfp.status) });
+            if (p_debug) dprint("inner config {s}: {s}  ", .{ bcfp.rp.lhs.name, @tagName(bcfp.status) });
             if (bcfp.status == .complete) continue; // Already used
             if (bcfp.dot >= bcfp.rp.rhs.len) continue; // Can't shift this one
             const bsp = bcfp.rp.rhs[bcfp.dot]; //  Get symbol after dot
@@ -1357,7 +1357,7 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
             const newcfg = try Configlist_addbasis(bcfp.rp, bcfp.dot + 1);
             try Plink_add(&newcfg.bplp, bcfp);
         }
-        dprint("\n", .{});
+        if (p_debug) dprint("\n", .{});
         // /* Get a pointer to the state described by the basis configuration set
         // ** constructed in the preceding loop */
         const newstp = try getstate(lemp);
@@ -2521,6 +2521,19 @@ pub fn main() !void {
     // Compute all LR(0) states.  Also record follow-set propagation
     // links so that the follow-set can be computed later
     try FindStates(lem);
+    lem.sorted = State_arrayof();
+    dbgassert(lem.sorted.len == lem.nstate);
+    for (lem.sorted, 0..) |stp, i| {
+        if (p_check) {
+            dprint("State {d} #{d}: ", .{ i, stp.statenum });
+            if (stp.bp) |bp| {
+                dprint("{s}", .{bp.rp.lhs.name});
+            } else {
+                dprint("(null)", .{});
+            }
+            dprint("\n", .{});
+        }
+    }
     { // This is the bulk of the remaining work:
         // /* Compute all LR(0) states.  Also record follow-set propagation
         // ** links so that the follow-set can be computed later */
