@@ -1451,6 +1451,49 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
     }
 }
 
+//| [1136]
+
+///
+/// Construct the propagation links
+///
+fn FindLinks(lemp: *Lemon) !void {
+
+    // /* Housekeeping detail:
+    // ** Add to every propagate link a pointer back to the state to
+    // ** which the link is attached. */
+    for (0..lemp.nstate) |i| {
+        const stp: ?*State = lemp.sorted[i];
+        var maybe_cfp = if (stp) |sp| sp.cfp else null;
+        while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
+            if (p_check1) {
+                dprint("cfp: {s}:{d} -> {d}\n", .{ cfp.rp.lhs.name, cfp.rp.index, stp.?.statenum });
+            }
+            cfp.stp = stp;
+        }
+    }
+
+    // /* Convert all backlinks into forward links.  Only the forward
+    // ** links are used in the follow-set computation. */
+    for (0..lemp.nstate) |i| {
+        const stp: ?*State = lemp.sorted[i];
+        var maybe_cfp = if (stp) |sp| sp.cfp else null;
+        while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
+            if (p_check1) {
+                dprint("cfp: {s}:{d} <-> ", .{ cfp.rp.lhs.name, cfp.rp.index });
+            }
+            var maybe_plp: ?*PLink = cfp.bplp;
+            while (maybe_plp) |plp| : (maybe_plp = plp.next) {
+                var other = plp.cfp;
+                if (p_check1) {
+                    dprint("{s}:{d} ({d}), ", .{ other.rp.lhs.name, other.rp.index, other.dot });
+                }
+                try Plink_add(&other.fplp, cfp);
+            }
+            if (p_check1) dprint("\n", .{});
+        }
+    }
+}
+
 //| [1500] ErrorMsg
 
 fn ErrorMsg(filename: []const u8, lineno: usize, comptime fmt: []const u8, args: anytype) void {
@@ -2602,8 +2645,8 @@ pub fn main() !void {
     try FindStates(lem);
     lem.sorted = State_arrayof();
     dbgassert(lem.sorted.len == lem.nstate);
-    for (lem.sorted, 0..) |stp, i| {
-        if (p_check_next) {
+    if (p_check1) {
+        for (lem.sorted, 0..) |stp, i| {
             dprint("State {d} #{d}: ", .{ i, stp.statenum });
             if (stp.bp) |bp| {
                 dprint("{s}", .{bp.rp.lhs.name});
@@ -2613,16 +2656,10 @@ pub fn main() !void {
             dprint("\n", .{});
         }
     }
+    // /* Tie up loose ends on the propagation links */
+    try FindLinks(lem);
+    //
     { // This is the bulk of the remaining work:
-        // /* Compute all LR(0) states.  Also record follow-set propagation
-        // ** links so that the follow-set can be computed later */
-        //  lem.nstate = 0;
-        // FindStates(&lem);
-        // lem.sorted = State_arrayof();
-        //
-        // /* Tie up loose ends on the propagation links */
-        // FindLinks(&lem);
-        //
         // /* Compute the follow set of every reducible configuration */
         // FindFollowSets(&lem);
         //
