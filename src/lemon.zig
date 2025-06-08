@@ -422,7 +422,7 @@ const Action = struct {
     type: E_Action = ._not_initialized,
     x: union {
         stp: *State,
-        rp: *Rule,
+        rp: ?*Rule,
     } = undefined,
     /// SHIFTREDUCE optimization to this symbol
     spOpt: ?*Symbol = null,
@@ -454,17 +454,37 @@ const Action = struct {
         newaction.type = e_type;
         newaction.sp = sp;
         // newaction.spOpt = null;
-        newaction.x.stp = stp;
+        newaction.x = .{ .stp = stp };
     }
 
-    pub fn addRule(app: *?*Action, e_type: E_Action, sp: *Symbol, rp: *Rule) !void {
+    pub fn addRule(app: *?*Action, e_type: E_Action, sp: *Symbol, rp: ?*Rule) !void {
         const newaction = try Action.new();
         newaction.next = app.*;
         app.* = newaction;
         newaction.type = e_type;
         newaction.sp = sp;
         // newaction.spOpt = null;
-        newaction.x.rp = rp;
+        newaction.x = .{ .rp = rp };
+    }
+
+    pub const sort = mergeSortFn(Action, "next", actioncmp);
+
+    fn actioncmp(ap1: *Action, ap2: *Action) bool {
+        if (ap1.sp.index < ap2.sp.index) return true;
+        if (ap1.sp.index > ap2.sp.index) return false;
+        if (@intFromEnum(ap1.type) < @intFromEnum(ap2.type)) return true;
+        if (@intFromEnum(ap1.type) > @intFromEnum(ap2.type)) return false;
+        // ap2 will cast identically because they have the same type:
+        if (ap1.type == .reduce or ap1.type == .shiftreduce) {
+            if (p_debug) dprint("ap1.type {s} ap2.type {s}\n", .{ @tagName(ap1.type), @tagName(ap2.type) });
+            if (ap1.x.rp.?.index < ap2.x.rp.?.index) return true;
+            if (ap1.x.rp.?.index > ap2.x.rp.?.index) return false;
+        }
+        // otherwise... raw pointer comparison??
+        dprint("action sort: raw pointer comparison is reachable\n", .{});
+        // This is the order they're subtracted in the original:
+        if (@intFromPtr(ap2) > @intFromPtr(ap1)) return false;
+        return true; // `<=` for sort stability
     }
 };
 
@@ -547,23 +567,6 @@ const StateContext = struct {
         return (rc == 0);
     }
 };
-//     pub fn eql2(_: StateContext, a_cfg: *Config, b_cfg: *Config, _: usize) bool {
-//         var this_a: ?*Config = a_cfg;
-//         var this_b: ?*Config = b_cfg;
-//         while (this_a != null and this_b != null) {
-//             const a, const b = .{ this_a.?, this_b.? };
-//             if (a.rp.index != b.rp.index or a.dot != b.dot) {
-//                 return false;
-//             }
-//             this_a, this_b = .{ a.next, b.next };
-//         } else if ((this_a == null and this_b != null) or
-//             (this_a != null and this_b == null))
-//         {
-//             return false;
-//         }
-//         return true;
-//     }
-// };
 
 //| [5681] State map stuff.
 
@@ -762,7 +765,7 @@ const Lemon = struct {
     reallocFunc: []u8,
     /// Function to use to free stack space
     freeFunc: []u8,
-    nconflict: int,
+    nconflict: u32,
     nactiontab: int,
     nlookaheadtab: int,
     tablesize: int,
@@ -1540,6 +1543,147 @@ fn FindFollowSets(lemp: *Lemon) void {
     }
 }
 
+// Compute the reduce actions, and resolve conflicts.
+//
+fn FindActions(lemp: *Lemon) !void {
+    // Add all of the reduce actions
+    // A reduce action is added for each element of the followset of
+    // a configuration which has its dot at the extreme right.
+    //
+    for (lemp.sorted) |stp| { // Loop over all states
+        var maybe_cfp: ?*Config = stp.cfp;
+        while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) { // Loop over all configurations
+            if (cfp.rp.rhs.len == cfp.dot) { // Is dot at extreme right?
+                for (0..lemp.nterminal) |j| {
+                    if (cfp.fws[j]) {
+                        //  Add a reduce action to the state "stp" which will reduce by the
+                        //  rule "cfp->rp" if the lookahead symbol is "lemp->symbols[j]"
+                        try Action.addRule(&stp.ap, .reduce, lemp.symbols[j], cfp.rp);
+                    }
+                }
+            }
+        }
+    }
+    //  Add the accepting token
+    const sp: *Symbol = sym: {
+        if (lemp.start.len > 0) {
+            const sp_start = Symbol_find(lemp.start);
+            if (sp_start) |sps| {
+                break :sym sps;
+            } else {
+                break :sym lemp.startRule.lhs;
+            }
+        } else break :sym lemp.startRule.lhs;
+    };
+    // Add to the first state (which is always the starting state of the
+    // finite state machine) an action to ACCEPT if the lookahead is the
+    // start nonterminal.
+    try Action.addRule(&lemp.sorted[0].ap, .accept, sp, null);
+    //   Resolve conflicts
+    for (lemp.sorted) |stp| {
+        stp.ap = if (stp.ap) |ap| Action.sort(ap) else null;
+        var maybe_ap: ?*Action = stp.ap;
+        while (maybe_ap) |ap| : (maybe_ap = ap.next) {
+            var nap = ap.next;
+            while (nap != null and nap.?.sp == ap.sp) : (nap = nap.?.next) {
+                // The two actions "ap" and "nap" have the same lookahead.
+                // Figure out which one should be used */
+                lemp.nconflict += resolve_conflict(ap, nap.?);
+            }
+        }
+    }
+    // Report an error for each rule that can never be reduced.
+    var m_rp: ?*Rule = lemp.rule;
+    while (m_rp) |rp| : (m_rp = rp.next) rp.canReduce = false;
+    for (lemp.sorted) |stp| {
+        var m_ap = stp.ap;
+        while (m_ap) |ap| : (m_ap = ap.next) {
+            if (ap.type == .reduce) ap.x.rp.?.canReduce = true;
+        }
+    }
+    m_rp = lemp.rule;
+    while (m_rp) |rp| : (m_rp = rp.next) {
+        if (rp.canReduce) continue;
+        ErrorMsg(lemp.filename, 0, "" ++
+            "This rule can not be reduced.\n", .{});
+        lemp.errorcnt += 1;
+    }
+}
+
+fn resolve_conflict(apx: *Action, apy: *Action) u32 {
+    dbgassert(apx.sp == apy.sp); // Otherwise there would be no conflict
+    var errcnt: u32 = 0;
+    // TODO: This is the major overhaul to use a tagged union.
+    if (apx.type == .shift and apy.type == .shift) {
+        apy.type = .ssconflict;
+        errcnt += 1;
+    }
+    if (apx.type == .shift and apy.type == .reduce) {
+        const spx = apx.sp;
+        const maybe_spy = apy.x.rp.?.precsym;
+        if (maybe_spy == null) {
+            // Not enough precedence information
+            errcnt += 1; // And we can bail early
+            return errcnt;
+        } // So we can do this:
+        const spy = maybe_spy.?;
+        if (spx.prec == null or spy.prec == null) {
+            // Not enough precedence information.
+            apy.type = .srconflict;
+            errcnt += 1;
+        } else if (spx.prec.? > spy.prec.?) { // higher precedence wins
+            apy.type = .rd_resolved;
+        } else if (spx.prec.? < spy.prec.?) {
+            apx.type = .sh_resolved;
+        } else if (spx.prec.? == spy.prec.?) { // Use operator associativity to break tie
+            if (spx.assoc == .right) {
+                apy.type = .rd_resolved;
+            } else if (spx.assoc == .left) {
+                apx.type = .sh_resolved;
+            } else {
+                dbgassert(spx.assoc == .none);
+                apx.type = .@"error"; // NOTE: no errcnt? hmm.
+            }
+        }
+    } else if (apx.type == .reduce and apy.type == .reduce) {
+        const maybe_spx = apx.x.rp.?.precsym;
+        const maybe_spy = apy.x.rp.?.precsym;
+        if (maybe_spx == null or maybe_spy == null or maybe_spx.?.prec == null or
+            maybe_spy.?.prec == null or maybe_spx.?.prec.? == maybe_spy.?.prec.?)
+        {
+            apy.type = .rrconflict;
+            errcnt += 1;
+            return errcnt;
+        }
+        const spx = maybe_spx.?;
+        const spy = maybe_spy.?;
+        if (spx.prec.? > spy.prec.?) {
+            apy.type = .rd_resolved;
+        } else if (spx.prec.? < spy.prec.?) {
+            apx.type = .rd_resolved;
+        }
+    } else {
+        // The REDUCE/SHIFT case cannot happen because SHIFTs come before
+        // REDUCEs on the list.  If we reach this point it must be because
+        // the parser conflict had already been resolved.
+        // zig fmt: off
+        dbgassert(
+            apx.type == .sh_resolved or
+            apx.type == .rd_resolved or
+            apx.type == .ssconflict or
+            apx.type == .srconflict or
+            apx.type == .rrconflict or
+
+            apy.type == .sh_resolved or
+            apy.type == .rd_resolved or
+            apy.type == .ssconflict or
+            apy.type == .srconflict or
+            apy.type == .rrconflict
+        );
+        // zig fmt: on
+    }
+    return errcnt;
+}
 //| [1500] ErrorMsg
 
 fn ErrorMsg(filename: []const u8, lineno: usize, comptime fmt: []const u8, args: anytype) void {
@@ -2721,13 +2865,9 @@ pub fn main() !void {
     // Compute the follow set of every reducible configuration
     FindFollowSets(lem);
 
+    // Compute the action tables
+    try FindActions(lem);
     { // This is the bulk of the remaining work:
-        // /* Compute the follow set of every reducible configuration */
-        // FindFollowSets(&lem);
-        //
-        // /* Compute the action tables */
-        // FindActions(&lem);
-        //
         // /* Compress the action tables */
         // if( compress==0 ) CompressTables(&lem);
         //
