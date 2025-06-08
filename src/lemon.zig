@@ -44,9 +44,10 @@ fn dbgassert(ok: bool) void {
 
 const dprint = std.debug.print;
 
-//| NOTE: this should become a build flag
+//| NOTE: these should become build flags
 
 const lemon_classic = true;
+const do_not_optimize_terminals = true;
 
 // Various print control variables
 
@@ -2638,6 +2639,110 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
     }
 }
 
+/// Reduce the size of the action tables, if possible, by making use
+/// of defaults.
+///
+/// In this version, we take the most frequent REDUCE action and make
+/// it the default.  Except, there is no default if the wildcard token
+/// is a possible look-ahead.
+fn CompressTables(lemp: *Lemon) !void {
+    states: for (lemp.sorted) |stp| {
+        var nbest: usize = 0;
+        var rbest: ?*Rule = null;
+        var usesWildcard = false;
+        var m_ap: ?*Action = stp.ap;
+        actions: while (m_ap) |ap| : (m_ap = ap.next) {
+            if (ap.type == .shift and ap.sp == lemp.wildcard) {
+                usesWildcard = true;
+            }
+            if (ap.type != .reduce) continue :actions;
+            const rp = ap.x.rp.?; // Always rule on .reduce
+            if (rp.lhsStart) continue :actions;
+            if (rp == rbest) continue :actions;
+            var n: usize = 1;
+            var m_ap2 = ap.next;
+            next_act: while (m_ap2) |ap2| : (m_ap2 = ap2.next) {
+                if (ap2.type != .reduce) continue :next_act;
+                const rp2 = ap2.x.rp.?;
+                if (rp2 == rbest) continue :next_act;
+                if (rp2 == rp) n += 1;
+            }
+            if (n > nbest) {
+                nbest = n;
+                rbest = rp;
+            }
+            // Do not make a default if the number of rules to default
+            // is not at least 1 or if the wildcard token is a possible
+            // lookahead.
+            //
+        }
+        if (nbest < 1 or usesWildcard) continue :states;
+        // Combine matching REDUCE actions into a single default.
+        m_ap = stp.ap;
+        while (m_ap) |ap| : (m_ap = ap.next) {
+            if (ap.type == .reduce and ap.x.rp == rbest) break;
+        }
+        dbgassert(m_ap != null);
+        m_ap.?.sp = try Symbol_new("{default}");
+        while (m_ap) |ap| : (m_ap = ap.next) {
+            if (ap.type == .shift) break;
+            if (ap.type == .reduce and ap.x.rp != rbest) break;
+        } else {
+            stp.autoreduce = true;
+            stp.pDefltReduce = rbest;
+        }
+    }
+    // Make a second pass over all states and actions.  Convert
+    // every action that is a SHIFT to an autoReduce state into
+    // a SHIFTREDUCE action.
+    for (lemp.sorted) |stp| {
+        var m_ap: ?*Action = stp.ap;
+        actions: while (m_ap) |ap| : (m_ap = ap.next) {
+            if (ap.type != .shift) continue :actions;
+            const pNextState = ap.x.stp;
+            if (pNextState.autoreduce and pNextState.pDefltReduce != null) {
+                ap.type = .shiftreduce;
+                ap.x = .{ .rp = pNextState.pDefltReduce };
+            }
+        }
+    }
+    // If a SHIFTREDUCE action specifies a rule that has a single RHS term
+    // (meaning that the SHIFTREDUCE will land back in the state where it
+    // started) and if there is no C-code associated with the reduce action,
+    // then we can go ahead and convert the action to be the same as the
+    // action for the RHS of the rule.
+    //
+    // TODO: do_not_optimize_terminals
+    for (lemp.sorted) |stp| {
+        var m_ap: ?*Action = stp.ap;
+        var nextap: ?*Action = null;
+        actions: while (m_ap) |ap| : (m_ap = nextap) {
+            nextap = ap.next;
+            if (ap.type != .shiftreduce) continue :actions;
+            const rp = ap.x.rp.?;
+            if (!rp.noCode) continue :actions;
+            if (rp.rhs.len != 1) continue :actions;
+            if (comptime do_not_optimize_terminals) {
+                // Only apply this optimization to non-terminals.  It would be OK to
+                // apply it to terminal symbols too, but that makes the parser tables
+                // larger.
+                if (ap.sp.index < lemp.nterminal) continue :actions;
+            }
+            // If we reach this point, it means the optimization can be applied
+            nextap = ap;
+            var m_ap2 = stp.ap;
+            while (m_ap2 != null and
+                (m_ap2 == ap or m_ap2.?.sp != rp.lhs)) : (m_ap2 = m_ap2.?.next)
+            {
+                const ap2 = m_ap2.?;
+                ap.spOpt = ap2.sp;
+                ap.type = ap2.type;
+                ap.x = ap2.x;
+            }
+        }
+    }
+}
+
 //| [5230] Set manipulation
 //|
 //| This is actually pretty straightforward, we use a []bool instead of a
@@ -2725,16 +2830,16 @@ pub fn main() !void {
     // These need to exist so that some later argument parser can
     // assign them.  That that point of course, variable, but one
     // damn thing at a damn time.
-    const version = false;
-    const rpflag = false;
-    const basisflag = false;
-    const compress = false;
-    const quiet = false;
-    const statistics = false;
-    const mhflag = false;
-    const nolinenosflag = false;
-    const noResort = false;
-    const sqlFlag = false;
+    const version = true;
+    const rpflag = true;
+    const basisflag = true;
+    const compress = true;
+    const quiet = true;
+    const statistics = true;
+    const mhflag = true;
+    const nolinenosflag = true;
+    const noResort = true;
+    const sqlFlag = true;
     const printPP = false;
     // Reconcile Zig to this unfortunate situation:
     _ = .{ version, rpflag, basisflag, compress, quiet, statistics, mhflag, nolinenosflag, noResort, sqlFlag, printPP };
@@ -2875,10 +2980,10 @@ pub fn main() !void {
 
     // Compute the action tables
     try FindActions(lem);
+    // Compress the action tables
+    if (compress) try CompressTables(lem);
+    //
     { // This is the bulk of the remaining work:
-        // /* Compress the action tables */
-        // if( compress==0 ) CompressTables(&lem);
-        //
         // /* Reorder and renumber the states so that states with fewer choices
         // ** occur at the end.  This is an optimization that helps make the
         // ** generated parser tables smaller. */
