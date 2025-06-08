@@ -1451,7 +1451,7 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
     }
 }
 
-//| [1136]
+//| [1077]
 
 ///
 /// Construct the propagation links
@@ -1463,7 +1463,7 @@ fn FindLinks(lemp: *Lemon) !void {
     // ** which the link is attached. */
     for (0..lemp.nstate) |i| {
         const stp: ?*State = lemp.sorted[i];
-        var maybe_cfp = if (stp) |sp| sp.cfp else null;
+        var maybe_cfp: ?*Config = stp.?.cfp;
         while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
             if (p_check1) {
                 dprint("cfp: {s}:{d} -> {d}\n", .{ cfp.rp.lhs.name, cfp.rp.index, stp.?.statenum });
@@ -1490,6 +1490,52 @@ fn FindLinks(lemp: *Lemon) !void {
                 try Plink_add(&other.fplp, cfp);
             }
             if (p_check1) dprint("\n", .{});
+        }
+    }
+}
+
+// [1112]
+// Compute all followsets.
+//
+// A followset is the set of all symbols which can come immediately
+// after a configuration.
+fn FindFollowSets(lemp: *Lemon) void {
+    for (lemp.sorted) |stp| {
+        var maybe_cfp: ?*Config = stp.cfp;
+        while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
+            cfp.status = .incomplete;
+        }
+    }
+    var c_count: usize = 0;
+    var progress = true;
+    while (progress) {
+        progress = false;
+        for (lemp.sorted) |stp| {
+            var maybe_cfp: ?*Config = stp.cfp;
+            states: while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
+                if (cfp.status == .complete) continue :states;
+                var maybe_plp: ?*PLink = cfp.fplp;
+                while (maybe_plp) |plp| : (maybe_plp = plp.next) {
+                    const changed = SetUnion(plp.cfp.fws, cfp.fws);
+                    if (p_check1) {
+                        c_count += 1;
+                        dprint(
+                            "#{d} follow set: {s}:{d} ",
+                            .{ c_count, plp.cfp.rp.lhs.name, plp.cfp.rp.index },
+                        );
+                        if (changed) {
+                            dprint("change\n", .{});
+                        } else {
+                            dprint("no change\n", .{});
+                        }
+                    }
+                    if (changed) {
+                        plp.cfp.status = .incomplete;
+                        progress = true;
+                    }
+                }
+                cfp.status = .complete;
+            }
         }
     }
 }
@@ -2658,7 +2704,23 @@ pub fn main() !void {
     }
     // /* Tie up loose ends on the propagation links */
     try FindLinks(lem);
-    //
+    if (p_check1) {
+        for (lem.sorted) |stp| {
+            var maybe_cfp: ?*Config = stp.cfp;
+            while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
+                dprint("cfp: {s}:{d} fplp count: ", .{ cfp.rp.lhs.name, cfp.rp.index });
+                var plp_count: usize = 0;
+                var maybe_plp: ?*PLink = cfp.fplp;
+                while (maybe_plp) |plp| : (maybe_plp = plp.next) {
+                    plp_count += 1;
+                }
+                dprint("{d}\n", .{plp_count});
+            }
+        }
+    }
+    // Compute the follow set of every reducible configuration
+    FindFollowSets(lem);
+
     { // This is the bulk of the remaining work:
         // /* Compute the follow set of every reducible configuration */
         // FindFollowSets(&lem);
