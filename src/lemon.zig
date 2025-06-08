@@ -469,6 +469,8 @@ const Action = struct {
 
     pub const sort = mergeSortFn(Action, "next", actioncmp);
 
+    // Compare two actions.  Return `true` if the first is less than
+    // or equal to the second, `false` otherwise.
     fn actioncmp(ap1: *Action, ap2: *Action) bool {
         if (ap1.sp.index < ap2.sp.index) return true;
         if (ap1.sp.index > ap2.sp.index) return false;
@@ -1588,7 +1590,13 @@ fn FindActions(lemp: *Lemon) !void {
             while (nap != null and nap.?.sp == ap.sp) : (nap = nap.?.next) {
                 // The two actions "ap" and "nap" have the same lookahead.
                 // Figure out which one should be used */
+                if (p_check1) {
+                    dprint("find state: before .{s} .{s}\n", .{ @tagName(ap.type), @tagName(nap.?.type) });
+                }
                 lemp.nconflict += resolve_conflict(ap, nap.?);
+                if (p_check1) {
+                    dprint("find state: after .{s} .{s}\n", .{ @tagName(ap.type), @tagName(nap.?.type) });
+                }
             }
         }
     }
