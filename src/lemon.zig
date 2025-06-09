@@ -19,6 +19,9 @@ const ArrayHashMap = std.ArrayHashMapUnmanaged;
 const MemoryPool = std.heap.MemoryPool;
 const ArrayList = std.ArrayListUnmanaged;
 const StringArrayHashMap = std.StringArrayHashMapUnmanaged;
+const File = std.fs.File;
+
+const OOM = Allocator.Error;
 
 const isLower = std.ascii.isLower;
 const isUpper = std.ascii.isUpper;
@@ -48,6 +51,10 @@ const dprint = std.debug.print;
 
 const lemon_classic = true;
 const do_not_optimize_terminals = true;
+const print_aliases = false;
+
+// XXX: Replace all occurrences with `anytype`
+const SomeWriter = std.io.AnyWriter;
 
 // Various print control variables
 
@@ -680,6 +687,260 @@ fn Plink_delete(plp_delete: ?*PLink) void {
         const plp_next = plp.next;
         plink_freelist.destroy(plp);
         this_plp = plp_next;
+    }
+}
+
+// /*********************** From the file "report.c" **************************/
+// /*
+// ** Procedures for generating reports and tables in the LEMON parser generator.
+// */
+
+/// Generate a filename with the given suffix.  Space to hold the
+/// name comes from malloc() and must be freed by the calling
+/// function.
+fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM![]u8 {
+    var buf = ArrayList(u8){};
+    errdefer buf.deinit(lemp.allocator);
+
+    var w = buf.writer(lemp.allocator);
+    var filename = lemp.filename;
+
+    if (output_dir) |dir| {
+        if (std.mem.lastIndexOfScalar(u8, filename, '/')) |i| {
+            filename = filename[i + 1 ..];
+        }
+        try w.print("{s}/", .{dir});
+    }
+
+    if (std.mem.lastIndexOfScalar(u8, filename, '.')) |dot| {
+        filename = filename[0..dot];
+    }
+
+    try w.print("{s}{s}", .{ filename, suffix });
+
+    return try buf.toOwnedSlice(lemp.allocator);
+}
+
+/// Open a file with a name based on the name of the input file,
+/// but with a different (specified) suffix, and return a pointer
+/// to the stream.
+fn file_open(lemp: *Lemon, suffix: []const u8, mode: File.CreateFlags) OOM!?File {
+    if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
+    lemp.outname = try file_makename(lemp, suffix, null); // TODO: decide how to handle outputDir
+    const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
+        lemp.errorcnt += 1;
+        switch (err) {
+            .IsDir => {
+                logger.err("file open error: path is a directory '{s}'", .{lemp.outname});
+                return null;
+            },
+            .FileNotFound => {
+                logger.err("file open error: file not found '{s}'", .{lemp.outname});
+                return null;
+            },
+            .AccessDenied, .PermissionDenied => {
+                logger.err("file open error: permission denied '{s}'", .{lemp.outname});
+                return null;
+            },
+            else => |e| {
+                logger.err("file open error: unexpected error {s} opening '{s}'", .{ @errorName(e), lemp.outname });
+                return null;
+            },
+        }
+    };
+    return fh;
+}
+
+/// Print the text of a rule
+fn rule_print(writer: std.io.Writer, rp: *Rule) !void {
+    try writer.print("{s}", .{rp.lhs.name});
+    if (comptime print_aliases) {
+        if (rp.lhsalias.len > 0) try writer.print("({s})", .{rp.lhsalias});
+    }
+    try writer.writeAll(" ::=");
+    for (rp.rhs, rp.rhsalias) |sp, alias| {
+        if (sp.type == .multiterminal) {
+            try writer.print(" {s}", .{sp.subsym[0].name});
+            for (sp.subsym[1..]) |ssp| {
+                try writer.print("|{s}", .{ssp.name});
+            }
+        } else {
+            try writer.print(" {s}", .{sp.name});
+        }
+        if (comptime print_aliases) {
+            if (alias.len > 0) try writer.print("({s})", .{alias});
+        }
+    }
+}
+
+// /* Duplicate the input file without comments and without actions
+// ** on rules */
+// void Reprint(struct lemon *lemp)
+// {
+//   struct rule *rp;
+//   struct symbol *sp;
+//   int i, j, maxlen, len, ncolumns, skip;
+//   printf("// Reprint of input file \"%s\".\n// Symbols:\n",lemp->filename);
+//   maxlen = 10;
+//   for(i=0; i<lemp->nsymbol; i++){
+//     sp = lemp->symbols[i];
+//     len = lemonStrlen(sp->name);
+//     if( len>maxlen ) maxlen = len;
+//   }
+//   ncolumns = 76/(maxlen+5);
+//   if( ncolumns<1 ) ncolumns = 1;
+//   skip = (lemp->nsymbol + ncolumns - 1)/ncolumns;
+//   for(i=0; i<skip; i++){
+//     printf("//");
+//     for(j=i; j<lemp->nsymbol; j+=skip){
+//       sp = lemp->symbols[j];
+//       assert( sp->index==j );
+//       printf(" %3d %-*.*s",j,maxlen,maxlen,sp->name);
+//     }
+//     printf("\n");
+//   }
+//   for(rp=lemp->rule; rp; rp=rp->next){
+//     rule_print(stdout, rp);
+//     printf(".");
+//     if( rp->precsym ) printf(" [%s]",rp->precsym->name);
+//     /* if( rp->code ) printf("\n    %s",rp->code); */
+//     printf("\n");
+//   }
+// }
+//
+
+/// Print a single rule.
+fn RulePrint(writer: SomeWriter, rp: *Rule, iCursor: u32) !void {
+    try writer.print("{s} ::=", .{rp.lhs.name});
+    for (rp.rhs, 0..) |sp, i| {
+        if (i == iCursor) try writer.writeAll(" *");
+        if (sp.type == .multiterminal) {
+            try writer.print(" {s}", .{sp.subsym[0].name});
+            for (sp.subsym[1..]) |ssp| {
+                try writer.print("|{s}", .{ssp.name});
+            }
+        } else {
+            try writer.print(" {s}", .{sp.name});
+        }
+    }
+}
+
+/// Print the rule for a configuration.
+fn ConfigPrint(writer: SomeWriter, cfp: *Config) !void {
+    try RulePrint(writer, cfp.rp, cfp.dot);
+}
+
+// TODO: SetPrint goes here
+// TODO: PlinkPrint goes here
+
+// Print an action to the given file descriptor.  Return FALSE if
+// nothing was actually printed.
+fn PrintAction(writer: SomeWriter, ap: *Action, indent: usize) !bool {
+    var printed = true;
+    switch (ap.type) {
+        .shift => {
+            try writer.print("{s: >[2]} shift        {d <7}", .{ ap.sp.name, indent, ap.x.stp.statenum });
+        },
+        .reduce => {
+            try writer.print("{s: >[2]} reduce       {d <7}", .{ ap.sp.name, indent, ap.x.rp.?.iRule });
+        },
+        .shiftreduce => {
+            try writer.print("{s: >[2]} shift-reduce {d <7}", .{ ap.sp.name, indent, ap.x.rp.?.iRule });
+        },
+        .accept => {
+            try writer.print("{s: >[2]} accept", .{ ap.sp.name, indent });
+        },
+        .@"error" => {
+            try writer.print("{s: >[2]} error", .{ ap.sp.name, indent });
+        },
+        .rrconflict, .srconflict => {
+            try writer.print(
+                "{s: >[2]} reduce       {d <7} ** Parsing conflict **",
+                .{ ap.sp.name, indent, ap.x.rp.?.iRule },
+            );
+        },
+        .ssconflict => {
+            try writer.print(
+                "{s: >[2]} shift        {d <7} ** Parsing conflict **",
+                .{ ap.sp.name, indent, ap.x.stp.statenum },
+            );
+        },
+        .sh_resolved => {
+            if (showPrecendenceConflict) {
+                try writer.print(
+                    "{s: >[2]} shift        {d <7} -- dropped by precedence",
+                    .{ ap.sp.name, indent, ap.x.stp.statenum },
+                );
+            } else {
+                printed = false;
+            }
+        },
+        .rd_resolved => {
+            if (showPrecendenceConflict) {
+                try writer.print(
+                    "{s: >[2]} reduce       {d <7} -- dropped by precedence",
+                    .{ ap.sp.name, indent, ap.x.rp.?.iRule },
+                );
+            } else {
+                printed = false;
+            }
+        },
+        .not_used => {
+            printed = false;
+        },
+        ._not_initialized => unreachable,
+    }
+    return printed;
+}
+
+/// Generate the "*.out" log file
+fn ReportOutput(lemp: *Lemon) !void {
+    const m_fh = try file_open(lemp, ".zig.out", .{});
+    if (m_fh) |fh| {
+        defer fh.close();
+        const f_writer = fh.writer();
+        const b_writer = std.io.bufferedWriter(f_writer);
+        try reportOutputImpl(lemp, b_writer);
+        try b_writer.flush();
+    } else {
+        return; // No file handle
+    }
+}
+
+/// Write the report to the provided writer.
+fn reportOutputImpl(lemp: *Lemon, writer: SomeWriter) !void {
+    for (lemp.sorted) |stp| {
+        try writer.print("State {d}:", .{stp.statenum});
+        var m_cfp: ?*Config = if (lemp.basisflag) stp.cfp else stp.bp;
+        while (m_cfp) |cfp| {
+            var buf: [20]u8 = .{0} ** 20;
+            if (cfp.dot == cfp.rp.rhs.len) {
+                const dot_s = try std.fmt.bufPrint(&buf, "({d})", .{cfp.rp.iRule});
+                try writer.print("     {s:>5}", .{dot_s});
+            } else {
+                try writer.writeByteNTimes(' ', 9);
+            }
+            try ConfigPrint(writer, cfp);
+            try writer.writeByte('\n');
+            if (lemp.basisflag) {
+                m_cfp = cfp.next;
+            } else {
+                m_cfp = cfp.bp;
+            }
+        }
+        try writer.writeByte('\n');
+        var m_ap = stp.ap;
+        while (m_ap) |ap| : (m_ap = ap.next) {
+            if (try PrintAction(writer, ap, 30)) try writer.writeByte('\n');
+        }
+        try writer.writeByte('\n');
+    }
+    try writer.writeAll("----------------------------------------------------\n");
+    try writer.writeAll("Symbols:\n");
+    try writer.writeAll("The first-set of non-terminals is shown after the name.\n\n");
+    for (lemp.symbols[0..lemp.nsymbol], 0..) |sp, i| {
+        try writer.print("  {d:>3}: {s}", .{ i, sp.name });
+        // TODO: continue
     }
 }
 
@@ -2008,11 +2269,12 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 for (0..psp.nrhs) |i| {
                     rp.rhs[i] = psp.rhs[i];
                     rp.rhsalias[i] = psp.alias[i];
+                    if (rp.rhsalias[i].len > 0) rp.rhs[i].bContent = true;
                 }
                 rp.lhs = psp.lhs;
                 rp.lhsalias = psp.lhsalias;
                 rp.nrhs = psp.nrhs;
-                rp.noCode = true; // Can be falsified subsequently..
+                rp.noCode = true;
                 dbgassert(rp.precsym == null);
                 rp.index = psp.gp.nrule;
                 psp.gp.nrule += 1;
