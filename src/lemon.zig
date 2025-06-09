@@ -507,9 +507,9 @@ const State = struct {
     /// Number of actions on nonterminals
     nNtAct: u32,
     /// yy_action[] offset for terminals
-    iTnkOfst: ?u32,
+    iTnkOfst: ?u31,
     /// yy_action[] offset for nonterminals
-    iNtOfst: ?u32,
+    iNtOfst: ?u31,
     /// Default action is to REDUCE by this rule
     iDfltReduce: int, // Another ?u32 I think
     /// The default REDUCE rule.
@@ -709,17 +709,17 @@ const Lemon = struct {
     /// Number of terminal symbols
     nterminal: usize,
     /// Minimum shift-reduce action value
-    minShiftReduce: int,
+    minShiftReduce: u32,
     /// Error action value
-    errAction: int,
+    errAction: u32,
     /// Accept action value
-    accAction: int,
+    accAction: u32,
     /// No-op action value
-    noAction: int,
+    noAction: u32,
     /// Minimum reduce action
-    minReduce: int,
+    minReduce: u32,
     /// Maximum action value of any kind
-    maxAction: int,
+    maxAction: u32,
     /// Sorted array of pointers to symbols
     symbols: []*Symbol,
     /// Number of errors
@@ -2743,6 +2743,106 @@ fn CompressTables(lemp: *Lemon) !void {
     }
 }
 
+//
+// Compare two states for sorting purposes.  The smaller state is the
+// one with the most non-terminal actions.  If they have the same number
+// of non-terminal actions, then the smaller is the one with the most
+// token actions.
+fn stateResortCompare(_: void, pA: *State, pB: *State) bool {
+    if (pA.nNtAct > pB.nNtAct) return true;
+    if (pA.nNtAct < pB.nNtAct) return false;
+    if (pA.nTknAct > pB.nTknAct) return true;
+    if (pA.nTknAct < pB.nTknAct) return false;
+    if (pA.statenum > pB.statenum) return true;
+    if (pA.statenum < pB.statenum) return false;
+    unreachable;
+}
+//
+// Renumber and resort states so that states with fewer choices
+// occur at the end.  Except, keep state 0 as the first state.
+//
+fn ResortStates(lemp: *Lemon) void {
+    for (lemp.sorted) |stp| {
+        stp.nTknAct = 0;
+        stp.nNtAct = 0;
+        // TODO: probably a null here yeah
+        stp.iDfltReduce = -1; //  Init dflt action to "syntax error"
+        stp.iTnkOfst = null;
+        stp.iNtOfst = null;
+        var m_ap = stp.ap;
+        while (m_ap) |ap| : (m_ap = ap.next) {
+            const m_iAction = compute_action(lemp, ap);
+            if (m_iAction) |iAction| {
+                if (ap.sp.index < lemp.nterminal) {
+                    stp.nTknAct += 1;
+                } else if (ap.sp.index < lemp.nsymbol) {
+                    stp.nNtAct += 1;
+                } else {
+                    dbgassert(!stp.autoreduce or stp.pDefltReduce == ap.x.rp);
+                    stp.iDfltReduce = @intCast(iAction);
+                }
+            }
+        }
+    }
+    std.mem.sort(*State, lemp.sorted, {}, stateResortCompare);
+    for (lemp.sorted, 0..) |stp, i| {
+        stp.statenum = @intCast(i);
+    }
+    while (lemp.nxstate > 1 and lemp.sorted[lemp.nxstate - 1].autoreduce) {
+        lemp.nxstate -= 1;
+    }
+}
+
+// Given an action, compute the integer value for that action
+// which is to be put in the action table of the generated machine.
+// Return negative if no action should be generated.
+fn compute_action(lemp: *Lemon, ap: *Action) ?u32 {
+    return act: switch (ap.type) {
+        .shift => break :act ap.x.stp.statenum,
+        .shiftreduce => {
+            // Since a SHIFT is inherent after a prior REDUCE, convert any
+            // SHIFTREDUCE action with a nonterminal on the LHS into a simple
+            // REDUCE action:
+            if (ap.sp.index >= lemp.nterminal and
+                (lemp.errsym == null or ap.sp.index != lemp.errsym.?.index))
+            {
+                break :act lemp.minReduce + ap.x.rp.?.iRule;
+            } else {
+                break :act lemp.minShiftReduce + ap.x.rp.?.iRule;
+            }
+        },
+        .reduce => break :act lemp.minReduce + ap.x.rp.?.iRule,
+        .@"error" => break :act lemp.errAction,
+        .accept => break :act lemp.accAction,
+        else => break :act null,
+    };
+}
+// PRIVATE int compute_action(struct lemon *lemp, struct action *ap)
+// {
+//   int act;
+//   switch( ap->type ){
+//     case SHIFT:  act = ap->x.stp->statenum;                        break;
+//     case SHIFTREDUCE: {
+//       /* Since a SHIFT is inherent after a prior REDUCE, convert any
+//       ** SHIFTREDUCE action with a nonterminal on the LHS into a simple
+//       ** REDUCE action: */
+//       if( ap->sp->index>=lemp->nterminal
+//        && (lemp->errsym==0 || ap->sp->index!=lemp->errsym->index)
+//       ){
+//         act = lemp->minReduce + ap->x.rp->iRule;
+//       }else{
+//         act = lemp->minShiftReduce + ap->x.rp->iRule;
+//       }
+//       break;
+//     }
+//     case REDUCE: act = lemp->minReduce + ap->x.rp->iRule;          break;
+//     case ERROR:  act = lemp->errAction;                            break;
+//     case ACCEPT: act = lemp->accAction;                            break;
+//     default:     act = -1; break;
+//   }
+//   return act;
+// }
+
 //| [5230] Set manipulation
 //|
 //| This is actually pretty straightforward, we use a []bool instead of a
@@ -2834,11 +2934,11 @@ pub fn main() !void {
     const rpflag = true;
     const basisflag = true;
     const compress = true;
-    const quiet = true;
+    const quiet = false;
     const statistics = true;
     const mhflag = true;
     const nolinenosflag = true;
-    const noResort = true;
+    const noResort = false;
     const sqlFlag = true;
     const printPP = false;
     // Reconcile Zig to this unfortunate situation:
@@ -2982,7 +3082,10 @@ pub fn main() !void {
     try FindActions(lem);
     // Compress the action tables
     if (compress) try CompressTables(lem);
-    //
+    // Reorder and renumber the states so that states with fewer choices
+    // occur at the end.  This is an optimization that helps make the
+    // generated parser tables smaller.
+    if (!noResort) ResortStates(lem);
     { // This is the bulk of the remaining work:
         // /* Reorder and renumber the states so that states with fewer choices
         // ** occur at the end.  This is an optimization that helps make the
