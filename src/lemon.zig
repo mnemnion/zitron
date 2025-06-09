@@ -53,9 +53,6 @@ const lemon_classic = true;
 const do_not_optimize_terminals = true;
 const print_aliases = false;
 
-// XXX: Replace all occurrences with `anytype`
-const SomeWriter = std.io.AnyWriter;
-
 // Various print control variables
 
 /// Prints which are already passing
@@ -730,15 +727,15 @@ fn file_open(lemp: *Lemon, suffix: []const u8, mode: File.CreateFlags) OOM!?File
     const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
         lemp.errorcnt += 1;
         switch (err) {
-            .IsDir => {
+            error.IsDir => {
                 logger.err("file open error: path is a directory '{s}'", .{lemp.outname});
                 return null;
             },
-            .FileNotFound => {
+            error.FileNotFound => {
                 logger.err("file open error: file not found '{s}'", .{lemp.outname});
                 return null;
             },
-            .AccessDenied, .PermissionDenied => {
+            error.AccessDenied => {
                 logger.err("file open error: permission denied '{s}'", .{lemp.outname});
                 return null;
             },
@@ -752,7 +749,7 @@ fn file_open(lemp: *Lemon, suffix: []const u8, mode: File.CreateFlags) OOM!?File
 }
 
 /// Print the text of a rule
-fn rule_print(writer: std.io.Writer, rp: *Rule) !void {
+fn rule_print(writer: anytype, rp: *Rule) !void {
     try writer.print("{s}", .{rp.lhs.name});
     if (comptime print_aliases) {
         if (rp.lhsalias.len > 0) try writer.print("({s})", .{rp.lhsalias});
@@ -810,7 +807,7 @@ fn rule_print(writer: std.io.Writer, rp: *Rule) !void {
 //
 
 /// Print a single rule.
-fn RulePrint(writer: SomeWriter, rp: *Rule, iCursor: u32) !void {
+fn RulePrint(writer: anytype, rp: *Rule, iCursor: u32) !void {
     try writer.print("{s} ::=", .{rp.lhs.name});
     for (rp.rhs, 0..) |sp, i| {
         if (i == iCursor) try writer.writeAll(" *");
@@ -826,7 +823,7 @@ fn RulePrint(writer: SomeWriter, rp: *Rule, iCursor: u32) !void {
 }
 
 /// Print the rule for a configuration.
-fn ConfigPrint(writer: SomeWriter, cfp: *Config) !void {
+fn ConfigPrint(writer: anytype, cfp: *Config) !void {
     try RulePrint(writer, cfp.rp, cfp.dot);
 }
 
@@ -835,42 +832,63 @@ fn ConfigPrint(writer: SomeWriter, cfp: *Config) !void {
 
 // Print an action to the given file descriptor.  Return FALSE if
 // nothing was actually printed.
-fn PrintAction(writer: SomeWriter, ap: *Action, indent: usize) !bool {
+fn PrintAction(writer: anytype, ap: *Action, indent: usize) !bool {
     var printed = true;
     switch (ap.type) {
         .shift => {
-            try writer.print("{s: >[2]} shift        {d <7}", .{ ap.sp.name, indent, ap.x.stp.statenum });
+            try writer.print("{[name]s: >[width]} shift        {[st]d: <7}", .{
+                .name = ap.sp.name,
+                .width = indent,
+                .st = ap.x.stp.statenum,
+            });
         },
         .reduce => {
-            try writer.print("{s: >[2]} reduce       {d <7}", .{ ap.sp.name, indent, ap.x.rp.?.iRule });
+            try writer.print("{[name]s: >[width]} reduce       {[st]d: <7}", .{
+                .name = ap.sp.name,
+                .width = indent,
+                .st = ap.x.rp.?.iRule,
+            });
         },
         .shiftreduce => {
-            try writer.print("{s: >[2]} shift-reduce {d <7}", .{ ap.sp.name, indent, ap.x.rp.?.iRule });
+            try writer.print("{[name]s: >[width]} shift-reduce {[st]d: <7}", .{
+                .name = ap.sp.name,
+                .width = indent,
+                .st = ap.x.rp.?.iRule,
+            });
         },
         .accept => {
-            try writer.print("{s: >[2]} accept", .{ ap.sp.name, indent });
+            try writer.print("{[name]s: >[width]} accept", .{
+                .name = ap.sp.name,
+                .width = indent,
+            });
         },
         .@"error" => {
-            try writer.print("{s: >[2]} error", .{ ap.sp.name, indent });
+            try writer.print("{[name]s: >[width]} error", .{
+                .name = ap.sp.name,
+                .width = indent,
+            });
         },
         .rrconflict, .srconflict => {
-            try writer.print(
-                "{s: >[2]} reduce       {d <7} ** Parsing conflict **",
-                .{ ap.sp.name, indent, ap.x.rp.?.iRule },
-            );
+            try writer.print("{[name]s: >[width]} reduce       {[st]d: <7} ** Parsing conflict **", .{
+                .name = ap.sp.name,
+                .width = indent,
+                .st = ap.x.rp.?.iRule,
+            });
         },
         .ssconflict => {
-            try writer.print(
-                "{s: >[2]} shift        {d <7} ** Parsing conflict **",
-                .{ ap.sp.name, indent, ap.x.stp.statenum },
-            );
+            try writer.print("{[name]s: >[width]} shift        {[st]d: <7} ** Parsing conflict **", .{
+                .name = ap.sp.name,
+                .width = indent,
+                .st = ap.x.stp.statenum,
+            });
         },
         .sh_resolved => {
             if (showPrecendenceConflict) {
-                try writer.print(
-                    "{s: >[2]} shift        {d <7} -- dropped by precedence",
-                    .{ ap.sp.name, indent, ap.x.stp.statenum },
-                );
+                try writer.print("{[name]s: >[width]} shift        {[st]d: <7} -- dropped by precedence", .{
+                    .name = ap.sp.name,
+                    .width = indent,
+                    .st = ap.x.stp.statenum,
+                });
             } else {
                 printed = false;
             }
@@ -878,8 +896,12 @@ fn PrintAction(writer: SomeWriter, ap: *Action, indent: usize) !bool {
         .rd_resolved => {
             if (showPrecendenceConflict) {
                 try writer.print(
-                    "{s: >[2]} reduce       {d <7} -- dropped by precedence",
-                    .{ ap.sp.name, indent, ap.x.rp.?.iRule },
+                    "{[name]s: >[width]} reduce       {[st]d: <7} -- dropped by precedence",
+                    .{
+                        .name = ap.sp.name,
+                        .width = indent,
+                        .st = ap.x.rp.?.iRule,
+                    },
                 );
             } else {
                 printed = false;
@@ -899,24 +921,25 @@ fn ReportOutput(lemp: *Lemon) !void {
     if (m_fh) |fh| {
         defer fh.close();
         const f_writer = fh.writer();
-        const b_writer = std.io.bufferedWriter(f_writer);
+        var write_buffer = std.io.bufferedWriter(f_writer);
+        const b_writer = write_buffer.writer();
         try reportOutputImpl(lemp, b_writer);
-        try b_writer.flush();
+        try write_buffer.flush();
     } else {
         return; // No file handle
     }
 }
 
 /// Write the report to the provided writer.
-fn reportOutputImpl(lemp: *Lemon, writer: SomeWriter) !void {
+fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
     for (lemp.sorted) |stp| {
-        try writer.print("State {d}:", .{stp.statenum});
+        try writer.print("State {d}:\n", .{stp.statenum});
         var m_cfp: ?*Config = if (lemp.basisflag) stp.cfp else stp.bp;
         while (m_cfp) |cfp| {
             var buf: [20]u8 = .{0} ** 20;
             if (cfp.dot == cfp.rp.rhs.len) {
                 const dot_s = try std.fmt.bufPrint(&buf, "({d})", .{cfp.rp.iRule});
-                try writer.print("     {s:>5}", .{dot_s});
+                try writer.print("   {s:>5} ", .{dot_s});
             } else {
                 try writer.writeByteNTimes(' ', 9);
             }
@@ -940,8 +963,55 @@ fn reportOutputImpl(lemp: *Lemon, writer: SomeWriter) !void {
     try writer.writeAll("The first-set of non-terminals is shown after the name.\n\n");
     for (lemp.symbols[0..lemp.nsymbol], 0..) |sp, i| {
         try writer.print("  {d:>3}: {s}", .{ i, sp.name });
-        // TODO: continue
+        if (sp.type == .nonterminal) {
+            try writer.writeByte(':');
+            if (sp.lambda) {
+                try writer.writeAll(" <lambda>");
+            }
+            for (0..lemp.nterminal) |j| {
+                if (sp.firstset.len > 0 and sp.firstset[j]) {
+                    try writer.print(" {s}", .{lemp.symbols[j].name});
+                }
+            }
+        }
+        if (sp.prec) |prec| try writer.print(" (precedence={d})", .{prec});
+        try writer.writeByte('\n');
     }
+    try writer.writeAll("----------------------------------------------------\n");
+    try writer.writeAll("Syntax-only Symbols:\n");
+    try writer.writeAll("The following symbols never carry semantic content.\n\n");
+    {
+        var n: usize = 0;
+        for (lemp.symbols) |sp| {
+            if (sp.bContent) continue;
+            const w = sp.name.len;
+            if (n > 0 and n + w > 75) {
+                try writer.writeByte('\n');
+                n = 0;
+            }
+            if (n > 0) {
+                try writer.writeByte(' ');
+                n += 1;
+            }
+            try writer.print("{s}", .{sp.name});
+            n += w;
+        }
+        if (n > 0) try writer.writeByte('\n');
+    }
+    try writer.writeAll("----------------------------------------------------\n");
+    try writer.writeAll("Rules:\n");
+    {
+        var m_rp: ?*Rule = lemp.rule;
+        while (m_rp) |rp| : (m_rp = rp.next) {
+            try writer.print("{d:>4} ", .{rp.iRule});
+            try rule_print(writer, rp);
+            try writer.writeByte('.');
+            if (rp.precsym) |precsym| {
+                try writer.print(" [{s} precedence={d}]", .{ precsym.name, precsym.prec.? });
+            }
+        }
+    }
+    try writer.writeByte('\n');
 }
 
 /// The state vector for the entire parser generator is recorded as
@@ -3347,7 +3417,10 @@ pub fn main() !void {
     // Reorder and renumber the states so that states with fewer choices
     // occur at the end.  This is an optimization that helps make the
     // generated parser tables smaller.
-    if (!noResort) ResortStates(lem);
+    // if (!noResort) ResortStates(lem);
+    // XXX: replace option
+    ResortStates(lem);
+    if (!quiet) try ReportOutput(lem);
     { // This is the bulk of the remaining work:
         // /* Reorder and renumber the states so that states with fewer choices
         // ** occur at the end.  This is an optimization that helps make the
