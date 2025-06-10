@@ -14,7 +14,8 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const Allocator = std.mem.Allocator;
+const mem = std.mem;
+const Allocator = mem.Allocator;
 const ArrayHashMap = std.ArrayHashMapUnmanaged;
 const MemoryPool = std.heap.MemoryPool;
 const ArrayList = std.ArrayListUnmanaged;
@@ -1026,6 +1027,192 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
             }
             try writer.writeByte('\n');
         }
+    }
+}
+
+//| [3549]
+//|
+//| The next cluster of routines are for reading the template file
+//| and writing the results to the generated parser.
+
+/// The first function transfers data from "in" to "out" until
+/// a line is seen which begins with "%%".  The line number is
+/// tracked.
+///
+/// if name!=0, then any word that begin with "Parse" is changed to
+/// begin with *name instead.
+fn tplt_xfer(name: []const u8, in: *[:0]const u8, out: anytype, lineno: *usize) !void {
+    var start: usize = 0;
+    while (mem.indexOfScalarPos(u8, in.*, start, '\n')) |idx| {
+        const line = in[start..idx];
+        dbgassert(line.len > 2);
+        if (line[0] != '%' and line[1] != '%') {
+            lineno.* += 1;
+            var iStart: usize = 0;
+            if (name.len > 0) {
+                var i: usize = 0;
+                while (i < line.len) : (i += 1) {
+                    const b = line[i];
+                    if (b == 'P' and
+                        mem.eql(u8, line[i..][0..5], "Parse") and (i == 0 || !isAlpha(line[i - 1])))
+                    {
+                        if (i > iStart) {
+                            try out.print("{s}", .{line[iStart..i]});
+                        }
+                        try out.print("{s}", name);
+                        i += 4; // Skip 'Parse'
+                        iStart = i + 1;
+                    }
+                }
+            }
+            try out.writeAll(line[iStart..]);
+            start = idx;
+        } else break;
+    }
+    in.* = in.*[start..];
+}
+
+/// Skip forward past the header of the template file to the first "%%".
+fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
+    var start: usize = 0;
+    while (mem.indexOfScalarPos(u8, in.*, start, '\n')) |idx| {
+        const line = in[start..idx];
+        dbgassert(line.len > 2);
+        if (line[0] == '%' and line[1] == '%') {
+            lineno.* += 1;
+            start = idx;
+        } else break;
+    }
+    in.* = in.*[start..];
+}
+
+// The next function finds the template file and opens it, returning
+// a pointer to the opened file.
+
+/// Retrieve the template.
+fn tplt_open(lemp: *Lemon) ![:0]const u8 {
+    // TODO: We embed the template, so: in 'classic mode', we first check for
+    // the existence of lempar.c, and if we have it, we use it.  If not, we
+    // return the embedded version.
+    // --
+    // In 'modern' mode, we accept an argument for the template, which we check
+    // here if set, and it's an error not to find it.  Otherwise we return the
+    // embed.
+    //
+    _ = lemp;
+    if (false) return error.OutOfMemory;
+    return "I'm a template! Honest!";
+}
+
+/// Print a #line directive line to the output file.
+fn tplt_linedir(out: anytype, lineno: usize, filename: []const u8) !void {
+    // TODO: just make the quoted line and slap it on lemp already, it's
+    // right there in tplt_print to be passed in.  Meanwhile we aren't
+    // escaping the filename, we're just slapping it on there.
+    try out.print("#line: %d \"{s}\"\n", .{ lineno, filename });
+}
+
+/// Print a string to the file and keep the linenumber up to date.
+fn tplt_print(out: anytype, lemp: *Lemon, str: []const u8, lineno: *usize) !void {
+    if (str.len == 0) return;
+    const line_count = mem.count(u8, str, '\n');
+    lineno.* += line_count;
+    try out.writeAll(str);
+    if (str[str.len - 1] != '\n') {
+        try out.writeByte('\n');
+        lineno.* += 1;
+    }
+    if (!lemp.nolineosflag) {
+        lineno.* += 1;
+        try tplt_linedir(out, lineno.*, lemp.outname);
+    }
+}
+
+//| [4287]
+
+/// Generate C code for the parser
+fn ReportTable(
+    lemp: *Lemon,
+    /// Output in makeheaders format if true
+    mhflag: bool,
+    /// Generate the *.sql file too
+    sqlflag: bool,
+) !void {
+    _ = .{mhflag};
+    lemp.minShiftReduce = lemp.nstate;
+    lemp.errAction = lemp.minShiftReduce + lemp.nrule;
+    lemp.accAction = lemp.errAction + 1;
+    lemp.noAction = lemp.accAction + 1;
+    lemp.minReduce = lemp.noAction + 1;
+    lemp.maxAction = lemp.minReduce + lemp.nrule;
+
+    const in = try tplt_open(lemp);
+    _ = in;
+    if (sqlflag) {
+        // later
+    }
+    const m_out_fh = try file_open(lemp, ".c", .{});
+    if (m_out_fh) |fh| {
+        defer fh.close();
+        const f_writer = fh.writer();
+        var write_buffer = std.io.bufferedWriter(f_writer);
+        const b_writer = write_buffer.writer();
+        try reportTableImpl(lemp, b_writer);
+        try write_buffer.flush();
+    } else {
+        return; // No file handle
+    }
+}
+
+//| XXX: dummy 'static' options, put an options table on Lemon
+
+const nDefineUsed: usize = 0; // %ifdef macros, NYI
+const bDefineUsed: []bool = &.{};
+const nDefine: usize = 0;
+const azDefine: [][]const u8 = &.{""};
+
+fn reportTableImpl(lemp: *Lemon, in_template: [:0]const u8, out: anytype) !void {
+    var in = in_template;
+    var lineno: usize = 1;
+    try out.print(
+        \\/* This file is automatically generated by Lemon from input grammar
+        \\** source file "{s}"
+    , .{lemp.filename});
+    lineno += 1;
+    if (nDefineUsed == 0) {
+        try out.writeAll(".\n*/\n");
+        lineno += 2;
+    } else {
+        try out.writeAll(" with these options:\n**\n");
+        lineno += 2;
+        for (0..nDefine) |i| {
+            if (!bDefineUsed[i]) continue;
+            try out.print("**   -D{s}\n", .{azDefine[i]});
+            lineno += 1;
+        }
+        try out.writeAll("*/\n");
+        lineno += 1;
+    }
+
+    // The first %include directive begins with a C-language comment,
+    // then skip over the header comment of the template file.
+    {
+        var include = lemp.include;
+        var i: usize = 0;
+        var nl_skip: usize = 0;
+        while (i < include.len and isSpace(include[i])) : (i += 1) {
+            if (include[i] == '\n') {
+                nl_skip = i + 1;
+            }
+        }
+        include = include[nl_skip..];
+        if (include.len > 0 and include[0] == '/') {
+            try tplt_skip_header(&in, &lineno);
+        } else {
+            try tplt_xfer(lemp.name, in, out, &lineno);
+        }
+        // Generate the include code, if any.
+        try tplt_print(out, lemp, include, &lineno);
     }
 }
 
