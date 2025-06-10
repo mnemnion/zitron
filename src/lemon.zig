@@ -440,8 +440,8 @@ const Action = struct {
 
     // [490]
     pub fn new() !*Action {
-        var act = try action_allocator.create();
-        act.age = action_age;
+        const act = try action_allocator.create();
+        act.* = .{ .age = action_age };
         action_age += 1;
         return act;
     }
@@ -487,11 +487,15 @@ const Action = struct {
             if (ap1.x.rp.?.index < ap2.x.rp.?.index) return true;
             if (ap1.x.rp.?.index > ap2.x.rp.?.index) return false;
         }
-        // otherwise... raw pointer comparison??
-        dprint("action sort: raw pointer comparison is reachable\n", .{});
-        // This is the order they're subtracted in the original:
-        if (@intFromPtr(ap2) > @intFromPtr(ap1)) return false;
-        return true; // `<=` for sort stability
+        {
+            // otherwise... raw pointer comparison??
+            // Let's see if this ever needs to happen:
+            dprint("action sort: raw pointer comparison is reachable\n", .{});
+            // .. and then not do it.
+            return ap1.age <= ap2.age; // Equal is impossible but ¯\_(ツ)_/¯
+            // This is the order they're subtracted in the original:
+            //if (@intFromPtr(ap2) > @intFromPtr(ap1)) return false;
+        }
     }
 };
 
@@ -807,10 +811,12 @@ fn rule_print(writer: anytype, rp: *Rule) !void {
 //
 
 /// Print a single rule.
-fn RulePrint(writer: anytype, rp: *Rule, iCursor: u32) !void {
+fn RulePrint(writer: anytype, rp: *Rule, iCursor: ?usize) !void {
     try writer.print("{s} ::=", .{rp.lhs.name});
-    for (rp.rhs, 0..) |sp, i| {
+    for (0..rp.rhs.len + 1) |i| {
         if (i == iCursor) try writer.writeAll(" *");
+        if (i == rp.rhs.len) break;
+        const sp = rp.rhs[i];
         if (sp.type == .multiterminal) {
             try writer.print(" {s}", .{sp.subsym[0].name});
             for (sp.subsym[1..]) |ssp| {
@@ -848,6 +854,7 @@ fn PrintAction(writer: anytype, ap: *Action, indent: usize) !bool {
                 .width = indent,
                 .st = ap.x.rp.?.iRule,
             });
+            try RulePrint(writer, ap.x.rp.?, null);
         },
         .shiftreduce => {
             try writer.print("{[name]s: >[width]} shift-reduce {[st]d: <7}", .{
@@ -855,6 +862,7 @@ fn PrintAction(writer: anytype, ap: *Action, indent: usize) !bool {
                 .width = indent,
                 .st = ap.x.rp.?.iRule,
             });
+            try RulePrint(writer, ap.x.rp.?, null);
         },
         .accept => {
             try writer.print("{[name]s: >[width]} accept", .{
@@ -912,6 +920,11 @@ fn PrintAction(writer: anytype, ap: *Action, indent: usize) !bool {
         },
         ._not_initialized => unreachable,
     }
+    if (printed) {
+        if (ap.spOpt) |spOpt| {
+            try writer.print("  /* because {s}=={s} */", .{ ap.sp.name, spOpt.name });
+        }
+    }
     return printed;
 }
 
@@ -932,16 +945,17 @@ fn ReportOutput(lemp: *Lemon) !void {
 
 /// Write the report to the provided writer.
 fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
-    for (lemp.sorted) |stp| {
+    for (0..lemp.nxstate) |i| {
+        const stp = lemp.sorted[i];
         try writer.print("State {d}:\n", .{stp.statenum});
         var m_cfp: ?*Config = if (lemp.basisflag) stp.cfp else stp.bp;
         while (m_cfp) |cfp| {
             var buf: [20]u8 = .{0} ** 20;
             if (cfp.dot == cfp.rp.rhs.len) {
                 const dot_s = try std.fmt.bufPrint(&buf, "({d})", .{cfp.rp.iRule});
-                try writer.print("   {s:>5} ", .{dot_s});
+                try writer.print("    {s:>5} ", .{dot_s});
             } else {
-                try writer.writeByteNTimes(' ', 9);
+                try writer.writeByteNTimes(' ', 10);
             }
             try ConfigPrint(writer, cfp);
             try writer.writeByte('\n');
@@ -982,7 +996,8 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
     try writer.writeAll("The following symbols never carry semantic content.\n\n");
     {
         var n: usize = 0;
-        for (lemp.symbols) |sp| {
+        for (0..lemp.nsymbol) |i| {
+            const sp = lemp.symbols[i];
             if (sp.bContent) continue;
             const w = sp.name.len;
             if (n > 0 and n + w > 75) {
@@ -1003,15 +1018,15 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
     {
         var m_rp: ?*Rule = lemp.rule;
         while (m_rp) |rp| : (m_rp = rp.next) {
-            try writer.print("{d:>4} ", .{rp.iRule});
+            try writer.print("{d:>4}: ", .{rp.iRule});
             try rule_print(writer, rp);
             try writer.writeByte('.');
             if (rp.precsym) |precsym| {
                 try writer.print(" [{s} precedence={d}]", .{ precsym.name, precsym.prec.? });
             }
+            try writer.writeByte('\n');
         }
     }
-    try writer.writeByte('\n');
 }
 
 /// The state vector for the entire parser generator is recorded as
@@ -3016,6 +3031,14 @@ fn CompressTables(lemp: *Lemon) !void {
         }
         dbgassert(m_ap != null);
         m_ap.?.sp = try Symbol_new("{default}");
+        m_ap = m_ap.?.next;
+        while (m_ap) |ap| : (m_ap = ap.next) {
+            if (ap.type == .reduce and ap.x.rp == rbest) {
+                ap.type = .not_used;
+            }
+        }
+        stp.ap = if (stp.ap) |ap| Action.sort(ap) else null;
+        m_ap = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
             if (ap.type == .shift) break;
             if (ap.type == .reduce and ap.x.rp != rbest) break;
@@ -3065,12 +3088,12 @@ fn CompressTables(lemp: *Lemon) !void {
             var m_ap2 = stp.ap;
             while (m_ap2 != null and
                 (m_ap2 == ap or m_ap2.?.sp != rp.lhs)) : (m_ap2 = m_ap2.?.next)
-            {
-                const ap2 = m_ap2.?;
-                ap.spOpt = ap2.sp;
-                ap.type = ap2.type;
-                ap.x = ap2.x;
-            }
+            {}
+            dbgassert(m_ap2 != null);
+            const ap2 = m_ap2.?;
+            ap.spOpt = ap2.sp;
+            ap.type = ap2.type;
+            ap.x = ap2.x;
         }
     }
 }
@@ -3089,12 +3112,16 @@ fn stateResortCompare(_: void, pA: *State, pB: *State) bool {
     if (pA.statenum < pB.statenum) return false;
     unreachable;
 }
+
 //
 // Renumber and resort states so that states with fewer choices
 // occur at the end.  Except, keep state 0 as the first state.
 //
 fn ResortStates(lemp: *Lemon) void {
     for (lemp.sorted) |stp| {
+        if (p_check1) {
+            dprint("state before resort: {d}\n", .{stp.statenum});
+        }
         stp.nTknAct = 0;
         stp.nNtAct = 0;
         // TODO: probably a null here yeah
@@ -3116,10 +3143,14 @@ fn ResortStates(lemp: *Lemon) void {
             }
         }
     }
-    std.mem.sort(*State, lemp.sorted, {}, stateResortCompare);
+    std.mem.sort(*State, lemp.sorted[1..], {}, stateResortCompare);
     for (lemp.sorted, 0..) |stp, i| {
+        if (p_check1) {
+            dprint("statenum was #{d}, now #{d}\n", .{ stp.statenum, i });
+        }
         stp.statenum = @intCast(i);
     }
+    lemp.nxstate = lemp.nstate;
     while (lemp.nxstate > 1 and lemp.sorted[lemp.nxstate - 1].autoreduce) {
         lemp.nxstate -= 1;
     }
@@ -3417,9 +3448,8 @@ pub fn main() !void {
     // Reorder and renumber the states so that states with fewer choices
     // occur at the end.  This is an optimization that helps make the
     // generated parser tables smaller.
-    // if (!noResort) ResortStates(lem);
-    // XXX: replace option
-    ResortStates(lem);
+    if (!noResort) ResortStates(lem);
+    // Generate a report of the parser generated.  (the "y.output" file)
     if (!quiet) try ReportOutput(lem);
     { // This is the bulk of the remaining work:
         // /* Reorder and renumber the states so that states with fewer choices
