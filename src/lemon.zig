@@ -699,8 +699,9 @@ fn Plink_delete(plp_delete: ?*PLink) void {
 
 /// Generate a filename with the given suffix.  Space to hold the
 /// name comes from malloc() and must be freed by the calling
-/// function.
-fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM![]u8 {
+/// function.  Quote outname for line directives, and assign the
+/// filenames to the correct fields of `lemp`.
+fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM!void {
     var buf = ArrayList(u8){};
     errdefer buf.deinit(lemp.allocator);
 
@@ -720,7 +721,8 @@ fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM!
 
     try w.print("{s}{s}", .{ filename, suffix });
 
-    return try buf.toOwnedSlice(lemp.allocator);
+    lemp.outname = try buf.toOwnedSlice(lemp.allocator);
+    lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
 }
 
 /// Open a file with a name based on the name of the input file,
@@ -728,7 +730,7 @@ fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM!
 /// to the stream.
 fn file_open(lemp: *Lemon, suffix: []const u8, mode: File.CreateFlags) OOM!?File {
     if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
-    lemp.outname = try file_makename(lemp, suffix, null); // TODO: decide how to handle outputDir
+    try file_makename(lemp, suffix, null); // TODO: decide how to handle outputDir
     const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
         lemp.errorcnt += 1;
         switch (err) {
@@ -1044,46 +1046,43 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
 fn tplt_xfer(name: []const u8, in: *[:0]const u8, out: anytype, lineno: *usize) !void {
     var start: usize = 0;
     while (mem.indexOfScalarPos(u8, in.*, start, '\n')) |idx| {
-        const line = in[start..idx];
+        const line = in.*[start .. idx + 1];
         dbgassert(line.len > 2);
         if (line[0] != '%' and line[1] != '%') {
             lineno.* += 1;
-            var iStart: usize = 0;
+            var i: usize = 0;
             if (name.len > 0) {
-                var i: usize = 0;
-                while (i < line.len) : (i += 1) {
-                    const b = line[i];
-                    if (b == 'P' and
-                        mem.eql(u8, line[i..][0..5], "Parse") and (i == 0 || !isAlpha(line[i - 1])))
-                    {
-                        if (i > iStart) {
-                            try out.print("{s}", .{line[iStart..i]});
-                        }
-                        try out.print("{s}", name);
-                        i += 4; // Skip 'Parse'
-                        iStart = i + 1;
+                scan: while (mem.indexOfPos(u8, line, i, "Parse")) |p_idx| {
+                    if (p_idx != 0 and isAlpha(line[p_idx - 1])) {
+                        i = p_idx + 5;
+                        continue :scan;
                     }
+                    try out.print("{s}{s}", .{ line[i..p_idx], name });
+                    i = p_idx + 5;
                 }
             }
-            try out.writeAll(line[iStart..]);
-            start = idx;
-        } else break;
+            try out.writeAll(line[i..]);
+            start = idx + 1;
+        } else {
+            start = line.len + 1;
+            break;
+        }
     }
+
     in.* = in.*[start..];
 }
 
 /// Skip forward past the header of the template file to the first "%%".
 fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
-    var start: usize = 0;
-    while (mem.indexOfScalarPos(u8, in.*, start, '\n')) |idx| {
-        const line = in[start..idx];
-        dbgassert(line.len > 2);
-        if (line[0] == '%' and line[1] == '%') {
-            lineno.* += 1;
-            start = idx;
-        } else break;
+    const h_idx = mem.indexOf(u8, in.*, "%%");
+    if (h_idx) |i| {
+        lineno.* += mem.count(u8, in.*[0..i], "\n");
+        const nl = mem.indexOfScalarPos(u8, in.*, i, '\n').? + 1;
+        in.* = in.*[nl..];
+    } else {
+        logger.err("Header of template file: %% not found", .{});
+        return; // TODO: something better? just die?
     }
-    in.* = in.*[start..];
 }
 
 // The next function finds the template file and opens it, returning
@@ -1099,23 +1098,21 @@ fn tplt_open(lemp: *Lemon) ![:0]const u8 {
     // here if set, and it's an error not to find it.  Otherwise we return the
     // embed.
     //
+    const lempar = @embedFile("lempar");
     _ = lemp;
     if (false) return error.OutOfMemory;
-    return "I'm a template! Honest!";
+    return lempar;
 }
 
 /// Print a #line directive line to the output file.
-fn tplt_linedir(out: anytype, lineno: usize, filename: []const u8) !void {
-    // TODO: just make the quoted line and slap it on lemp already, it's
-    // right there in tplt_print to be passed in.  Meanwhile we aren't
-    // escaping the filename, we're just slapping it on there.
-    try out.print("#line: %d \"{s}\"\n", .{ lineno, filename });
+fn tplt_linedir(out: anytype, lineno: usize, quoted_filename: []const u8) !void {
+    try out.print("#line: {d} {s}\n", .{ lineno, quoted_filename });
 }
 
 /// Print a string to the file and keep the linenumber up to date.
 fn tplt_print(out: anytype, lemp: *Lemon, str: []const u8, lineno: *usize) !void {
     if (str.len == 0) return;
-    const line_count = mem.count(u8, str, '\n');
+    const line_count = mem.count(u8, str, "\n");
     lineno.* += line_count;
     try out.writeAll(str);
     if (str[str.len - 1] != '\n') {
@@ -1126,6 +1123,32 @@ fn tplt_print(out: anytype, lemp: *Lemon, str: []const u8, lineno: *usize) !void
         lineno.* += 1;
         try tplt_linedir(out, lineno.*, lemp.outname);
     }
+}
+
+/// Handle any crazy-pants filenames we might happen to encounter.
+fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
+    var a_list: ArrayList(u8) = .empty;
+    errdefer a_list.deinit(allocator);
+    try a_list.ensureTotalCapacity(allocator, filename.len + 2);
+    const writer = a_list.writer(allocator);
+    var i: usize = 0;
+    try writer.writeByte('"');
+    while (i < filename.len) : (i += 1) {
+        switch (filename[i]) {
+            '\t' => try writer.writeAll("\\t"),
+            '\n' => try writer.writeAll("\\n"),
+            '\\' => try writer.writeAll("\\\\"), // chopstix
+            '"' => try writer.writeAll("\\\""), // thanks I hate it
+            // All the weird stuff gets octal:
+            0x01...0x08, 0x0b...0x1f, 0x7f...0xff => |b| {
+                try writer.print("\\{o:>3}", .{b});
+            },
+            ' ', '!', '#'...'[', ']'...'~' => |c| try writer.writeByte(c),
+            0x00 => @panic("NUL byte in filename (POSIX is angry)"),
+        }
+    }
+    try writer.writeByte('"');
+    return a_list.toOwnedSlice(allocator);
 }
 
 //| [4287]
@@ -1147,17 +1170,16 @@ fn ReportTable(
     lemp.maxAction = lemp.minReduce + lemp.nrule;
 
     const in = try tplt_open(lemp);
-    _ = in;
     if (sqlflag) {
         // later
     }
-    const m_out_fh = try file_open(lemp, ".c", .{});
+    const m_out_fh = try file_open(lemp, ".zig.c", .{});
     if (m_out_fh) |fh| {
         defer fh.close();
         const f_writer = fh.writer();
         var write_buffer = std.io.bufferedWriter(f_writer);
         const b_writer = write_buffer.writer();
-        try reportTableImpl(lemp, b_writer);
+        try reportTableImpl(lemp, in, b_writer, mhflag);
         try write_buffer.flush();
     } else {
         return; // No file handle
@@ -1171,7 +1193,12 @@ const bDefineUsed: []bool = &.{};
 const nDefine: usize = 0;
 const azDefine: [][]const u8 = &.{""};
 
-fn reportTableImpl(lemp: *Lemon, in_template: [:0]const u8, out: anytype) !void {
+fn reportTableImpl(
+    lemp: *Lemon,
+    in_template: [:0]const u8,
+    out: anytype,
+    mhflag: bool,
+) !void {
     var in = in_template;
     var lineno: usize = 1;
     try out.print(
@@ -1207,13 +1234,36 @@ fn reportTableImpl(lemp: *Lemon, in_template: [:0]const u8, out: anytype) !void 
         }
         include = include[nl_skip..];
         if (include.len > 0 and include[0] == '/') {
-            try tplt_skip_header(&in, &lineno);
+            tplt_skip_header(&in, &lineno);
         } else {
-            try tplt_xfer(lemp.name, in, out, &lineno);
+            try tplt_xfer(lemp.name, &in, out, &lineno);
         }
         // Generate the include code, if any.
         try tplt_print(out, lemp, include, &lineno);
     }
+    if (mhflag) {
+        // TODO:
+        // char *incName = file_makename(lemp, ".h");
+        // fprintf(out,"#include \"%s\"\n", incName); lineno++;
+        // free(incName);
+    }
+    try tplt_xfer(lemp.name, &in, out, &lineno);
+    // Generate #defines for all tokens
+    const prefix = if (lemp.tokenprefix.len > 0) lemp.tokenprefix else "";
+    if (mhflag) {
+        try out.writeAll("#if INTERFACE\n");
+        lineno += 1;
+    } else {
+        try out.print("#ifndef {s}{s}\n", .{ prefix, lemp.symbols[1].name });
+    }
+    for (lemp.symbols[1..lemp.nterminal], 1..) |tok, i| {
+        try out.print("#define {s}{s: <30} {d:>2}\n", .{ prefix, tok.name, i });
+        lineno += 1;
+    }
+    try out.writeAll("#endif\n");
+    lineno += 1;
+    try tplt_xfer(lemp.name, &in, out, &lineno);
+    // tplt_xfer(lemp->name,in,out,&lineno);
 }
 
 /// The state vector for the entire parser generator is recorded as
@@ -1293,8 +1343,12 @@ const Lemon = struct {
     vardest: []u8,
     /// Name of the input file
     filename: []const u8,
+    /// Name of the input file, escaped and quoted
+    quoted_filename: []const u8,
     /// Name of the current output file
-    outname: []u8,
+    outname: []const u8,
+    /// Name of the current output file, escaped and quoted
+    quoted_outname: []const u8,
     /// A prefix added to token names in the .h file
     tokenprefix: []u8,
     /// Function to use to allocate stack space
@@ -1360,7 +1414,9 @@ const Lemon = struct {
         .tokendest = &.{},
         .vardest = &.{},
         .filename = "",
-        .outname = &.{},
+        .quoted_filename = "",
+        .outname = "",
+        .quoted_outname = "",
         .tokenprefix = &.{},
         .reallocFunc = &.{},
         .freeFunc = &.{},
@@ -1412,10 +1468,6 @@ const Lemon = struct {
         errdefer allocator.free(gp.tokendest);
         gp.vardest = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.vardest);
-        gp.filename = try allocator.alloc(u8, 0);
-        errdefer allocator.free(gp.filename);
-        gp.outname = try allocator.alloc(u8, 0);
-        errdefer allocator.free(gp.outname);
         gp.tokenprefix = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.tokenprefix);
         gp.reallocFunc = try allocator.alloc(u8, 0);
@@ -1441,7 +1493,9 @@ const Lemon = struct {
         allocator.free(gp.extracode);
         allocator.free(gp.tokendest);
         allocator.free(gp.vardest);
+        allocator.free(gp.quoted_filename);
         allocator.free(gp.outname);
+        allocator.free(gp.quoted_outname);
         allocator.free(gp.tokenprefix);
         allocator.free(gp.reallocFunc);
         allocator.destroy(gp);
@@ -1816,6 +1870,13 @@ fn FindStates(lemp: *Lemon) !void {
             //| I aim to be mostly bug-compatible.  It's not actually clear this condition
             //| can be triggered in any case.
             if (!lemon_classic) if (rhs.type == .multiterminal) {
+                // Token class: could have the same name.
+                if (mem.eql(rhs.name, sp.name)) {
+                    ErrorMsg(lemp.filename, 0, "" ++
+                        "The start symbol has a synonym declared as a token class. This will " ++
+                        "result in a parser which does not work properly.", .{});
+                    lemp.errorcnt += 1;
+                }
                 for (rhs.subsym) |subsym| {
                     if (subsym == sp) {
                         ErrorMsg(lemp.filename, 0, "" ++
@@ -2184,7 +2245,9 @@ fn resolve_conflict(apx: *Action, apy: *Action) u32 {
                 apx.type = .sh_resolved;
             } else {
                 dbgassert(spx.assoc == .none);
-                apx.type = .@"error"; // NOTE: no errcnt? hmm.
+                apx.type = .@"error";
+                // NOTE: this means the /parse/ is in error,
+                // not the /grammar/, eg a == b == c in C.
             }
         }
     } else if (apx.type == .reduce and apy.type == .reduce) {
@@ -2199,6 +2262,9 @@ fn resolve_conflict(apx: *Action, apy: *Action) u32 {
         }
         const spx = maybe_spx.?;
         const spy = maybe_spy.?;
+        // NOTE: the logic here is correct, and matches the order in
+        // lemon.c.  Come back and rewrite it to use two <, so that
+        // the states collapse symmetrically.
         if (spx.prec.? > spy.prec.?) {
             apy.type = .rd_resolved;
         } else if (spx.prec.? < spy.prec.?) {
@@ -2534,7 +2600,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 // bytes, doling them out to the three separate allocations below.
                 // Not without regret, I am not, at this time, willing to follow suit.
                 const rp = try Rule.create(psp.allocator);
-                errdefer rp.destroy(psp.allocator);
+                errdefer rp.destroy(psp.allocator); // Frees subsequent allocations
                 rp.ruleline = psp.tokenlineno;
                 rp.rhs = try psp.allocator.alloc(*Symbol, psp.nrhs);
                 rp.rhsalias = try psp.allocator.alloc([]const u8, psp.nrhs);
@@ -2838,16 +2904,14 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     psp.tokenlineno > 1 and
                     (psp.decllinenoslot == null or psp.decllinenoslot.?.* != 0);
                 if (addLineMacro) {
-                    var nBack = std.mem.count(u8, psp.filename, "\\");
-                    nBack += std.mem.count(u8, psp.filename, "\"");
                     zLine = std.fmt.bufPrint(&zBuffer, "#line {d} ", .{psp.tokenlineno}) catch |err| slice: {
                         // Should be literally impossible but ¯\_(ツ)_/¯
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "Buffer overflow on #line directive print: {s}", .{@errorName(err)});
                         psp.errorcnt += 1;
                         break :slice zBuffer[0..0];
-                    }; // 3 for ", ", \n:
-                    n += zLine.len + psp.filename.len + nBack + 3;
+                    };
+                    n += zLine.len + psp.gp.quoted_filename.len + 1; // newline
                 }
                 // We put this back on declargslot and PSP once we know how long the
                 // slice actually should be.
@@ -2855,27 +2919,17 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 @memcpy(zBuf[0..zOld.len], zOld);
                 zIdx += zOld.len;
                 if (addLineMacro) {
-                    // TODO: there's no reason to do this repeatedly for every loop,
-                    // the file name is not going to change.  This should be
-                    // calculated once on load and the value put on gp, *Lemon.
                     if (zIdx > 0 and zBuf[zIdx - 1] != '\n') {
                         zBuf[zIdx] = '\n';
                         zIdx += 1;
                     }
                     @memcpy(zBuf[zIdx..][0..zLine.len], zLine);
-                    zIdx += zLine.len + 1;
-                    zBuf[zIdx - 1] = '"';
-                    for (0..psp.filename.len) |i| {
-                        if (psp.filename[i] == '\\' or psp.filename[i] == '"') {
-                            zBuf[zIdx] = '\\';
-                            zIdx += 1;
-                        }
-                        zBuf[zIdx] = psp.filename[i];
-                        zIdx += 1;
-                    }
-                    zBuf[zIdx] = '"';
-                    zBuf[zIdx + 1] = '\n';
-                    zIdx += 2;
+                    zIdx += zLine.len;
+                    const q_file = psp.gp.quoted_filename;
+                    @memcpy(zBuf[zIdx..][0..q_file.len], q_file);
+                    zIdx += q_file.len;
+                    zBuf[zIdx] = '\n';
+                    zIdx += 1;
                 }
                 if (psp.decllinenoslot) |linenoslot| if (linenoslot.* == 0) {
                     psp.decllinenoslot.?.* = @intCast(psp.tokenlineno);
@@ -3486,10 +3540,10 @@ pub fn main() !void {
     const compress = true;
     const quiet = false;
     const statistics = true;
-    const mhflag = true;
-    const nolinenosflag = true;
+    const mhflag = false;
+    const nolinenosflag = false;
     const noResort = false;
-    const sqlFlag = true;
+    const sqlFlag = false;
     const printPP = false;
     // Reconcile Zig to this unfortunate situation:
     _ = .{ version, rpflag, basisflag, compress, quiet, statistics, mhflag, nolinenosflag, noResort, sqlFlag, printPP };
@@ -3510,6 +3564,7 @@ pub fn main() !void {
     defer lem.destroy(allocator);
     lem.argv = args;
     lem.filename = filename;
+    lem.quoted_filename = try esc_filename(allocator, filename);
     lem.basisflag = basisflag;
     lem.nolineosflag = nolinenosflag;
     lem.printPreprocessed = printPP;
@@ -3638,15 +3693,9 @@ pub fn main() !void {
     if (!noResort) ResortStates(lem);
     // Generate a report of the parser generated.  (the "y.output" file)
     if (!quiet) try ReportOutput(lem);
+    // Generate the source code for the parser.
+    try ReportTable(lem, mhflag, sqlFlag);
     { // This is the bulk of the remaining work:
-        // /* Reorder and renumber the states so that states with fewer choices
-        // ** occur at the end.  This is an optimization that helps make the
-        // ** generated parser tables smaller. */
-        // if( noResort==0 ) ResortStates(&lem);
-        //
-        // /* Generate a report of the parser generated.  (the "y.output" file) */
-        // if( !quiet ) ReportOutput(&lem);
-        //
         // /* Generate the source code for the parser */
         // ReportTable(&lem, mhflag, sqlFlag);
         //

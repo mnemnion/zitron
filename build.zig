@@ -12,6 +12,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    lemon_exe.root_module.addAnonymousImport("lempar", .{ .root_source_file = b.path("template/lempar.c") });
 
     b.installArtifact(lemon_exe);
 
