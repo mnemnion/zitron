@@ -1045,15 +1045,16 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
 /// begin with *name instead.
 fn tplt_xfer(name: []const u8, in: *[:0]const u8, out: anytype, lineno: *usize) !void {
     var start: usize = 0;
-    while (mem.indexOfScalarPos(u8, in.*, start, '\n')) |idx| {
-        const line = in.*[start .. idx + 1];
-        dbgassert(line.len > 2);
-        if (line[0] != '%' and line[1] != '%') {
+    var iter = mem.splitSequence(u8, in.*, "\n");
+    while (iter.next()) |line| {
+        start += line.len + 1;
+        if (line.len < 2 or (line[0] != '%' and line[1] != '%')) {
             lineno.* += 1;
             var i: usize = 0;
             if (name.len > 0) {
                 scan: while (mem.indexOfPos(u8, line, i, "Parse")) |p_idx| {
                     if (p_idx != 0 and isAlpha(line[p_idx - 1])) {
+                        try out.writeAll(line[i .. p_idx + 5]);
                         i = p_idx + 5;
                         continue :scan;
                     }
@@ -1062,9 +1063,8 @@ fn tplt_xfer(name: []const u8, in: *[:0]const u8, out: anytype, lineno: *usize) 
                 }
             }
             try out.writeAll(line[i..]);
-            start = idx + 1;
+            try out.writeByte('\n');
         } else {
-            start = line.len + 1;
             break;
         }
     }
@@ -1074,11 +1074,10 @@ fn tplt_xfer(name: []const u8, in: *[:0]const u8, out: anytype, lineno: *usize) 
 
 /// Skip forward past the header of the template file to the first "%%".
 fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
-    const h_idx = mem.indexOf(u8, in.*, "%%");
+    const h_idx = mem.indexOf(u8, in.*, "\n%%");
     if (h_idx) |i| {
-        lineno.* += mem.count(u8, in.*[0..i], "\n");
-        const nl = mem.indexOfScalarPos(u8, in.*, i, '\n').? + 1;
-        in.* = in.*[nl..];
+        lineno.* += mem.count(u8, in.*[0 .. i + 1], "\n");
+        in.* = in.*[i + 3 ..];
     } else {
         logger.err("Header of template file: %% not found", .{});
         return; // TODO: something better? just die?
@@ -1106,7 +1105,7 @@ fn tplt_open(lemp: *Lemon) ![:0]const u8 {
 
 /// Print a #line directive line to the output file.
 fn tplt_linedir(out: anytype, lineno: usize, quoted_filename: []const u8) !void {
-    try out.print("#line: {d} {s}\n", .{ lineno, quoted_filename });
+    try out.print("#line {d} {s}\n", .{ lineno, quoted_filename });
 }
 
 /// Print a string to the file and keep the linenumber up to date.
@@ -1121,7 +1120,7 @@ fn tplt_print(out: anytype, lemp: *Lemon, str: []const u8, lineno: *usize) !void
     }
     if (!lemp.nolineosflag) {
         lineno.* += 1;
-        try tplt_linedir(out, lineno.*, lemp.outname);
+        try tplt_linedir(out, lineno.*, lemp.quoted_outname);
     }
 }
 
