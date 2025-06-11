@@ -185,7 +185,7 @@ const Symbol = struct {
     /// True if NT and can generate an empty string
     lambda: bool,
     /// Number of times used
-    usecnt: int,
+    useCnt: u32,
     /// Code which executes whenever this symbol is
     /// popped from the stack during error processing
     destructor: []u8,
@@ -198,7 +198,7 @@ const Symbol = struct {
     /// The data type number.  In the parser, the value
     /// stack is a union.  The .yy%d element of this
     /// union is the correct data type for this object.
-    dtnum: int, // No idea what the above means yet ¯\_(ツ)_/¯
+    dtnum: u32, // No idea what the above means yet ¯\_(ツ)_/¯
     /// True if this symbol ever carries content - if
     /// it is ever more than just syntax
     bContent: bool,
@@ -220,7 +220,7 @@ const Symbol = struct {
         .assoc = .unk,
         .lambda = false,
         .firstset = undefined,
-        .usecnt = 0,
+        .useCnt = 0,
         .destructor = undefined,
         .destLineno = null,
         .datatype = undefined,
@@ -1032,6 +1032,30 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
     }
 }
 
+/// Emulates `fgets` close enough for our purposes:
+/// each call to `next` returns a line, with it's newline
+/// when there is one, and advances the pointer to the
+/// template.
+const Fgets = struct {
+    in: *[:0]const u8,
+
+    pub fn next(gets: *Fgets) ?[]const u8 {
+        if (gets.in.*[0] == '\x00') return null;
+        const m_nl = mem.indexOfScalar(u8, gets.in.*, '\n');
+        if (m_nl) |nl| {
+            defer gets.in.* = gets.in.*[nl + 1 .. :0];
+            return gets.in.*[0 .. nl + 1];
+        } else {
+            defer gets.in.* = gets.in.*[gets.in.*.len..gets.in.*.len :0];
+            return gets.in.*[0..gets.in.*.len];
+        }
+    }
+};
+
+fn fgets(in: *[:0]const u8) Fgets {
+    return .{ .in = in };
+}
+
 //| [3549]
 //|
 //| The next cluster of routines are for reading the template file
@@ -1045,7 +1069,7 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
 /// begin with *name instead.
 fn tplt_xfer(name: []const u8, in: *[:0]const u8, out: anytype, lineno: *usize) !void {
     var start: usize = 0;
-    var iter = mem.splitSequence(u8, in.*, "\n");
+    var iter = fgets(in);
     while (iter.next()) |line| {
         start += line.len + 1;
         if (line.len < 2 or (line[0] != '%' and line[1] != '%')) {
@@ -1063,13 +1087,10 @@ fn tplt_xfer(name: []const u8, in: *[:0]const u8, out: anytype, lineno: *usize) 
                 }
             }
             try out.writeAll(line[i..]);
-            try out.writeByte('\n');
         } else {
             break;
         }
     }
-
-    in.* = in.*[start..];
 }
 
 /// Skip forward past the header of the template file to the first "%%".
@@ -1079,7 +1100,7 @@ fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
         lineno.* += mem.count(u8, in.*[0 .. i + 1], "\n");
         in.* = in.*[i + 3 ..];
     } else {
-        logger.err("Header of template file: %% not found", .{});
+        logger.err("Header of template file: /^%%/ not found", .{});
         return; // TODO: something better? just die?
     }
 }
@@ -1105,7 +1126,7 @@ fn tplt_open(lemp: *Lemon) ![:0]const u8 {
 
 /// Print a #line directive line to the output file.
 fn tplt_linedir(out: anytype, lineno: usize, quoted_filename: []const u8) !void {
-    try out.print("#line {d} {s}\n", .{ lineno, quoted_filename });
+    try out.print("#line {d} {s}", .{ lineno, quoted_filename });
 }
 
 /// Print a string to the file and keep the linenumber up to date.
@@ -1148,6 +1169,158 @@ fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
     }
     try writer.writeByte('"');
     return a_list.toOwnedSlice(allocator);
+}
+
+/// Print the definition of the union used for the parser's data stack.
+/// This union contains fields for every possible data type for tokens
+/// and nonterminals.  In the process of computing and printing this
+/// union, also set the ".dtnum" field of every terminal and nonterminal
+/// symbol.
+fn print_stack_union(
+    /// The output stream
+    out: anytype,
+    /// The main info structure for this parser
+    lemp: *Lemon,
+    /// Pointer to the line number
+    plineno: *usize,
+    /// True if generating makeheaders output
+    mhflag: bool,
+) !void {
+    //| NOTE: This creates an ad-hoc hash table, because C.  Alas, I
+    //| cannot in this case substitute a Zig data type, because the
+    //| hash algorithm is load-bearing: it assigns a dtnum to Symbols
+    //| and those end up in the output.  So it goes.
+
+    //| Premise: we can borrow all the strings as []const u8, and just
+    //| free the array of pointers.  Let's find out.
+
+    //  Allocate and initialize types[] and allocate stddt[]
+    const arraysize = lemp.nsymbol * 2; // Room for hash collisions
+    const types = try lemp.allocator.alloc([]const u8, arraysize);
+    defer lemp.allocator.free(types);
+    @memset(types, "");
+    // We don't need stddt, it's just a holding cell for a null-terminated
+    // whitespace-trimmed string.  We can just borrow all that.  We reuse
+    // the name for clarity.
+    //
+    // This means there's no use for maxdtlength either, and no reason to
+    // scan every symbol and count it to determine it.  Which in the original
+    // also demands a scan of the string itself to count that length.
+
+    //   Build a hash table of datatypes. The ".dtnum" field of each symbol
+    //   is filled in with the hash index plus 1.  A ".dtnum" value of 0 is
+    //   used for terminal symbols.  If there is no %default_type defined then
+    //   0 is also used as the .dtnum value for nonterminals which do not specify
+    //   a datatype using the %type directive.
+    hash: for (lemp.symbols[0..lemp.nsymbol]) |sp| {
+        if (sp == lemp.errsym) {
+            sp.dtnum = arraysize + 1;
+            continue :hash;
+        }
+        if (sp.type != .nonterminal or (sp.datatype.len == 0 and lemp.vartype.len == 0)) {
+            sp.dtnum = 0; // Redundant I think
+            continue :hash;
+        }
+        const d_raw = if (sp.datatype.len > 0) sp.datatype else lemp.vartype;
+        const stddt = mem.trim(u8, d_raw, " ");
+        if (std.mem.eql(u8, lemp.tokentype, stddt)) {
+            sp.dtnum = 0;
+            continue :hash;
+        }
+        var hash: u32 = 0;
+        for (stddt) |b| {
+            hash = hash *% 53 +% b;
+        }
+        hash = (hash & 0x7fff_ffff) % arraysize;
+        probe: while (types[hash].len > 0) {
+            if (mem.eql(u8, types[hash], stddt)) {
+                sp.dtnum = hash + 1;
+                break :probe;
+            }
+            hash += 1;
+            if (hash >= arraysize) hash = 0;
+        }
+        if (types[hash].len == 0) {
+            types[hash] = stddt; // borrowed for the duration
+        }
+    }
+    // Print out the definition of YYTOKENTYPE and YYMINORTYPE
+    const name: []const u8 = if (lemp.name.len > 0) lemp.name else "Parse";
+    var lineno = plineno.*;
+    if (mhflag) {
+        try out.writeAll("#if INTERFACE\n");
+        lineno += 1;
+    }
+    const t_name: []const u8 = if (lemp.tokentype.len > 0) lemp.tokentype else "void*";
+    try out.print("#define {s}TOKENTYPE {s}\n", .{ name, t_name });
+    lineno += 1;
+    if (mhflag) {
+        try out.writeAll("#endif\n");
+        lineno += 1;
+    }
+    try out.writeAll("typedef union {\n");
+    lineno += 1;
+    try out.writeAll("  int yyinit;\n");
+    lineno += 1;
+    try out.print("  {s}TOKENTYPE yy0;\n", .{name});
+    lineno += 1;
+    t_print: for (types, 0..) |variant, i| {
+        if (variant.len == 0) continue :t_print;
+        try out.print("  {s} yy{d};\n", .{ variant, i + 1 });
+        lineno += 1;
+    }
+    if (lemp.errsym) |errsym| if (errsym.useCnt > 0) {
+        try out.print("  int yy{d};\n", .{errsym.dtnum});
+        lineno += 1;
+    };
+    try out.writeAll("} YYMINORTYPE;\n");
+    lineno += 1;
+    plineno.* = lineno;
+}
+//   if( lemp->errsym && lemp->errsym->useCnt ){
+//     fprintf(out,"  int yy%d;\n",lemp->errsym->dtnum); lineno++;
+//   }
+//   free(stddt);
+//   free(types);
+//   fprintf(out,"} YYMINORTYPE;\n"); lineno++;
+//   *plineno = lineno;
+// }
+
+// Return the name of a C datatype able to represent values between
+// lwr and upr, inclusive.  If pnByte!=NULL then also write the sizeof
+// for that type (1, 2, or 4) into *pnByte.
+fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8) []const u8 {
+    var zType: []const u8 = "";
+    var nByte: u8 = 4;
+    // TODO: the shifts and then magic numbers here are ugly
+    // (my fault, the original uses the magic excluslively),
+    // come back and use std.math here.
+    if (lwr >= 0) {
+        if (upr <= (1 << 8) - 1) {
+            zType = "unsigned char";
+            nByte = 1;
+        } else if (upr <= (1 << 16) - 1) {
+            zType = "unsigned short int";
+        } else {
+            zType = "unsigned int";
+            nByte = 4; // redundant
+        }
+    } else {
+        if (lwr >= -127 and upr <= 127) {
+            zType = "signed char";
+            nByte = 1;
+        } else if (lwr >= -32767 and upr < 32767) {
+            zType = "short int";
+            nByte = 2;
+        } else {
+            // NOTE: this condition is missing in the original,
+            // and zType is set to it instead.  I like this better.
+            zType = "int";
+            nByte = 4;
+        }
+    }
+    if (pNbyte) |pNb| pNb.* = nByte;
+    return zType;
 }
 
 //| [4287]
@@ -1262,7 +1435,22 @@ fn reportTableImpl(
     try out.writeAll("#endif\n");
     lineno += 1;
     try tplt_xfer(lemp.name, &in, out, &lineno);
-    // tplt_xfer(lemp->name,in,out,&lineno);
+
+    // Generate the defines
+
+    var szCodeType: u8 = 0;
+    var szActionType: u8 = 0;
+    try out.print("#define YYCODETYPE {s}\n", .{minimum_size_type(0, lemp.nsymbol, &szCodeType)});
+    lineno += 1;
+    try out.print("#define YYNOCODE {d}\n", .{lemp.nsymbol});
+    lineno += 1;
+    try out.print("#define YYACTIONTYPE {s}\n", .{minimum_size_type(0, lemp.maxAction, &szActionType)});
+    lineno += 1;
+    if (lemp.wildcard) |wild| {
+        try out.print("#define YYWILDCARD {d}\n", .{wild.index});
+        lineno += 1;
+    }
+    try print_stack_union(out, lemp, &lineno, mhflag);
 }
 
 /// The state vector for the entire parser generator is recorded as
@@ -1285,11 +1473,11 @@ const Lemon = struct {
     /// Number of rules
     nrule: u32,
     /// Number of rules with actions
-    nruleWithAction: usize,
+    nruleWithAction: u32,
     /// Number of terminal and nonterminal symbols
-    nsymbol: usize,
+    nsymbol: u32,
     /// Number of terminal symbols
-    nterminal: usize,
+    nterminal: u32,
     /// Minimum shift-reduce action value
     minShiftReduce: u32,
     /// Error action value
@@ -3597,7 +3785,7 @@ pub fn main() !void {
         sym.index = @intCast(i);
     }
     {
-        var i: usize = lem.symbols.len;
+        var i: u32 = @intCast(lem.symbols.len);
         while (lem.symbols[i - 1].type == .multiterminal) : (i -= 1) {}
         dbgassert(strcmp(lem.symbols[i - 1].name, "{default}"));
         lem.nsymbol = i - 1;
@@ -3851,7 +4039,7 @@ fn sequenceRules(lem: *Lemon) void {
     // statement that selects reduction actions will have a smaller jump table.
     // NOTE: the original code does all this assigning, then sorts. I don't
     // see why, since we create the order right here.  We can just:
-    var rnum: usize = 0;
+    var rnum: u32 = 0;
     var rp: ?*Rule = lem.rule;
     var action_head: ?*Rule = null;
     var action_tail: ?*Rule = null;
@@ -3886,7 +4074,7 @@ fn sequenceRules(lem: *Lemon) void {
     rp = no_act_head; // This works correctly even if there are no no-action rules
     while (rp) |rule| : (rp = rule.next) {
         dbgassert(rule.code.len == 0);
-        rule.iRule = @intCast(rnum);
+        rule.iRule = rnum;
         rnum += 1;
     }
     lem.startRule = lem.rule;
