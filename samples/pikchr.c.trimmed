@@ -960,3 +960,4 @@ typedef union {
 #define pik_parserCTX_PARAM ,p
 #define pik_parserCTX_FETCH Pik *p=yypParser->p;
 #define pik_parserCTX_STORE yypParser->p=p;
+#define YYFALLBACK 1

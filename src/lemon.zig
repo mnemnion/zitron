@@ -1503,12 +1503,24 @@ fn reportTableImpl(
         try out.print("#define {s}CTX_FETCH {s}=yypParser->{s};\n", .{ name, lemp.ctx, ctx }); lineno += 1;
         try out.print("#define {s}CTX_STORE yypParser->{s}={s};\n", .{ name, ctx, ctx }); lineno += 1;
     } else {
-        try out.print("#define {s}ARG_SDECL\n", .{name}); lineno += 1;
-        try out.print("#define {s}ARG_PDECL\n", .{name}); lineno += 1;
-        try out.print("#define {s}ARG_PARAM\n", .{name}); lineno += 1;
-        try out.print("#define {s}ARG_FETCH\n", .{name}); lineno += 1;
-        try out.print("#define {s}ARG_STORE\n", .{name}); lineno += 1;
-    } // zig fmt: on
+        try out.print("#define {s}CTX_SDECL\n", .{name}); lineno += 1;
+        try out.print("#define {s}CTX_PDECL\n", .{name}); lineno += 1;
+        try out.print("#define {s}CTX_PARAM\n", .{name}); lineno += 1;
+        try out.print("#define {s}CTX_FETCH\n", .{name}); lineno += 1;
+        try out.print("#define {s}CTX_STORE\n", .{name}); lineno += 1;
+    }
+    if (mhflag) {
+        try out.writeAll("#endif\n"); lineno += 1;
+    }
+    if (lemp.errsym) |errsym| if (errsym.useCnt > 0) {
+        try out.print("#define YYERRORSYMBOL {d}\n", .{errsym.index}); lineno += 1;
+        try out.print("#define YYERRSYMDT yy{d}\n", .{errsym.dtnum});
+        lineno += 1;
+    };
+    if (lemp.has_fallback) {
+        try out.writeAll("#define YYFALLBACK 1\n"); lineno += 1;
+    }
+    // zig fmt: on
 }
 
 /// The state vector for the entire parser generator is recorded as
