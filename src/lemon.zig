@@ -1108,8 +1108,9 @@ fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
 // The next function finds the template file and opens it, returning
 // a pointer to the opened file.
 
-/// Retrieve the template.
-fn tplt_open(lemp: *Lemon) ![:0]const u8 {
+/// Retrieve the template.  First item of the tuple is `true` if the
+/// second must be freed.
+fn tplt_open(lemp: *Lemon) !struct { bool, [:0]const u8 } {
     // TODO: We embed the template, so: in 'classic mode', we first check for
     // the existence of lempar.c, and if we have it, we use it.  If not, we
     // return the embedded version.
@@ -1121,7 +1122,7 @@ fn tplt_open(lemp: *Lemon) ![:0]const u8 {
     const lempar = @embedFile("lempar");
     _ = lemp;
     if (false) return error.OutOfMemory;
-    return lempar;
+    return .{ false, lempar };
 }
 
 /// Print a #line directive line to the output file.
@@ -1277,14 +1278,6 @@ fn print_stack_union(
     lineno += 1;
     plineno.* = lineno;
 }
-//   if( lemp->errsym && lemp->errsym->useCnt ){
-//     fprintf(out,"  int yy%d;\n",lemp->errsym->dtnum); lineno++;
-//   }
-//   free(stddt);
-//   free(types);
-//   fprintf(out,"} YYMINORTYPE;\n"); lineno++;
-//   *plineno = lineno;
-// }
 
 // Return the name of a C datatype able to represent values between
 // lwr and upr, inclusive.  If pnByte!=NULL then also write the sizeof
@@ -1333,7 +1326,6 @@ fn ReportTable(
     /// Generate the *.sql file too
     sqlflag: bool,
 ) !void {
-    _ = .{mhflag};
     lemp.minShiftReduce = lemp.nstate;
     lemp.errAction = lemp.minShiftReduce + lemp.nrule;
     lemp.accAction = lemp.errAction + 1;
@@ -1341,7 +1333,8 @@ fn ReportTable(
     lemp.minReduce = lemp.noAction + 1;
     lemp.maxAction = lemp.minReduce + lemp.nrule;
 
-    const in = try tplt_open(lemp);
+    const free_buffer, const in = try tplt_open(lemp);
+    defer if (free_buffer) lemp.allocator.free(in);
     if (sqlflag) {
         // later
     }
@@ -1451,6 +1444,71 @@ fn reportTableImpl(
         lineno += 1;
     }
     try print_stack_union(out, lemp, &lineno, mhflag);
+    try out.writeAll("#ifndef YYSTACKDEPTH\n");
+    lineno += 1;
+    if (lemp.stacksize.len > 0) {
+        try out.print("#define YYSTACKDEPTH {s}\n", .{lemp.stacksize});
+        lineno += 1;
+    } else {
+        try out.writeAll("#define YYSTACKDEPTH 100\n");
+        lineno += 1;
+    }
+    try out.writeAll("#endif\n");
+    lineno += 1;
+    if (mhflag) {
+        try out.writeAll("#if INTERFACE\n");
+        lineno += 1;
+    }
+    const name = if (lemp.name.len > 0) lemp.name else "Parse";
+    if (lemp.arg.len > 0) {
+        var arg = mem.trim(u8, lemp.arg, " ");
+        var i = arg.len - 1;
+        while (i >= 1 and (isAlnum(arg[i - 1]) or arg[i - 1] == '_')) : (i -= 1) {}
+        arg = arg[i..]; // zig fmt: off
+        try out.print("#define {s}ARG_SDECL {s};\n", .{ name, lemp.arg }); lineno += 1;
+        try out.print("#define {s}ARG_PDECL ,{s}\n", .{ name, lemp.arg }); lineno += 1;
+        try out.print("#define {s}ARG_PARAM ,{s}\n", .{ name, arg }); lineno += 1;
+        try out.print("#define {s}ARG_FETCH {s}=yypParser->{s};\n", .{ name, lemp.arg, arg }); lineno += 1;
+        try out.print("#define {s}ARG_STORE yypParser->{s}={s};\n", .{ name, arg, arg }); lineno += 1;
+    } else {
+        try out.print("#define {s}ARG_SDECL\n", .{name}); lineno += 1;
+        try out.print("#define {s}ARG_PDECL\n", .{name}); lineno += 1;
+        try out.print("#define {s}ARG_PARAM\n", .{name}); lineno += 1;
+        try out.print("#define {s}ARG_FETCH\n", .{name}); lineno += 1;
+        try out.print("#define {s}ARG_STORE\n", .{name}); lineno += 1;
+    }
+    if (lemp.reallocFunc.len > 0) {
+        try out.print("#define YYREALLOC {s}\n", .{lemp.reallocFunc}); lineno += 1;
+    } else {
+        try out.writeAll("#define YYREALLOC realloc\n"); lineno += 1;
+    }
+    if (lemp.freeFunc.len > 0) {
+        try out.print("#define YYFREE {s}\n", .{lemp.freeFunc}); lineno += 1;
+    } else {
+        try out.writeAll("#define YYFREE free\n"); lineno += 1;
+    }
+    if (lemp.reallocFunc.len > 0 and lemp.freeFunc.len > 0) {
+        try out.writeAll("#define YYDYNSTACK 1\n"); lineno += 1;
+    } else {
+        try out.writeAll("#define YYDYNSTACK 0\n"); lineno += 1;
+    }
+    if (lemp.ctx.len > 0) {
+        var ctx = mem.trim(u8, lemp.ctx, " ");
+        var i = ctx.len - 1;
+        while (i >= 1 and (isAlnum(ctx[i - 1]) or ctx[i - 1] == '_')) : (i -= 1) {}
+        ctx = ctx[i..];
+        try out.print("#define {s}CTX_SDECL {s};\n", .{ name, lemp.ctx }); lineno += 1;
+        try out.print("#define {s}CTX_PDECL ,{s}\n", .{ name, lemp.ctx }); lineno += 1;
+        try out.print("#define {s}CTX_PARAM ,{s}\n", .{ name, ctx }); lineno += 1;
+        try out.print("#define {s}CTX_FETCH {s}=yypParser->{s};\n", .{ name, lemp.ctx, ctx }); lineno += 1;
+        try out.print("#define {s}CTX_STORE yypParser->{s}={s};\n", .{ name, ctx, ctx }); lineno += 1;
+    } else {
+        try out.print("#define {s}ARG_SDECL\n", .{name}); lineno += 1;
+        try out.print("#define {s}ARG_PDECL\n", .{name}); lineno += 1;
+        try out.print("#define {s}ARG_PARAM\n", .{name}); lineno += 1;
+        try out.print("#define {s}ARG_FETCH\n", .{name}); lineno += 1;
+        try out.print("#define {s}ARG_STORE\n", .{name}); lineno += 1;
+    } // zig fmt: on
 }
 
 /// The state vector for the entire parser generator is recorded as

@@ -6,13 +6,19 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
+    const lemon_template = b.option(
+        []const u8,
+        "template",
+        "A build-relative file path to a lemon template",
+    ) orelse "template/lempar.c";
+
     const lemon_exe = b.addExecutable(.{
         .name = "lemon",
         .root_source_file = b.path("src/lemon.zig"),
         .target = target,
         .optimize = optimize,
     });
-    lemon_exe.root_module.addAnonymousImport("lempar", .{ .root_source_file = b.path("template/lempar.c") });
+    lemon_exe.root_module.addAnonymousImport("lempar", .{ .root_source_file = b.path(lemon_template) });
 
     b.installArtifact(lemon_exe);
 

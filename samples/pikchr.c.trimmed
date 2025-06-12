@@ -944,3 +944,19 @@ typedef union {
   PNum yy253;
   PObj* yy258;
 } YYMINORTYPE;
+#ifndef YYSTACKDEPTH
+#define YYSTACKDEPTH 100
+#endif
+#define pik_parserARG_SDECL
+#define pik_parserARG_PDECL
+#define pik_parserARG_PARAM
+#define pik_parserARG_FETCH
+#define pik_parserARG_STORE
+#define YYREALLOC realloc
+#define YYFREE free
+#define YYDYNSTACK 0
+#define pik_parserCTX_SDECL Pik *p;
+#define pik_parserCTX_PDECL ,Pik *p
+#define pik_parserCTX_PARAM ,p
+#define pik_parserCTX_FETCH Pik *p=yypParser->p;
+#define pik_parserCTX_STORE yypParser->p=p;
