@@ -1551,7 +1551,103 @@ fn reportTableImpl(
     // table must be computed before generating the YYNSTATE macro because
     // we need to know how many states can be eliminated.
     const pActtab = try Compute_actiontable(lemp);
-    _ = pActtab;
+    defer pActtab.destroy();
+    // Mark rules that are actually used for reduce actions after all
+    // optimizations have been applied
+    var m_rp: ?*Rule = lemp.rule;
+    while (m_rp) |rp| : (m_rp = rp.next) rp.doesReduce = false;
+    for (0..lemp.nxstate) |i| {
+        var m_ap: ?*Action = lemp.sorted[i].ap;
+        while (m_ap) |ap| : (m_ap = ap.next) {
+            if (ap.type == .reduce or ap.type == .shiftreduce) {
+                ap.x.rp.?.doesReduce = true;
+            }
+        }
+    }
+    // zig fmt: off
+    {
+        // Finish rendering the constants now that the action table has
+        // been computed
+        try out.print("#define YYNSTATE             {d}\n", .{lemp.nxstate}); lineno += 1;
+        try out.print("#define YYNRULE              {d}\n", .{lemp.nrule}); lineno += 1;
+        try out.print("#define YYNRULE_WITH_ACTION  {d}\n", .{lemp.nruleWithAction}); lineno += 1;
+        try out.print("#define YYNTOKEN             {d}\n", .{lemp.nterminal}); lineno += 1;
+        try out.print("#define YY_MAX_SHIFT         {d}\n", .{lemp.nxstate - 1}); lineno += 1;
+        var i = lemp.minShiftReduce;
+        try out.print("#define YY_MIN_SHIFTREDUCE   {d}\n", .{i}); lineno += 1;
+        i += lemp.nrule;
+        try out.print("#define YY_MAX_SHIFTREDUCE   {d}\n", .{i - 1}); lineno += 1;
+        try out.print("#define YY_ERROR_ACTION      {d}\n", .{lemp.errAction}); lineno += 1;
+        try out.print("#define YY_ACCEPT_ACTION     {d}\n", .{lemp.accAction}); lineno += 1;
+        try out.print("#define YY_NO_ACTION         {d}\n", .{lemp.noAction}); lineno += 1;
+        try out.print("#define YY_MIN_REDUCE        {d}\n", .{lemp.minReduce}); lineno += 1;
+        i = lemp.minReduce + lemp.nrule;
+        try out.print("#define YY_MAX_REDUCE        {d}\n", .{i - 1}); lineno += 1;
+    }
+    // zig fmt: on
+    {
+        // Minimum and maximum token values that have a destructor
+        var min: usize = 0;
+        var max: usize = 0;
+        for (0..lemp.nsymbol) |i| {
+            const sp = lemp.symbols[i];
+            if (sp.type != .terminal and sp.destructor.len > 0) {
+                if (min == 0 or sp.index < min) min = sp.index;
+                if (sp.index > max) max = sp.index;
+            }
+        }
+        if (lemp.tokendest.len > 0) min = 0;
+        if (lemp.vardest.len > 0) max = lemp.nsymbol - 1;
+        try out.print("#define YY_MIN_DSTRCTR       {d}\n", .{min});
+        lineno += 1;
+        try out.print("#define YY_MAX_DSTRCTR       {d}\n", .{max});
+        lineno += 1;
+        try tplt_xfer(lemp.name, &in, out, &lineno);
+    }
+
+    // Now output the action table and its associates:
+    //
+    //  yy_action[]        A single table containing all actions.
+    //  yy_lookahead[]     A table containing the lookahead for each entry in
+    //                     yy_action.  Used to detect hash collisions.
+    //  yy_shift_ofst[]    For each state, the offset into yy_action for
+    //                     shifting terminals.
+    //  yy_reduce_ofst[]   For each state, the offset into yy_action for
+    //                     shifting non-terminals after a reduce.
+    //  yy_default[]       Default action for each state.
+
+    // Output the yy_action table
+    {
+        lemp.nactiontab = pActtab.actionSize();
+        const n = lemp.nactiontab;
+        lemp.tablesize = n * szActionType;
+        try out.print("#define YY_ACTTAB_COUNT ({d})\n", .{n});
+        lineno += 1;
+        try out.writeAll("static const YYACTIONTYPE yy_action[] = {\n");
+        lineno += 1;
+        var i: usize = 0;
+        var j: usize = 0;
+        while (i < n) : (i += 1) {
+            var action = pActtab.yyaction(i);
+            if (action < 0) action = @intCast(lemp.noAction);
+            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
+            // Fuck you Zig.  "Align width" doesn't mean "Add a +" you twat
+            if (action >= 0) {
+                try out.print(" {d: >4},", .{uint(action)});
+            } else {
+                try out.print(" {d: >4},", .{action});
+            }
+            if (j == 9 or i == n - 1) {
+                try out.writeByte('\n');
+                lineno += 1;
+                j = 0;
+            } else {
+                j += 1;
+            }
+        }
+        try out.writeAll("};\n");
+        lineno += 1;
+    }
 }
 
 /// The state vector for the entire parser generator is recorded as
@@ -1644,9 +1740,9 @@ const Lemon = struct {
     /// Function to use to free stack space
     freeFunc: []u8,
     nconflict: u32,
-    nactiontab: int,
+    nactiontab: u32,
     nlookaheadtab: int,
-    tablesize: int,
+    tablesize: u32,
     basisflag: bool,
     printPreprocessed: bool,
     has_fallback: bool,
@@ -1875,12 +1971,12 @@ const ActTable = struct {
 
     /// The value for the N-th entry in yy_action
     pub inline fn yyaction(tab: *const ActTable, n: usize) i32 {
-        return tab.aAction.items[n].action;
+        return tab.aAction[n].action;
     }
 
     /// The value for the N-th entry in yy_lookahead
     pub inline fn yylookahead(tab: *const ActTable, n: usize) i32 {
-        return tab.aAction.items[n].lookahead;
+        return tab.aAction[n].lookahead;
     }
 
     // [639]
@@ -2004,7 +2100,7 @@ const ActTable = struct {
                     j_loop: while (j < p.nLookahead) : (j += 1) {
                         const k = look_items[j].lookahead - p.mnLookahead + i;
                         if (k < 0) break :j_loop;
-                        if (act_items[@intCast(k)].lookahead >= 0) break :j_loop;
+                        if (act_items[uint(k)].lookahead >= 0) break :j_loop;
                     }
                     if (j < p.nLookahead) continue :i_loop;
                     j = 0;
@@ -2040,9 +2136,9 @@ const ActTable = struct {
 
     // [792]
     /// Return the size of the action table without the trailing syntax error entries.
-    pub fn actionSize(acttab: *ActTable) usize {
+    pub fn actionSize(acttab: *ActTable) u32 {
         var n = acttab.nAction;
-        while (n > 0 and acttab.aAction.items[n].lookahead < 0) : (n -= 1) {}
+        while (n > 0 and acttab.aAction[n - 1].lookahead < 0) : (n -= 1) {}
         return n;
     }
 };
