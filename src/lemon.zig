@@ -516,9 +516,9 @@ const State = struct {
     /// Number of actions on nonterminals
     nNtAct: u32,
     /// yy_action[] offset for terminals
-    iTnkOfst: ?u31,
+    iTknOfst: int,
     /// yy_action[] offset for nonterminals
-    iNtOfst: ?u31,
+    iNtOfst: int,
     /// Default action is to REDUCE by this rule
     iDfltReduce: int, // Another ?u32 I think
     /// The default REDUCE rule.
@@ -531,8 +531,8 @@ const State = struct {
         .ap = null,
         .nTknAct = 0,
         .nNtAct = 0,
-        .iTnkOfst = null,
-        .iNtOfst = null,
+        .iTknOfst = 0,
+        .iNtOfst = 0,
         .iDfltReduce = -1,
         .pDefltReduce = null,
         .autoreduce = false,
@@ -1252,29 +1252,24 @@ fn print_stack_union(
         try out.writeAll("#if INTERFACE\n");
         lineno += 1;
     }
-    const t_name: []const u8 = if (lemp.tokentype.len > 0) lemp.tokentype else "void*";
-    try out.print("#define {s}TOKENTYPE {s}\n", .{ name, t_name });
-    lineno += 1;
+    // zig fmt: off
+    const t_name = if (lemp.tokentype.len > 0) lemp.tokentype else "void*";
+    try out.print("#define {s}TOKENTYPE {s}\n", .{ name, t_name }); lineno += 1;
     if (mhflag) {
-        try out.writeAll("#endif\n");
-        lineno += 1;
+        try out.writeAll("#endif\n"); lineno += 1;
     }
-    try out.writeAll("typedef union {\n");
-    lineno += 1;
-    try out.writeAll("  int yyinit;\n");
-    lineno += 1;
-    try out.print("  {s}TOKENTYPE yy0;\n", .{name});
-    lineno += 1;
+    try out.writeAll("typedef union {\n"); lineno += 1;
+    try out.writeAll("  int yyinit;\n"); lineno += 1;
+    try out.print("  {s}TOKENTYPE yy0;\n", .{name}); lineno += 1;
     t_print: for (types, 0..) |variant, i| {
         if (variant.len == 0) continue :t_print;
-        try out.print("  {s} yy{d};\n", .{ variant, i + 1 });
-        lineno += 1;
+        try out.print("  {s} yy{d};\n", .{ variant, i + 1 }); lineno += 1;
     }
     if (lemp.errsym) |errsym| if (errsym.useCnt > 0) {
-        try out.print("  int yy{d};\n", .{errsym.dtnum});
-        lineno += 1;
+        try out.print("  int yy{d};\n", .{errsym.dtnum}); lineno += 1;
     };
     try out.writeAll("} YYMINORTYPE;\n");
+    // zig fmt: on
     lineno += 1;
     plineno.* = lineno;
 }
@@ -1314,6 +1309,37 @@ fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8) []const u8 {
     }
     if (pNbyte) |pNb| pNb.* = nByte;
     return zType;
+}
+
+/// Each state contains a set of token transaction and a set of
+/// nonterminal transactions.  Each of these sets makes an instance
+/// of the following structure.  An array of these structures is used
+/// to order the creation of entries in the yy_action[] table.
+pub const AxSet = struct {
+    /// A pointer to a state
+    stp: *State,
+    /// True to use tokens.  False for non-terminals
+    isTkn: bool,
+    /// Number of actions
+    nAction: u32,
+    /// Original order of action sets
+    iOrder: u32,
+
+    pub const empty: AxSet = .{
+        .stp = undefined,
+        .isTkn = false,
+        .nAction = 0,
+        .iOrder = 0,
+    };
+};
+
+/// Compare to axset structures for sorting purposes
+fn axset_compare(_: void, p1: AxSet, p2: AxSet) bool {
+    if (p1.nAction < p2.nAction) return true;
+    if (p1.nAction > p2.nAction) return false;
+    if (p1.iOrder < p2.iOrder) return true;
+    if (p1.iOrder > p2.iOrder) return false;
+    return true;
 }
 
 //| [4287]
@@ -1521,6 +1547,11 @@ fn reportTableImpl(
         try out.writeAll("#define YYFALLBACK 1\n"); lineno += 1;
     }
     // zig fmt: on
+    // Compute the action table, but do not output it yet.  The action
+    // table must be computed before generating the YYNSTATE macro because
+    // we need to know how many states can be eliminated.
+    const pActtab = try Compute_actiontable(lemp);
+    _ = pActtab;
 }
 
 /// The state vector for the entire parser generator is recorded as
@@ -1787,45 +1818,53 @@ const Lemon = struct {
 /// Action to take on the given lookahead
 const LookaheadAction = struct {
     /// Value of the lookahead token
-    lookahead: i32,
+    lookahead: int,
     /// Action to take on the given lookahead
-    action: i32,
+    action: int,
 
-    pub const empty: LookaheadAction = .{ .lookahead = -1, .action = -1 };
+    pub const empty: LookaheadAction = .{ .lookahead = 0, .action = 0 };
 };
 
 const ActTable = struct {
     allocator: Allocator,
-    /// The yyaction[] table under construction
-    aAction: ArrayList(LookaheadAction) = .empty,
+    ///  Number of used slots in aAction[]
+    nAction: u32 = 0,
     /// Number of aAction slots in actual use
-    nAction: usize = 0,
+    nActionAlloc: u32 = 0,
+    /// The yyaction[] table under construction
+    aAction: []LookaheadAction = &.{},
     /// A single new transaction set
-    aLookahead: ArrayList(LookaheadAction) = .empty,
+    aLookahead: []LookaheadAction = &.{},
     /// Minimum aLookahead[].lookahead
-    mnLookahead: i32 = 0,
+    mnLookahead: int = 0,
     /// Action associated with mnLookahead
-    mnAction: i32 = 0,
+    mnAction: int = 0,
     /// Maximum aLookahead[].lookahead
-    mxLookahead: i32 = 0,
+    mxLookahead: int = 0,
+    ///  Used slots in aLookahead[]
+    nLookahead: u32 = 0,
+    ///  Slots allocated in aLookahead[]
+    nLookaheadAlloc: u32 = 0,
     /// Number of terminal symbols
-    nterminal: usize = 0,
+    nterminal: u32 = 0,
     /// total number of symbols
-    nsymbol: usize = 0,
+    nsymbol: u32 = 0,
 
-    // [541] Action_add
-    pub fn create(allocator: Allocator, nsymbol: usize, nterminal: usize) !*ActTable {
+    /// Create an action table
+    pub fn create(allocator: Allocator, nsymbol: u32, nterminal: u32) !*ActTable {
         var tab = try allocator.create(ActTable);
-        tab.* = .{};
+        tab.* = .{ .allocator = allocator };
+        errdefer allocator.destroy(tab);
         tab.nsymbol = nsymbol;
         tab.nterminal = nterminal;
         tab.allocator = allocator;
         return tab;
     }
 
+    /// Free all action table memory.
     pub fn destroy(tab: *ActTable) void {
-        tab.aAction.deinit(tab.allocator);
-        tab.aLookahead.deinit(tab.allocator);
+        tab.allocator.free(tab.aAction);
+        tab.allocator.free(tab.aLookahead);
         tab.allocator.destroy(tab);
     }
 
@@ -1849,25 +1888,23 @@ const ActTable = struct {
     ///
     /// This routine is called once for each lookahead for a particular
     /// state.
-    pub fn action(tab: *ActTable, lookahead: i32, an_action: i32) !void {
-        if (tab.aLookahead.items.len >= tab.aLookahead.capacity) {
-            try tab.aLookahead.ensureUnusedCapacity(tab.allocator, 25);
+    pub fn action(tab: *ActTable, lookahead: u32, an_action: int) !void {
+        if (tab.nLookahead >= tab.aLookahead.len) {
+            tab.aLookahead = try tab.allocator.realloc(tab.aLookahead, tab.aLookahead.len + 25);
         }
-        if (tab.aLookahead.items.len == 0) {
-            tab.mxLookahead = lookahead;
-            tab.mnLookahead = lookahead;
+        if (tab.nLookahead == 0) {
+            tab.mxLookahead = @intCast(lookahead);
+            tab.mnLookahead = @intCast(lookahead);
             tab.mnAction = an_action;
         } else {
-            if (tab.mxLookahead < lookahead) tab.mxLookahead = lookahead;
+            if (tab.mxLookahead < lookahead) tab.mxLookahead = @intCast(lookahead);
             if (tab.mnLookahead > lookahead) {
-                tab.mnLookahead = lookahead;
+                tab.mnLookahead = @intCast(lookahead);
                 tab.mnAction = an_action;
             }
         }
-        tab.aLookahead.appendAssumeCapacity(
-            tab.allocator,
-            .{ .lookahead = lookahead, .action = an_action },
-        );
+        tab.aLookahead[tab.nLookahead] = .{ .lookahead = @intCast(lookahead), .action = an_action };
+        tab.nLookahead += 1;
     }
 
     // [683]
@@ -1885,24 +1922,24 @@ const ActTable = struct {
     /// a smaller table.  For non-terminal symbols, which are never syntax errors,
     /// makeItSafe can be false.
     ///
-    pub fn insert(p: *ActTable, makeItSafe: bool) !i32 {
+    pub fn insert(p: *ActTable, makeItSafe: bool) !int {
         //  Make sure we have enough space to hold the expanded action table
         // in the worst case.  The worst case occurs if the transaction set
         // must be appended to the current action table.
-        assert(p.aLookahead.items.len > 0);
+        assert(p.aLookahead.len > 0);
         {
             const n = p.nsymbol + 1;
-            if (p.nAction + n >= p.aAction.items.len) {
+            if (p.nAction + n >= p.aAction.len) {
                 // TODO: This value is probably excessive.
-                const new_cap = p.nAction + p.aAction.items.len + 20;
-                const new_slice = try p.aAction.addManyAsSlice(p.allocator, new_cap);
-                @memset(new_slice, LookaheadAction.empty);
+                const old_len = p.aAction.len;
+                const new_cap = p.nAction + p.aAction.len + 20;
+                p.aAction = try p.allocator.realloc(p.aAction, new_cap);
+                @memset(p.aAction[old_len..], LookaheadAction.empty);
             }
         }
         const end = if (makeItSafe) p.mnLookahead else 0;
-        // Since we're done allocating, these pointers are stable:
-        const act_items = p.aAction.items;
-        const look_items = p.aLookahead.items;
+        const act_items = p.aAction;
+        const look_items = p.aLookahead;
         var ii: isize = p.nAction - 1;
         i_loop: while (ii >= end) : (ii -= 1) {
             const i: usize = @intCast(ii);
@@ -1912,7 +1949,7 @@ const ActTable = struct {
                 if (act_items[i].action != p.mnAction) continue :i_loop;
                 var j: usize = 0;
                 j_loop: while (j < look_items.len) : (j += 1) {
-                    const k = look_items[j].lookahead - p.mnLookahead + i;
+                    const k: usize = @intCast(look_items[j].lookahead - p.mnLookahead + ii);
                     if (k < 0 or k > p.nAction) break :j_loop;
                     if (look_items[j].lookahead != act_items[k].lookahead) break :j_loop;
                     if (look_items[j].action != act_items[k].action) break :j_loop;
@@ -1924,8 +1961,9 @@ const ActTable = struct {
                 var n: i32 = 0;
                 j = 0;
                 j_check: while (j < p.nAction) : (j += 1) {
+                    const jj: i32 = @intCast(j);
                     if (act_items[j].lookahead < 0) continue :j_check;
-                    if (act_items[j].lookahead == j + p.mnLookahead + i) n += 1;
+                    if (act_items[j].lookahead == jj + p.mnLookahead + ii) n += 1;
                 }
 
                 if (n == look_items.len) {
@@ -1941,19 +1979,21 @@ const ActTable = struct {
             // aLookahead[] transaction.  Leave i set to the offset of the hole.
             // If no holes are found, i is left at p->nAction, which means the
             // transaction will be appended.
-            var i: usize = if (makeItSafe) @intCast(p.mnLookahead) else 0; // Isn't this 'end'? -Sam
-            i_loop: while (i < act_items.len - p.mxLookahead) : (i += 1) {
+            var i: usize = if (makeItSafe) @intCast(p.mnLookahead) else 0; // NOTE: Isn't this 'end'? -Sam
+            const mxsize: usize = @intCast(p.mnLookahead);
+            i_loop: while (i < act_items.len - mxsize) : (i += 1) {
                 if (act_items[i].lookahead < 0) {
                     var j: usize = 0;
                     j_loop: while (j < look_items.len) : (j += 1) {
-                        const k = look_items[i].lookahead - p.mxLookahead + i;
+                        const k = look_items[i].lookahead - p.mxLookahead + ii;
                         if (k < 0) break :j_loop;
-                        if (act_items[k].lookahead >= 0) break :j_loop;
+                        if (act_items[@intCast(k)].lookahead >= 0) break :j_loop;
                     }
                     if (j < look_items.len) continue :i_loop;
                     j = 0;
                     j_check: while (j < act_items.len) : (j += 1) {
-                        if (act_items[j].lookahead == j + p.mnLookahead - i) break :j_check;
+                        const jj: i32 = @intCast(j);
+                        if (act_items[j].lookahead == jj + p.mnLookahead - ii) break :j_check;
                     }
                     if (j == act_items.len) {
                         break :i_loop; // Fits in empty slots
@@ -1963,18 +2003,16 @@ const ActTable = struct {
         }
         // Insert transaction set at index i.
         for (0..look_items.len) |j| {
-            const k = look_items[j] - p.mnLookahead + ii;
+            const k = look_items[j].lookahead - p.mnLookahead + ii;
             act_items[cast(usize, k)] = look_items[j];
-            if (k > p.nAction) p.nAction = k + 1;
+            if (k > p.nAction) p.nAction = @intCast(k + 1);
         }
-
-        if (makeItSafe and ii + p.nterminal >= p.nAction) p.nAction = ii + p.nterminal + 1;
-
-        p.aLookahead.clearRetainingCapacity();
+        if (makeItSafe and ii + p.nterminal >= p.nAction) p.nAction = @intCast(ii + p.nterminal + 1);
+        p.nLookahead = 0;
 
         // Return the offset that is added to the lookahead in order to get the
         // index into yy_action of the action
-        return ii - p.mnLookahead;
+        return @intCast(ii - p.mnLookahead);
     }
 
     // [792]
@@ -3624,8 +3662,8 @@ fn ResortStates(lemp: *Lemon) void {
         stp.nNtAct = 0;
         // TODO: probably a null here yeah
         stp.iDfltReduce = -1; //  Init dflt action to "syntax error"
-        stp.iTnkOfst = null;
-        stp.iNtOfst = null;
+        stp.iTknOfst = 0;
+        stp.iNtOfst = 0;
         var m_ap = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
             const m_iAction = compute_action(lemp, ap);
@@ -3678,31 +3716,80 @@ fn compute_action(lemp: *Lemon, ap: *Action) ?u32 {
         else => break :act null,
     };
 }
-// PRIVATE int compute_action(struct lemon *lemp, struct action *ap)
-// {
-//   int act;
-//   switch( ap->type ){
-//     case SHIFT:  act = ap->x.stp->statenum;                        break;
-//     case SHIFTREDUCE: {
-//       /* Since a SHIFT is inherent after a prior REDUCE, convert any
-//       ** SHIFTREDUCE action with a nonterminal on the LHS into a simple
-//       ** REDUCE action: */
-//       if( ap->sp->index>=lemp->nterminal
-//        && (lemp->errsym==0 || ap->sp->index!=lemp->errsym->index)
-//       ){
-//         act = lemp->minReduce + ap->x.rp->iRule;
-//       }else{
-//         act = lemp->minShiftReduce + ap->x.rp->iRule;
-//       }
-//       break;
-//     }
-//     case REDUCE: act = lemp->minReduce + ap->x.rp->iRule;          break;
-//     case ERROR:  act = lemp->errAction;                            break;
-//     case ACCEPT: act = lemp->accAction;                            break;
-//     default:     act = -1; break;
-//   }
-//   return act;
-// }
+
+/// Compute the action table, but do not output it yet.  The action
+/// table must be computed before generating the YYNSTATE macro because
+/// we need to know how many states can be eliminated.
+fn Compute_actiontable(lemp: *Lemon) !*ActTable {
+    const ax = try lemp.allocator.alloc(AxSet, lemp.nxstate * 2);
+    defer lemp.allocator.free(ax);
+    @memset(ax, .empty);
+    for (0..lemp.nxstate) |i| {
+        const stp = lemp.sorted[i];
+        const ix2 = 2 * i;
+        ax[ix2].stp = stp;
+        ax[ix2].isTkn = true;
+        ax[ix2].nAction = stp.nTknAct;
+        ax[ix2 + 1].stp = stp;
+        ax[ix2 + 1].isTkn = false; // redundant
+        ax[ix2 + 1].nAction = stp.nNtAct;
+    }
+    var mxTknOfst: int, var mnTknOfst: int = .{ 0, 0 };
+    var mxNtOfst: int, var mnNtOfst: int = .{ 0, 0 };
+    // In an effort to minimize the action table size, use the heuristic
+    // of placing the largest action sets first */
+    for (0..lemp.nxstate * 2) |i| ax[i].iOrder = @intCast(i);
+    mem.sort(AxSet, ax, {}, axset_compare);
+    const pActtab = try ActTable.create(lemp.allocator, lemp.nsymbol, lemp.nterminal);
+    errdefer pActtab.destroy();
+    for (0..lemp.nxstate * 2) |i| {
+        const stp = ax[i].stp;
+        if (ax[i].isTkn) {
+            var m_ap: ?*Action = stp.ap;
+            actions: while (m_ap) |ap| : (m_ap = ap.next) {
+                if (ap.sp.index >= lemp.nterminal) continue :actions;
+                const m_action = compute_action(lemp, ap);
+                if (m_action) |action| {
+                    try pActtab.action(ap.sp.index, @intCast(action));
+                }
+            }
+            if (stp.iTknOfst < mnTknOfst) mnTknOfst = stp.iTknOfst;
+            if (stp.iTknOfst < mnTknOfst) mnTknOfst = stp.iTknOfst;
+            if (stp.iTknOfst > mxTknOfst) mxTknOfst = stp.iTknOfst;
+        } else {
+            var m_ap: ?*Action = stp.ap;
+            actions: while (m_ap) |ap| : (m_ap = ap.next) {
+                if (ap.sp.index < lemp.nterminal) continue :actions;
+                if (ap.sp.index == lemp.nsymbol) continue :actions;
+                const m_action = compute_action(lemp, ap);
+                if (m_action) |action| {
+                    try pActtab.action(ap.sp.index, @intCast(action));
+                }
+            }
+            stp.iTknOfst = try pActtab.insert(false);
+            if (stp.iNtOfst < mnNtOfst) mnNtOfst = stp.iNtOfst;
+            if (stp.iNtOfst > mxNtOfst) mxNtOfst = stp.iNtOfst;
+        }
+        if (p_check1) {
+            var nn: usize = 0;
+            for (pActtab.aAction[0..pActtab.nAction]) |act_tab| {
+                if (act_tab.action < 0) nn += 1;
+            }
+            dprint(
+                "{d:<4}: State {d:<3} {s} n: {d:<2} size: {d:<5} freespace {d}\n",
+                .{
+                    i,
+                    stp.statenum,
+                    if (ax[i].isTkn) "Token" else "Var  ",
+                    ax[i].nAction,
+                    pActtab.nAction,
+                    nn,
+                },
+            );
+        }
+    }
+    return pActtab;
+}
 
 //| [5230] Set manipulation
 //|
