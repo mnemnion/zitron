@@ -1298,7 +1298,7 @@ fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8) []const u8 {
             zType = "signed char";
             nByte = 1;
         } else if (lwr >= -32767 and upr < 32767) {
-            zType = "short int";
+            zType = "short";
             nByte = 2;
         } else {
             // NOTE: this condition is missing in the original,
@@ -1648,6 +1648,163 @@ fn reportTableImpl(
         try out.writeAll("};\n");
         lineno += 1;
     }
+
+    // Output the yy_lookahead table
+    {
+        lemp.nlookaheadtab = pActtab.lookaheadSize();
+        const n = lemp.nlookaheadtab;
+        lemp.tablesize += n * szCodeType;
+        try out.writeAll("static const YYCODETYPE yy_lookahead[] = {\n");
+        lineno += 1;
+        var i: usize = 0;
+        var j: usize = 0;
+        while (i < n) : (i += 1) {
+            var la = pActtab.yylookahead(i);
+            if (la < 0) la = @intCast(lemp.nsymbol);
+            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
+            try out.print(" {d: >4},", .{uint(la)});
+            if (j == 9) {
+                try out.writeByte('\n');
+                j = 0;
+                lineno += 1;
+            } else {
+                j += 1;
+            }
+        }
+        // Add extra entries to the end of the yy_lookahead[] table so that
+        // yy_shift_ofst[]+iToken will always be a valid index into the array,
+        // even for the largest possible value of yy_shift_ofst[] and iToken.
+
+        const nLookAhead = lemp.nterminal + lemp.nactiontab;
+        while (i < nLookAhead) {
+            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
+            try out.print(" {d: >4},", .{lemp.nterminal});
+            if (j == 9) {
+                try out.writeByte('\n');
+                j = 0;
+            } else {
+                j += 1;
+            }
+            i += 1;
+        }
+        if (j > 0) {
+            try out.writeByte('\n');
+            lineno += 1;
+        }
+        try out.writeAll("};\n");
+        lineno += 1;
+    }
+
+    // Output the yy_shift_ofst[] table
+    {
+        var n = lemp.nxstate;
+        while (n > 0 and lemp.sorted[n - 1].iTknOfst == NO_OFFSET) : (n -= 1) {}
+        try out.print("#define YY_SHIFT_COUNT    ({d})\n", .{n - 1});
+        lineno += 1;
+        try out.print("#define YY_SHIFT_MIN      ({d})\n", .{pActtab.mnTknOfst});
+        lineno += 1;
+        try out.print("#define YY_SHIFT_MAX      ({d})\n", .{pActtab.mxTknOfst});
+        lineno += 1;
+        var sz: u8 = 0;
+        try out.print(
+            "static const {s} yy_shift_ofst[] = {{\n",
+            .{minimum_size_type(pActtab.mnTknOfst, lemp.nterminal + lemp.nactiontab, &sz)},
+        );
+        lineno += 1;
+        lemp.tablesize += n * sz;
+        var i: usize = 0;
+        var j: usize = 0;
+        while (i < n) : (i += 1) {
+            const stp = lemp.sorted[i];
+            var ofst = stp.iTknOfst;
+            if (ofst == NO_OFFSET) ofst = @intCast(lemp.nactiontab);
+            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
+            if (ofst >= 0) {
+                try out.print(" {d: >4},", .{uint(ofst)});
+            } else {
+                try out.print(" {d: >4},", .{ofst});
+            }
+            if (j == 9 or i == n - 1) {
+                try out.writeByte('\n');
+                lineno += 1;
+                j = 0;
+            } else {
+                j += 1;
+            }
+        }
+        try out.writeAll("};\n");
+        lineno += 1;
+    }
+
+    // Output the yy_reduce_ofst[] table
+    {
+        var n = lemp.nxstate;
+        while (n > 0 and lemp.sorted[n - 1].iNtOfst == NO_OFFSET) : (n -= 1) {}
+
+        try out.print("#define YY_REDUCE_COUNT ({d})\n", .{n - 1});
+        lineno += 1;
+        try out.print("#define YY_REDUCE_MIN   ({d})\n", .{pActtab.mnNtOfst});
+        lineno += 1;
+        try out.print("#define YY_REDUCE_MAX   ({d})\n", .{pActtab.mxNtOfst});
+        lineno += 1;
+        var sz: u8 = 0;
+        try out.print(
+            "static const {s} yy_reduce_ofst[] = {{\n",
+            .{minimum_size_type(pActtab.mnNtOfst - 1, @intCast(pActtab.mxNtOfst), &sz)},
+        );
+        lemp.tablesize += n * sz;
+        var i: usize = 0;
+        var j: usize = 0;
+        while (i < n) : (i += 1) {
+            const stp = lemp.sorted[i];
+            var ofst = stp.iNtOfst;
+            if (ofst == NO_OFFSET) ofst = pActtab.mnNtOfst - 1;
+            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
+            if (ofst >= 0) {
+                try out.print(" {d: >4},", .{uint(ofst)});
+            } else {
+                try out.print(" {d: >4},", .{ofst});
+            }
+            if (j == 9 or i == n - 1) {
+                try out.writeByte('\n');
+                lineno += 1;
+                j = 0;
+            } else {
+                j += 1;
+            }
+        }
+        try out.writeAll("};\n");
+        lineno += 1;
+    }
+
+    // Output the default action table
+    try out.writeAll("static const YYACTIONTYPE yy_default[] = {\n");
+    lineno += 1;
+    {
+        const n = lemp.nxstate;
+        lemp.tablesize += n * szActionType;
+        var i: usize = 0;
+        var j: usize = 0;
+        while (i < n) : (i += 1) {
+            const stp = lemp.sorted[i];
+            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
+            if (stp.iDfltReduce < 0) {
+                try out.print(" {d: >4},", .{lemp.errAction});
+            } else {
+                try out.print(" {d: >4},", .{uint(stp.iDfltReduce) + lemp.minReduce});
+            }
+            if (j == 9 or i == n - 1) {
+                try out.writeByte('\n');
+                lineno += 1;
+                j = 0;
+            } else {
+                j += 1;
+            }
+        }
+        try out.writeAll("};\n");
+        lineno += 1;
+        try tplt_xfer(lemp.name, &in, out, &lineno);
+    }
 }
 
 /// The state vector for the entire parser generator is recorded as
@@ -1741,7 +1898,7 @@ const Lemon = struct {
     freeFunc: []u8,
     nconflict: u32,
     nactiontab: u32,
-    nlookaheadtab: int,
+    nlookaheadtab: u32,
     tablesize: u32,
     basisflag: bool,
     printPreprocessed: bool,
@@ -1945,6 +2102,14 @@ const ActTable = struct {
     nterminal: u32 = 0,
     /// total number of symbols
     nsymbol: u32 = 0,
+    /// Minimum token offset
+    mnTknOfst: i32 = 0,
+    /// Maximum token offset
+    mxTknOfst: i32 = 0,
+    /// Minimum non-terminal offset
+    mnNtOfst: i32 = 0,
+    /// Maximum non-terminal offset
+    mxNtOfst: i32 = 0,
 
     /// Create an action table
     pub fn create(allocator: Allocator, nsymbol: u32, nterminal: u32) !*ActTable {
@@ -1965,8 +2130,8 @@ const ActTable = struct {
     }
 
     /// Return the number of entries in the yy_action table
-    pub inline fn lookaheadSize(x: *const ActTable) usize {
-        return x.aAction.items.len;
+    pub inline fn lookaheadSize(x: *const ActTable) u32 {
+        return x.nAction;
     }
 
     /// The value for the N-th entry in yy_action
@@ -3772,6 +3937,8 @@ fn stateResortCompare(_: void, pA: *State, pB: *State) bool {
     unreachable;
 }
 
+const NO_OFFSET = -2147483647;
+
 //
 // Renumber and resort states so that states with fewer choices
 // occur at the end.  Except, keep state 0 as the first state.
@@ -3785,8 +3952,8 @@ fn ResortStates(lemp: *Lemon) void {
         stp.nNtAct = 0;
         // TODO: probably a null here yeah
         stp.iDfltReduce = -1; //  Init dflt action to "syntax error"
-        stp.iTknOfst = 0;
-        stp.iNtOfst = 0;
+        stp.iTknOfst = NO_OFFSET;
+        stp.iNtOfst = NO_OFFSET;
         var m_ap = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
             const m_iAction = compute_action(lemp, ap);
@@ -3892,7 +4059,7 @@ fn Compute_actiontable(lemp: *Lemon) !*ActTable {
                     try pActtab.action(ap.sp.index, @intCast(action));
                 }
             }
-            stp.iTknOfst = try pActtab.insert(false);
+            stp.iNtOfst = try pActtab.insert(false);
             if (stp.iNtOfst < mnNtOfst) mnNtOfst = stp.iNtOfst;
             if (stp.iNtOfst > mxNtOfst) mxNtOfst = stp.iNtOfst;
         }
@@ -3914,6 +4081,10 @@ fn Compute_actiontable(lemp: *Lemon) !*ActTable {
             );
         }
     }
+    pActtab.mnTknOfst = mnTknOfst;
+    pActtab.mxTknOfst = mxTknOfst;
+    pActtab.mnNtOfst = mnNtOfst;
+    pActtab.mxNtOfst = mxNtOfst;
     return pActtab;
 }
 
