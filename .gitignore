@@ -6,3 +6,5 @@ samples/*.c
 samples/*.h
 samples/*.out
 compare
+samples/*.tmp
+samples/*.trimmed

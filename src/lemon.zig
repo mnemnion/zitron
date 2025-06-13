@@ -1335,8 +1335,8 @@ pub const AxSet = struct {
 
 /// Compare to axset structures for sorting purposes
 fn axset_compare(_: void, p1: AxSet, p2: AxSet) bool {
-    if (p1.nAction < p2.nAction) return true;
-    if (p1.nAction > p2.nAction) return false;
+    if (p1.nAction > p2.nAction) return true;
+    if (p1.nAction < p2.nAction) return false;
     if (p1.iOrder < p2.iOrder) return true;
     if (p1.iOrder > p2.iOrder) return false;
     return true;
@@ -1822,7 +1822,7 @@ const LookaheadAction = struct {
     /// Action to take on the given lookahead
     action: int,
 
-    pub const empty: LookaheadAction = .{ .lookahead = 0, .action = 0 };
+    pub const empty: LookaheadAction = .{ .lookahead = -1, .action = -1 };
 };
 
 const ActTable = struct {
@@ -1923,38 +1923,54 @@ const ActTable = struct {
     /// makeItSafe can be false.
     ///
     pub fn insert(p: *ActTable, makeItSafe: bool) !int {
+        if (p_check1) {
+            dprint("Acttab: mnLookahead {d}\n", .{p.mnLookahead});
+            dprint("Acttab: mxLookahead {d}\n", .{p.mxLookahead});
+            dprint("Acttab: mnAction {d}\n", .{p.mnAction});
+            dprint("Acttab: nAction {d}\n", .{p.nAction});
+            if (makeItSafe) {
+                dprint("make it safe.\n", .{});
+            } else {
+                dprint("make it zero.\n", .{});
+            }
+        }
         //  Make sure we have enough space to hold the expanded action table
         // in the worst case.  The worst case occurs if the transaction set
         // must be appended to the current action table.
-        assert(p.aLookahead.len > 0);
+        assert(p.nLookahead > 0);
         {
             const n = p.nsymbol + 1;
             if (p.nAction + n >= p.aAction.len) {
-                // TODO: This value is probably excessive.
                 const old_len = p.aAction.len;
-                const new_cap = p.nAction + p.aAction.len + 20;
+                const new_cap = p.nAction + n + p.aAction.len + 20;
                 p.aAction = try p.allocator.realloc(p.aAction, new_cap);
                 @memset(p.aAction[old_len..], LookaheadAction.empty);
             }
         }
+        // /* Scan the existing action table looking for an offset that is a
+        // ** duplicate of the current transaction set.  Fall out of the loop
+        // ** if and when the duplicate is found.
+        // **
+        // ** i is the index in p->aAction[] where p->mnLookahead is inserted.
+        // */
         const end = if (makeItSafe) p.mnLookahead else 0;
         const act_items = p.aAction;
         const look_items = p.aLookahead;
-        var ii: isize = p.nAction - 1;
-        i_loop: while (ii >= end) : (ii -= 1) {
-            const i: usize = @intCast(ii);
-            if (act_items[i].lookahead == p.mnLookahead) {
+        const pnAi: isize = @intCast(p.nAction);
+        var i: isize = pnAi - 1;
+        i_loop: while (i >= end) : (i -= 1) {
+            if (act_items[uint(i)].lookahead == p.mnLookahead) {
                 // All lookaheads and actions in the aLookahead[] transaction
                 // must match against the candidate aAction[i] entry.
-                if (act_items[i].action != p.mnAction) continue :i_loop;
+                if (act_items[uint(i)].action != p.mnAction) continue :i_loop;
                 var j: usize = 0;
-                j_loop: while (j < look_items.len) : (j += 1) {
-                    const k: usize = @intCast(look_items[j].lookahead - p.mnLookahead + ii);
-                    if (k < 0 or k > p.nAction) break :j_loop;
-                    if (look_items[j].lookahead != act_items[k].lookahead) break :j_loop;
-                    if (look_items[j].action != act_items[k].action) break :j_loop;
+                j_loop: while (j < p.nLookahead) : (j += 1) {
+                    const k: isize = look_items[j].lookahead - p.mnLookahead + i;
+                    if (k < 0 or k >= p.nAction) break :j_loop;
+                    if (look_items[j].lookahead != act_items[uint(k)].lookahead) break :j_loop;
+                    if (look_items[j].action != act_items[uint(k)].action) break :j_loop;
                 }
-                if (j < look_items.len) continue :i_loop;
+                if (j < p.nLookahead) continue :i_loop;
 
                 // No possible lookahead value that is not in the aLookahead[]
                 // transaction is allowed to match aAction[i]
@@ -1963,10 +1979,10 @@ const ActTable = struct {
                 j_check: while (j < p.nAction) : (j += 1) {
                     const jj: i32 = @intCast(j);
                     if (act_items[j].lookahead < 0) continue :j_check;
-                    if (act_items[j].lookahead == jj + p.mnLookahead + ii) n += 1;
+                    if (act_items[j].lookahead == jj + p.mnLookahead - i) n += 1;
                 }
 
-                if (n == look_items.len) {
+                if (n == p.nLookahead) {
                     break :i_loop; //An exact match is found at offset i
                 }
             }
@@ -1974,45 +1990,52 @@ const ActTable = struct {
         // If no existing offsets exactly match the current transaction, find an
         // an empty offset in the aAction[] table in which we can add the
         // aLookahead[] transaction.
-        if (ii < end) {
+        if (i < end) {
             // Look for holes in the aAction[] table that fit the current
             // aLookahead[] transaction.  Leave i set to the offset of the hole.
             // If no holes are found, i is left at p->nAction, which means the
             // transaction will be appended.
-            var i: usize = if (makeItSafe) @intCast(p.mnLookahead) else 0; // NOTE: Isn't this 'end'? -Sam
-            const mxsize: usize = @intCast(p.mnLookahead);
-            i_loop: while (i < act_items.len - mxsize) : (i += 1) {
-                if (act_items[i].lookahead < 0) {
+            i = if (makeItSafe) @intCast(p.mnLookahead) else 0;
+            const mxsize = p.mxLookahead;
+            const pActlen: isize = @intCast(p.aAction.len);
+            i_loop: while (i < pActlen - mxsize) : (i += 1) {
+                if (act_items[uint(i)].lookahead < 0) {
                     var j: usize = 0;
-                    j_loop: while (j < look_items.len) : (j += 1) {
-                        const k = look_items[i].lookahead - p.mxLookahead + ii;
+                    j_loop: while (j < p.nLookahead) : (j += 1) {
+                        const k = look_items[j].lookahead - p.mnLookahead + i;
                         if (k < 0) break :j_loop;
                         if (act_items[@intCast(k)].lookahead >= 0) break :j_loop;
                     }
-                    if (j < look_items.len) continue :i_loop;
+                    if (j < p.nLookahead) continue :i_loop;
                     j = 0;
-                    j_check: while (j < act_items.len) : (j += 1) {
-                        const jj: i32 = @intCast(j);
-                        if (act_items[j].lookahead == jj + p.mnLookahead - ii) break :j_check;
+                    j_check: while (j < p.nAction) : (j += 1) {
+                        if (act_items[j].lookahead == cast(i32, j) + p.mnLookahead - i) break :j_check;
                     }
-                    if (j == act_items.len) {
+                    if (j == p.nAction) {
                         break :i_loop; // Fits in empty slots
                     }
                 }
             }
         }
         // Insert transaction set at index i.
-        for (0..look_items.len) |j| {
-            const k = look_items[j].lookahead - p.mnLookahead + ii;
-            act_items[cast(usize, k)] = look_items[j];
-            if (k > p.nAction) p.nAction = @intCast(k + 1);
+        if (p_check1) {
+            dprint("Acttab:", .{});
+            for (0..p.nLookahead) |j| {
+                dprint(" {d}", .{look_items[j].lookahead});
+            }
+            dprint(" inserted at {d}\n", .{i});
         }
-        if (makeItSafe and ii + p.nterminal >= p.nAction) p.nAction = @intCast(ii + p.nterminal + 1);
+        for (0..p.nLookahead) |j| {
+            const k = look_items[j].lookahead - p.mnLookahead + i;
+            act_items[uint(k)] = look_items[j];
+            if (k >= p.nAction) p.nAction = @intCast(k + 1);
+        }
+        if (makeItSafe and i + p.nterminal >= p.nAction) p.nAction = @intCast(i + p.nterminal + 1);
         p.nLookahead = 0;
 
         // Return the offset that is added to the lookahead in order to get the
         // index into yy_action of the action
-        return @intCast(ii - p.mnLookahead);
+        return @intCast(i - p.mnLookahead);
     }
 
     // [792]
@@ -2023,6 +2046,10 @@ const ActTable = struct {
         return n;
     }
 };
+
+fn uint(i: isize) usize {
+    return @intCast(i);
+}
 
 // [803]
 ///
@@ -3742,18 +3769,20 @@ fn Compute_actiontable(lemp: *Lemon) !*ActTable {
     mem.sort(AxSet, ax, {}, axset_compare);
     const pActtab = try ActTable.create(lemp.allocator, lemp.nsymbol, lemp.nterminal);
     errdefer pActtab.destroy();
-    for (0..lemp.nxstate * 2) |i| {
+    var i: usize = 0;
+    while (i < lemp.nxstate * 2 and ax[i].nAction > 0) : (i += 1) {
         const stp = ax[i].stp;
         if (ax[i].isTkn) {
             var m_ap: ?*Action = stp.ap;
             actions: while (m_ap) |ap| : (m_ap = ap.next) {
                 if (ap.sp.index >= lemp.nterminal) continue :actions;
+                if (p_debug) dprint("adding >= nterminal type {s}\n", .{@tagName(ap.type)});
                 const m_action = compute_action(lemp, ap);
                 if (m_action) |action| {
                     try pActtab.action(ap.sp.index, @intCast(action));
                 }
             }
-            if (stp.iTknOfst < mnTknOfst) mnTknOfst = stp.iTknOfst;
+            stp.iTknOfst = try pActtab.insert(true);
             if (stp.iTknOfst < mnTknOfst) mnTknOfst = stp.iTknOfst;
             if (stp.iTknOfst > mxTknOfst) mxTknOfst = stp.iTknOfst;
         } else {
@@ -3761,6 +3790,7 @@ fn Compute_actiontable(lemp: *Lemon) !*ActTable {
             actions: while (m_ap) |ap| : (m_ap = ap.next) {
                 if (ap.sp.index < lemp.nterminal) continue :actions;
                 if (ap.sp.index == lemp.nsymbol) continue :actions;
+                if (p_debug) dprint("adding < nterminal type {s}\n", .{@tagName(ap.type)});
                 const m_action = compute_action(lemp, ap);
                 if (m_action) |action| {
                     try pActtab.action(ap.sp.index, @intCast(action));
@@ -3776,7 +3806,7 @@ fn Compute_actiontable(lemp: *Lemon) !*ActTable {
                 if (act_tab.action < 0) nn += 1;
             }
             dprint(
-                "{d:<4}: State {d:<3} {s} n: {d:<2} size: {d:<5} freespace {d}\n",
+                "{d:>4}: State {d:>3} {s} n: {d:>2} size: {d:>5} freespace: {d}\n",
                 .{
                     i,
                     stp.statenum,
