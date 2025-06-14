@@ -54,6 +54,10 @@ const lemon_classic = true;
 const do_not_optimize_terminals = true;
 const print_aliases = false;
 
+//| Useful Constants
+
+const C_SPACE = " \t\n\r\x0b\x0c"; // C locale definition of isspace(3)
+
 // Various print control variables
 
 /// Prints which are already passing
@@ -1151,7 +1155,7 @@ fn tplt_open(lemp: *Lemon) !struct { bool, [:0]const u8 } {
 
 /// Print a #line directive line to the output file.
 fn tplt_linedir(out: anytype, lineno: usize, quoted_filename: []const u8) !void {
-    try out.print("#line {d} {s}", .{ lineno, quoted_filename });
+    try out.print("#line {d} {s}\n", .{ lineno, quoted_filename });
 }
 
 /// Print a string to the file and keep the linenumber up to date.
@@ -1186,8 +1190,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
             lineno.* += 1;
             if (!lemp.nolineosflag) {
                 lineno.* += 1;
-                // XXX: This is already on the destructor from parsing, figure that out.
-                // try tplt_linedir(out, sp.destLineno.?, lemp.quoted_filename);
+                try tplt_linedir(out, sp.destLineno.?, lemp.quoted_filename);
             }
             break :cp sp.destructor;
         } else if (lemp.vardest.len > 0) {
@@ -1199,6 +1202,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
         }
     };
     var cursor: usize = 0;
+    lineno.* += mem.count(u8, cp, "\n");
     while (mem.indexOfPos(u8, cp, cursor, "$$")) |i| {
         try out.writeAll(cp[cursor..i]);
         try out.print("(yypminor->yy{d})", .{sp.dtnum});
@@ -1206,12 +1210,14 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
     }
     try out.writeAll(cp[cursor..]);
     try out.writeByte('\n');
-    lineno.* += mem.count(u8, cp, "\n") + 1;
+    lineno.* += 1;
+    lineno.* += mem.count(u8, cp, "\n");
     if (!lemp.nolineosflag) {
         lineno.* += 1;
         try tplt_linedir(out, lineno.*, lemp.quoted_outname);
     }
-    try out.writeAll("\n}\n");
+    try out.writeAll("}\n");
+    lineno.* += 1;
     return;
 }
 
@@ -1292,8 +1298,8 @@ fn print_stack_union(
             continue :hash;
         }
         const d_raw = if (sp.datatype.len > 0) sp.datatype else lemp.vartype;
-        const stddt = mem.trim(u8, d_raw, " ");
-        if (std.mem.eql(u8, lemp.tokentype, stddt)) {
+        const stddt = mem.trim(u8, d_raw, C_SPACE);
+        if (lemp.tokentype.len > 0 and std.mem.eql(u8, lemp.tokentype, stddt)) {
             sp.dtnum = 0;
             continue :hash;
         }
@@ -1311,6 +1317,7 @@ fn print_stack_union(
             if (hash >= arraysize) hash = 0;
         }
         if (types[hash].len == 0) {
+            sp.dtnum = hash + 1;
             types[hash] = stddt; // borrowed for the duration
         }
     }
@@ -1840,6 +1847,7 @@ fn reportTableImpl(
             "static const {s} yy_reduce_ofst[] = {{\n",
             .{minimum_size_type(pActtab.mnNtOfst - 1, @intCast(pActtab.mxNtOfst), &sz)},
         );
+        lineno += 1;
         lemp.tablesize += n * sz;
         var i: usize = 0;
         var j: usize = 0;
@@ -1984,8 +1992,15 @@ fn reportTableImpl(
             lineno += 1;
         }
     }
-    for (lemp.symbols[0..lemp.nsymbol], 0..) |sp, i| {
+    for (0..lemp.nsymbol) |i| {
+        const sp = lemp.symbols[i];
         if (sp.type == .terminal or sp.destructor.len == 0) continue;
+        if (p_check1) {
+            dprint(
+                "destructor: {s} d_line {?} dtnum {d}, destructor? {s}\n",
+                .{ sp.name, sp.destLineno, sp.dtnum, if (sp.destructor.len > 0) "yes" else "no" },
+            );
+        }
         if (sp.destLineno == null) continue; //  Already emitted
         try out.print("    case {d}: /* {s} */\n", .{ sp.index, sp.name });
         lineno += 1;
@@ -1994,15 +2009,18 @@ fn reportTableImpl(
         while (j < lemp.nsymbol) : (j += 1) {
             const sp2 = lemp.symbols[j];
             if (sp2.type != .terminal and
-                sp2.dtnum == sp.dtnum and mem.eql(u8, sp.destructor, sp2.destructor))
+                sp2.dtnum == sp.dtnum and
+                sp2.destructor.len > 0) //and mem.eql(u8, sp.destructor, sp2.destructor))
             {
                 try out.print("    case {d}: /* {s} */\n", .{ sp2.index, sp2.name });
                 lineno += 1;
+                if (p_debug) dprint("{s} #{d}: destLineno set to null\n", .{ sp2.name, sp2.index });
                 sp2.destLineno = null; // Avoid emitting this destructor again */
             }
         }
         try emit_destructor_code(out, sp, lemp, &lineno);
         try out.writeAll("      break;\n");
+        lineno += 1;
     }
     lineno += 1;
     try tplt_xfer(lemp.name, &in, out, &lineno);
@@ -3682,7 +3700,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 const addLineMacro = !psp.gp.nolineosflag and
                     psp.insertLineMacro and
                     psp.tokenlineno > 1 and
-                    (psp.decllinenoslot == null or psp.decllinenoslot.?.* != null);
+                    (psp.decllinenoslot == null or psp.decllinenoslot.?.* != 0);
                 if (addLineMacro) {
                     zLine = std.fmt.bufPrint(&zBuffer, "#line {d} ", .{psp.tokenlineno}) catch |err| slice: {
                         // Should be literally impossible but ¯\_(ツ)_/¯
