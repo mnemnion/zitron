@@ -80,8 +80,32 @@ fn strcmp(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
+//| Casting
+//|
+//| Various essential shorthands for getting Zig to play ball.
+
 inline fn cast(T: type, val: anytype) T {
     return @as(T, @intCast(val));
+}
+
+inline fn uint(i: anytype) @Type(.{ .int = .{
+    .bits = @typeInfo(@TypeOf(i)).int.bits,
+    .signedness = .unsigned,
+} }) {
+    if (@typeInfo(@TypeOf(i)).int.signedness == .unsigned) {
+        @compileError("Value is already an unsigned type");
+    }
+    return @intCast(i);
+}
+
+inline fn sint(i: anytype) @Type(.{ .int = .{
+    .bits = @typeInfo(@TypeOf(i)).int.bits + 1,
+    .signedness = .signed,
+} }) {
+    if (@typeInfo(@TypeOf(i)).int.signedness == .signed) {
+        @compileError("Value is already a signed type");
+    }
+    return @intCast(i);
 }
 
 // Definition of `int`.  This should help me figure out which should
@@ -1146,6 +1170,49 @@ fn tplt_print(out: anytype, lemp: *Lemon, str: []const u8, lineno: *usize) !void
     }
 }
 
+// /*
+// ** The following routine emits code for the destructor for the
+// ** symbol sp
+// */
+fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize) !void {
+    const cp = cp: {
+        if (sp.type == .terminal) {
+            if (lemp.tokendest.len == 0) return;
+            try out.writeAll("{\n");
+            lineno.* += 1;
+            break :cp lemp.tokendest;
+        } else if (sp.destructor.len > 0) {
+            try out.writeAll("{\n");
+            lineno.* += 1;
+            if (!lemp.nolineosflag) {
+                lineno.* += 1;
+                try tplt_linedir(out, sp.destLineno.?, lemp.quoted_filename);
+            }
+            break :cp sp.destructor;
+        } else if (lemp.vardest.len > 0) {
+            try out.writeAll("{\n");
+            lineno.* += 1;
+            break :cp lemp.vardest;
+        } else {
+            unreachable;
+        }
+    };
+    var cursor: usize = 0;
+    while (mem.indexOfPos(u8, cp, cursor, "%%")) |i| {
+        try out.writeAll(cp[cursor..i]);
+        try out.print("(yypminor->yy{d})", .{sp.dtnum});
+        cursor = i + 2;
+    }
+    try out.writeAll(cp[cursor..]);
+    lineno.* += mem.count(u8, cp, "\n");
+    if (!lemp.nolineosflag) {
+        lineno.* += 1;
+        try tplt_linedir(out, lineno.*, lemp.quoted_outname);
+    }
+    try out.writeAll("}\n");
+    return;
+}
+
 /// Handle any crazy-pants filenames we might happen to encounter.
 fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
     var a_list: ArrayList(u8) = .empty;
@@ -1340,6 +1407,23 @@ fn axset_compare(_: void, p1: AxSet, p2: AxSet) bool {
     if (p1.iOrder < p2.iOrder) return true;
     if (p1.iOrder > p2.iOrder) return false;
     return true;
+}
+
+// /*
+// ** Write text on "out" that describes the rule "rp".
+// */
+fn writeRuleText(out: anytype, rp: *Rule) !void {
+    try out.print("{s} ::=", .{rp.lhs.name});
+    for (rp.rhs) |sp| {
+        if (sp.type != .multiterminal) {
+            try out.print(" {s}", .{sp.name});
+        } else {
+            try out.print(" {s}", .{sp.subsym[0].name});
+            for (sp.subsym[1..]) |ssp| {
+                try out.print("|{s}", .{ssp.name});
+            }
+        }
+    }
 }
 
 //| [4287]
@@ -1554,13 +1638,15 @@ fn reportTableImpl(
     defer pActtab.destroy();
     // Mark rules that are actually used for reduce actions after all
     // optimizations have been applied
-    var m_rp: ?*Rule = lemp.rule;
-    while (m_rp) |rp| : (m_rp = rp.next) rp.doesReduce = false;
-    for (0..lemp.nxstate) |i| {
-        var m_ap: ?*Action = lemp.sorted[i].ap;
-        while (m_ap) |ap| : (m_ap = ap.next) {
-            if (ap.type == .reduce or ap.type == .shiftreduce) {
-                ap.x.rp.?.doesReduce = true;
+    {
+        var m_rp: ?*Rule = lemp.rule;
+        while (m_rp) |rp| : (m_rp = rp.next) rp.doesReduce = false;
+        for (0..lemp.nxstate) |i| {
+            var m_ap: ?*Action = lemp.sorted[i].ap;
+            while (m_ap) |ap| : (m_ap = ap.next) {
+                if (ap.type == .reduce or ap.type == .shiftreduce) {
+                    ap.x.rp.?.doesReduce = true;
+                }
             }
         }
     }
@@ -1804,6 +1890,75 @@ fn reportTableImpl(
         try out.writeAll("};\n");
         lineno += 1;
         try tplt_xfer(lemp.name, &in, out, &lineno);
+    }
+
+    // Generate the table of fallback tokens.
+    if (lemp.has_fallback) {
+        const max = lemp.nterminal;
+        //   /* 2019-08-28:  Generate fallback entries for every token to avoid
+        //   ** having to do a range check on the index */
+        //   /* while( mx>0 && lemp->symbols[mx]->fallback==0 ){ mx--; } */
+        lemp.tablesize += max * szCodeType;
+        for (0..max) |i| {
+            const sp = lemp.symbols[i];
+            if (sp.fallback) |fallback| {
+                try out.print("  {d: >3},  /* {s: >10} => {s} */\n", .{ fallback.index, sp.name, fallback.name });
+            } else {
+                try out.print("    0,  /* {s: >10} => nothing */\n", .{sp.name});
+            }
+            lineno += 1;
+        }
+    }
+    try tplt_xfer(lemp.name, &in, out, &lineno);
+
+    // Generate a table containing the symbolic name of every symbol
+    {
+        for (0..lemp.nsymbol) |i| {
+            try out.print("  /* {d: >4} */ \"{s}\",\n", .{ i, lemp.symbols[i].name });
+            lineno += 1;
+        }
+        try tplt_xfer(lemp.name, &in, out, &lineno);
+        // /* Generate a table containing a text string that describes every
+        // ** rule in the rule set of the grammar.  This information is used
+        // ** when tracing REDUCE actions.
+        var i: usize = 0;
+        var m_rp: ?*Rule = lemp.rule;
+        while (m_rp) |rp| : (m_rp = rp.next) {
+            dbgassert(rp.iRule == i);
+            try out.print(" /* {d: >3} */ \"", .{i});
+            try writeRuleText(out, rp);
+            try out.writeAll("\",\n");
+            lineno += 1;
+            i += 1;
+        }
+        // }
+    }
+    try tplt_xfer(lemp.name, &in, out, &lineno);
+
+    // Generate code which executes every time a symbol is popped from
+    // the stack while processing errors or while destroying the parser.
+    // (In other words, generate the %destructor actions)
+    //
+    if (lemp.tokendest.len > 0) {
+        var once = true;
+        for (0..lemp.nsymbol) |i| {
+            const sp = lemp.symbols[i];
+            if (sp.type != .terminal) continue;
+            if (once) {
+                try out.writeAll("      /* TERMINAL Destructor */\n");
+                lineno += 1;
+                once = false;
+            }
+            try out.print("    case {d}: /* {s} */\n", .{ sp.index, sp.name });
+            lineno += 1;
+        }
+        var j: usize = 0;
+        while (j < lemp.nsymbol and lemp.symbols[j].type != .terminal) : (j += 1) {}
+        if (j < lemp.nsymbol) {
+            try emit_destructor_code(out, lemp.symbols[j], lemp, &lineno);
+            try out.writeAll("      break;\n");
+            lineno += 1;
+        }
     }
 }
 
@@ -2307,10 +2462,6 @@ const ActTable = struct {
         return n;
     }
 };
-
-fn uint(i: isize) usize {
-    return @intCast(i);
-}
 
 // [803]
 ///
