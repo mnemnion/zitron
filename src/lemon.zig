@@ -246,7 +246,7 @@ const Symbol = struct {
         .firstset = undefined,
         .useCnt = 0,
         .destructor = undefined,
-        .destLineno = null,
+        .destLineno = 0,
         .datatype = undefined,
         .dtnum = 0,
         .bContent = false,
@@ -1186,7 +1186,8 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
             lineno.* += 1;
             if (!lemp.nolineosflag) {
                 lineno.* += 1;
-                try tplt_linedir(out, sp.destLineno.?, lemp.quoted_filename);
+                // XXX: This is already on the destructor from parsing, figure that out.
+                // try tplt_linedir(out, sp.destLineno.?, lemp.quoted_filename);
             }
             break :cp sp.destructor;
         } else if (lemp.vardest.len > 0) {
@@ -1198,18 +1199,19 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
         }
     };
     var cursor: usize = 0;
-    while (mem.indexOfPos(u8, cp, cursor, "%%")) |i| {
+    while (mem.indexOfPos(u8, cp, cursor, "$$")) |i| {
         try out.writeAll(cp[cursor..i]);
         try out.print("(yypminor->yy{d})", .{sp.dtnum});
         cursor = i + 2;
     }
     try out.writeAll(cp[cursor..]);
-    lineno.* += mem.count(u8, cp, "\n");
+    try out.writeByte('\n');
+    lineno.* += mem.count(u8, cp, "\n") + 1;
     if (!lemp.nolineosflag) {
         lineno.* += 1;
         try tplt_linedir(out, lineno.*, lemp.quoted_outname);
     }
-    try out.writeAll("}\n");
+    try out.writeAll("\n}\n");
     return;
 }
 
@@ -1918,6 +1920,8 @@ fn reportTableImpl(
             lineno += 1;
         }
         try tplt_xfer(lemp.name, &in, out, &lineno);
+    }
+    {
         // /* Generate a table containing a text string that describes every
         // ** rule in the rule set of the grammar.  This information is used
         // ** when tracing REDUCE actions.
@@ -1931,9 +1935,8 @@ fn reportTableImpl(
             lineno += 1;
             i += 1;
         }
-        // }
+        try tplt_xfer(lemp.name, &in, out, &lineno);
     }
-    try tplt_xfer(lemp.name, &in, out, &lineno);
 
     // Generate code which executes every time a symbol is popped from
     // the stack while processing errors or while destroying the parser.
@@ -1960,6 +1963,49 @@ fn reportTableImpl(
             lineno += 1;
         }
     }
+    if (lemp.vardest.len > 0) {
+        var once = true;
+        var dflt_sp: ?*Symbol = null;
+        for (0..lemp.nsymbol) |i| {
+            const sp = lemp.symbols[i];
+            if (sp.type != .terminal or sp.index == 0) continue;
+            if (once) {
+                try out.writeAll("      /* Default NON-TERMINAL Destructor */\n");
+                lineno += 1;
+                once = false;
+            }
+            try out.print("    case {d}: /* {s} */\n", .{ sp.index, sp.name });
+            lineno += 1;
+            dflt_sp = sp;
+        }
+        if (dflt_sp) |dflt| {
+            try emit_destructor_code(out, dflt, lemp, &lineno);
+            try out.writeAll("      break;\n");
+            lineno += 1;
+        }
+    }
+    for (lemp.symbols[0..lemp.nsymbol], 0..) |sp, i| {
+        if (sp.type == .terminal or sp.destructor.len == 0) continue;
+        if (sp.destLineno == null) continue; //  Already emitted
+        try out.print("    case {d}: /* {s} */\n", .{ sp.index, sp.name });
+        lineno += 1;
+        // Combine duplicate destructors into a single case
+        var j = i + 1;
+        while (j < lemp.nsymbol) : (j += 1) {
+            const sp2 = lemp.symbols[j];
+            if (sp2.type != .terminal and
+                sp2.dtnum == sp.dtnum and mem.eql(u8, sp.destructor, sp2.destructor))
+            {
+                try out.print("    case {d}: /* {s} */\n", .{ sp2.index, sp2.name });
+                lineno += 1;
+                sp2.destLineno = null; // Avoid emitting this destructor again */
+            }
+        }
+        try emit_destructor_code(out, sp, lemp, &lineno);
+        try out.writeAll("      break;\n");
+    }
+    lineno += 1;
+    try tplt_xfer(lemp.name, &in, out, &lineno);
 }
 
 /// The state vector for the entire parser generator is recorded as
@@ -3636,7 +3682,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 const addLineMacro = !psp.gp.nolineosflag and
                     psp.insertLineMacro and
                     psp.tokenlineno > 1 and
-                    (psp.decllinenoslot == null or psp.decllinenoslot.?.* != 0);
+                    (psp.decllinenoslot == null or psp.decllinenoslot.?.* != null);
                 if (addLineMacro) {
                     zLine = std.fmt.bufPrint(&zBuffer, "#line {d} ", .{psp.tokenlineno}) catch |err| slice: {
                         // Should be literally impossible but ¯\_(ツ)_/¯
