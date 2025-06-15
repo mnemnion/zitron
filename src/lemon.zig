@@ -39,6 +39,7 @@ const exit = std.process.exit;
 const logger = std.log.scoped(.lemon);
 
 const is_debug = builtin.mode == .Debug;
+const is_safe = is_debug or builtin.mode == .ReleaseSafe;
 
 fn dbgassert(ok: bool) void {
     if (is_debug) {
@@ -1172,10 +1173,10 @@ fn tplt_print(out: anytype, lemp: *Lemon, str: []const u8, lineno: *usize) !void
     }
 }
 
-// /*
-// ** The following routine emits code for the destructor for the
-// ** symbol sp
-// */
+//
+// The following routine emits code for the destructor for the
+// symbol sp
+//
 fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize) !void {
     const cp = cp: {
         if (sp.type == .terminal) {
@@ -1216,6 +1217,225 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
     try out.writeAll("}\n");
     lineno.* += 1;
     return;
+}
+
+/// Return TRUE (non-zero) if the given symbol has a destructor.
+///
+fn has_destructor(sp: *Symbol, lemp: *Lemon) bool {
+    if (sp.type != .nonterminal) {
+        return lemp.tokendest.len > 0;
+    } else {
+        return lemp.vardest.len > 0 or sp.destructor.len > 0;
+    }
+}
+
+/// Write and transform the rp->code string so that symbols are expanded.
+/// Populate the rp->codePrefix and rp->codeSuffix strings, as appropriate.
+///
+/// Return 1 if the expanded code requires that "yylhsminor" local variable
+/// to be defined.
+fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
+    var rc = false; // True if yylhsminor is used
+    var dontUseRhs0 = false; // If true, use of left-most RHS label is illegal
+    var lhsused = false; // True if the LHS element has been used
+    var lhsdirect = false; // True if LHS writes directly into stack
+    const used: [MAXRHS]bool = undefined; // True for each RHS element which is used
+    const zLhsBuf: [50]u8 = undefined; // Convert the LHS symbol into this string
+    const zSkip: ?usize = null; // Index of skippable special comment
+    var zLhs: []const u8 = "";
+    if (is_safe) {
+        @memset(used, false);
+    }
+    const alloc = lemp.allocator;
+    // XXX: This works for Pikchr, so you can scrape by, but it
+    // is wrong in general.  Replace with a stack fallback
+    // allocator and use Strsafe_find to free what you write.
+    // Mostly it will be on the stack anyway, so this is fine.
+    var string_builder: std.BoundedArray(u8, 1024) = .{};
+    const writer = string_builder.writer(alloc);
+    if (rp.code.len == 0) {
+        rp.code = "\n";
+        rp.noCode = true;
+    } else {
+        rp.noCode = false;
+    }
+    if (rp.rhs.len == 0) {
+        // If there are no RHS symbols, then writing directly to the LHS is ok
+        lhsdirect = true;
+    } else if (rp.rhsalias.len > 0 and rp.rhsalias[0].len == 0) {
+        // The left-most RHS symbol has no value.  LHS direct is ok.  But
+        // we have to call the destructor on the RHS symbol first.
+        lhsdirect = true;
+        if (has_destructor(rp.rhs[0], lemp)) {
+            writer.print(
+                "  yy_destructor(yypParser,%d,&yymsp[%d].minor);\n",
+                .{ 0, rp.rhs[0].index, 1 - sint(rp.rhs.len) },
+            ) catch unreachable;
+            alloc.free(rp.codePrefix);
+            rp.codePrefix = Strsafe(string_builder.slice());
+            string_builder.clear();
+            rp.noCode = false;
+        }
+    } else if (rp.lhsalias.len == 0) {
+        // There is no LHS value symbol.
+    } else if (strcmp(rp.lhsalias, rp.rhsalias)) {
+        // The LHS symbol and the left-most RHS symbol are the same, so
+        // direct writing is allowed
+        lhsdirect = true;
+        lhsused = true;
+        used[0] = true;
+        if (rp.lhs.dtnum != rp.rhs[0].dtnum) {
+            ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                "{s}({s}) and {s}({s}) share the same label but have " ++
+                "different datatypes.", .{ rp.lhs.name, rp.lhsalias, rp.rhs[0].name, rp.rhsalias[0] });
+            lemp.errorcnt += 1;
+        }
+    } else {
+        writer.print("/*%s-overwrites-%s*/", .{ rp.lhsalias, rp.rhsalias[0] }) catch unreachable;
+        if (mem.indexOf(u8, string_builder.slice(), rp.code)) |skip_idx| {
+            // The code contains a special comment that indicates that it is safe
+            // for the LHS label to overwrite left-most RHS label.
+            zSkip = skip_idx;
+            lhsdirect = true;
+        } else {
+            lhsdirect = false;
+        }
+    }
+    if (lhsdirect) {
+        zLhs = std.fmt.bufPrint(zLhsBuf, "yymsp[{d}].minor.yy{d}", .{
+            1 - sint(rp.rhs.len),
+            rp.lhs.dtnum,
+        }) catch unreachable;
+    } else {
+        rc = true;
+        zLhs = std.fmt.bufPrint(zLhsBuf, "yylhsminor.yy{d}", .{rp.lhs.dtnum}) catch unreachable;
+    }
+    string_builder.clear();
+    {
+        // Build the translated code
+        var i: usize = 0;
+        var start: usize = 0;
+        const cp = rp.code;
+        var special_start: usize, var special_end: usize = .{ 0, 0 };
+        while (i < rp.code.len) : (i += 1) {
+            if (i == zSkip) {
+                special_start = i;
+                dbgassert(cp[i] == '/');
+                i += 1;
+                while (cp[i] != '/' and cp[i - 1] != '*') : (i += 1) {}
+                try writer.writeAll(cp[start..i]);
+                start = i;
+                special_end = i;
+                dontUseRhs0 = true;
+            }
+            if ((isAlpha(cp[i] or cp[i] == '@')) and
+                (i == 0 or (!isAlnum(cp[i - 1]) and cp[i] - 1 != '_')))
+            {
+                try writer.writeAll(cp[start..i]);
+                const at = if (cp[i] == '@') true else false;
+                if (at) i += 1;
+                var id = i;
+                while (isAlnum(cp[id]) or cp[id] == '_') : (id += 1) {}
+                if (strcmp(rp.lhsalias, cp[i..id])) {
+                    if (at) {
+                        ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                            "It is invalid to @ the LHS alias: {s}", .{rp.code});
+                        lemp.errorcnt += 1;
+                    }
+                    try writer.writeAll(zLhs);
+                    lhsused = true;
+                    i = id - 1; // Because we increment in the loop
+                    start = id;
+                } else rhs: for (rp.rhsalias, rp.rhs, 0..) |alias, rhs, j| {
+                    if (strcmp(alias, cp[i..id])) {
+                        if (j == 0 and dontUseRhs0) {
+                            ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                                "Label {s} used after '{s}'.", .{
+                                rp.rhsalias[0],
+                                cp[special_start..special_end],
+                            });
+                            lemp.errorcnt += 1;
+                        } else if (at) {
+                            // If the argument is of the form @X then substituted
+                            // the token number of X, not the value of X
+                            try writer.print(
+                                "yymsp[{d}].major",
+                                .{sint(j) - sint(rp.nrhs) + 1},
+                            );
+                        } else {
+                            const dtnum = if (rhs.type == .multiterminal)
+                                rhs.subsym[0].dtnum
+                            else
+                                rhs.dtnum;
+                            try writer.print(
+                                "yymsp[{d}].minor.yy{d}",
+                                .{ sint(j) - sint(rp.nrhs) + 1, dtnum },
+                            );
+                        }
+                    }
+                    used[j] = true;
+                    i = id - 1;
+                    start = id;
+                    break :rhs;
+                }
+            } // end alias substitution, if we did nothing i has not changed
+        }
+        try writer.writeAll(cp[start..]);
+        // Main code generation completed
+        // The previous value was also interned so it's freed at the end:
+        rp.code = Strsafe(try string_builder.slice());
+        string_builder.clear();
+    }
+
+    // Check to make sure the LHS has been used
+    if (rp.lhsalias.len > 0 and !lhsused) {
+        ErrorMsg(lemp.filename, rp.ruleline, "" ++
+            "Label \"{s}\" for \"{s}({s})\" is never used.", .{
+            rp.lhsalias,
+            rp.lhs.name,
+            rp.lhsalias,
+        });
+        lemp.errorcnt += 1;
+    }
+    // Generate destructor code for RHS minor values which are not referenced.
+    // Generate error messages for unused labels and duplicate labels.
+    for (rp.rhsalias, 0..rp.rhs.len) |alias, i| {
+        if (alias.len > 0) {
+            if (strcmp(rp.lhsalias, alias)) {
+                ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                    "%s(%s) has the same label as the LHS but is not the left-most " ++
+                    "symbol on the RHS.", .{ rp.rhs[i].name, alias });
+                lemp.errorcnt += 1;
+            } // k-k-k-quadratic
+            dupe: for (rp.rhsalias[0..i]) |alien| {
+                if (strcmp(alias, alien)) {
+                    ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                        "Label {s} used for multiple symbols on the RHS of a rule.", .{alias});
+                    lemp.errorcnt += 1;
+                }
+                break :dupe;
+            }
+        }
+        if (!used[i]) {
+            ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                "Label {s} for \"{s}({s})\" is never used.", .{ alias, rp.rhs[i].name, alias });
+            lemp.errorcnt += 1;
+        } else if (i > 0 and has_destructor(rp.rhs[i], lemp)) {
+            try writer.print(
+                "  yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
+                .{ rp.rhs[i].index, sint(i) - sint(rp.nrhs) + 1 },
+            );
+        }
+    }
+    // If unable to write LHS values directly into the stack, write the
+    // saved LHS value now.
+    if (!lhsdirect) {
+        try writer.print("  yymsp[%d].minor.yy%d = ", .{ 1 - sint(rp.rhs.len), rp.index });
+        try writer.print("{s};\n", .{zLhs});
+    }
+    // Suffix code generation complete
+    rp.codeSuffix = try Strsafe(writer.slice());
+    return rc;
 }
 
 /// Handle any crazy-pants filenames we might happen to encounter.
@@ -2053,6 +2273,17 @@ fn reportTableImpl(
         }
         try tplt_xfer(lemp.name, &in, out, &lineno);
             // zig fmt: on
+    }
+
+    // Generate code which execution during each REDUCE action
+    {
+        var i: usize = 0;
+        var m_rp: ?*Rule = lemp.rule;
+        while (m_rp) |rp| : (m_rp = rp.next) {
+            i += 1; // translate_code(lemp, rp);
+        }
+        // if( i ){
+        //   fprintf(out,"        YYMINORTYPE yylhsminor;\n"); lineno++;
     }
 }
 
