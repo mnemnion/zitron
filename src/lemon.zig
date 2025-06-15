@@ -219,6 +219,9 @@ const Symbol = struct {
     destructor: []u8,
     /// Line number for start of destructor.  Set to
     /// -1 for duplicate destructors.
+    /// For Zig: this is `0` if a line has not been
+    /// set, positive if it has, and `null` to deduplicate
+    /// destructors.
     destLineno: ?u32,
     /// The data type of information held by this
     /// object. Only used if type==NONTERMINAL
@@ -226,15 +229,11 @@ const Symbol = struct {
     /// The data type number.  In the parser, the value
     /// stack is a union.  The .yy%d element of this
     /// union is the correct data type for this object.
-    dtnum: u32, // No idea what the above means yet ¯\_(ツ)_/¯
+    dtnum: u32, // This is a hash of the data type string name
     /// True if this symbol ever carries content - if
     /// it is ever more than just syntax
     bContent: bool,
     // following fields are used by MULTITERMINALs only
-
-    /// Number of constituent symbols in the MULTI
-    nsubsym: usize, // TODO: Probably redundant with this slice:
-    //
     /// Array (slice) of constituent symbols
     subsym: []*Symbol,
 
@@ -254,7 +253,6 @@ const Symbol = struct {
         .datatype = undefined,
         .dtnum = 0,
         .bContent = false,
-        .nsubsym = 0,
         .subsym = undefined,
     };
 
@@ -2545,11 +2543,10 @@ fn FindRulePrecedences(lem: *Lemon) void {
             while (i < rp.nrhs and rp.precsym == null) : (i += 1) {
                 const sp: *Symbol = rp.rhs[i];
                 if (sp.type == .multiterminal) {
-                    var j: usize = 0;
-                    j_loop: while (j < sp.nsubsym) : (j += 1) {
-                        if (sp.subsym[j].prec) |_| {
-                            rp.precsym = sp.subsym[j];
-                            break :j_loop;
+                    precsym: for (sp.subsym) |subsym| {
+                        if (subsym.prec) |_| {
+                            rp.precsym = subsym;
+                            break :precsym;
                         }
                     }
                 } else if (sp.prec) |_| {
@@ -3444,7 +3441,6 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     msp = try Symbol.create(psp.allocator, origmsp.name);
                     errdefer msp.destroy(psp.allocator);
                     msp.type = .multiterminal;
-                    msp.nsubsym = 1;
                     msp.subsym = try psp.allocator.alloc(*Symbol, 1);
                     msp.subsym[0] = origmsp;
                     psp.rhs[psp.nrhs - 1] = msp;
@@ -3462,10 +3458,9 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                         sym_freelist = fl;
                     }
                 }
-                msp.nsubsym += 1;
                 msp.subsym = try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
                 // We know x[1] exists and is terminal-shaped, so this is valid:
-                msp.subsym[msp.nsubsym - 1] = try Symbol_new(x[1..]);
+                msp.subsym[msp.subsym.len - 1] = try Symbol_new(x[1..]);
                 if (isLower(x[1]) or isLower(msp.subsym[0].name[0])) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Cannot form a compound containing a non-terminal", .{});
@@ -3829,14 +3824,13 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 psp.state = .waiting_for_decl_or_rule;
             } else if (isUpper(x[0]) or ((x[0] == '|' or x[0] == '/') and isUpper(x[1]))) {
                 const msp = psp.tkclass;
-                msp.nsubsym += 1;
                 msp.subsym = subsym: {
                     if (msp.subsym.len == 0)
                         break :subsym try psp.allocator.alloc(*Symbol, 1)
                     else
-                        break :subsym try psp.allocator.realloc(msp.subsym, msp.nsubsym);
+                        break :subsym try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
                 };
-                msp.subsym[msp.nsubsym - 1] = try Symbol_new(if (!isUpper(x[0])) x else x[1..]);
+                msp.subsym[msp.subsym.len - 1] = try Symbol_new(if (!isUpper(x[0])) x else x[1..]);
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "%token_class argument \"{s}\" should be a token", .{x});
