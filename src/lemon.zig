@@ -1124,7 +1124,7 @@ fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
     const h_idx = mem.indexOf(u8, in.*, "\n%%");
     if (h_idx) |i| {
         lineno.* += mem.count(u8, in.*[0 .. i + 1], "\n");
-        in.* = in.*[i + 3 ..];
+        in.* = in.*[i + 4 ..];
     } else {
         logger.err("Header of template file: /^%%/ not found", .{});
         return; // TODO: something better? just die?
@@ -1209,7 +1209,6 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
     try out.writeAll(cp[cursor..]);
     try out.writeByte('\n');
     lineno.* += 1;
-    lineno.* += mem.count(u8, cp, "\n");
     if (!lemp.nolineosflag) {
         lineno.* += 1;
         try tplt_linedir(out, lineno.*, lemp.quoted_outname);
@@ -1537,6 +1536,7 @@ fn reportTableImpl(
         lineno += 1;
     } else {
         try out.print("#ifndef {s}{s}\n", .{ prefix, lemp.symbols[1].name });
+        lineno += 1;
     }
     for (lemp.symbols[1..lemp.nterminal], 1..) |tok, i| {
         try out.print("#define {s}{s: <30} {d:>2}\n", .{ prefix, tok.name, i });
@@ -1631,8 +1631,7 @@ fn reportTableImpl(
     }
     if (lemp.errsym) |errsym| if (errsym.useCnt > 0) {
         try out.print("#define YYERRORSYMBOL {d}\n", .{errsym.index}); lineno += 1;
-        try out.print("#define YYERRSYMDT yy{d}\n", .{errsym.dtnum});
-        lineno += 1;
+        try out.print("#define YYERRSYMDT yy{d}\n", .{errsym.dtnum}); lineno += 1;
     };
     if (lemp.has_fallback) {
         try out.writeAll("#define YYFALLBACK 1\n"); lineno += 1;
@@ -2022,6 +2021,39 @@ fn reportTableImpl(
     }
     lineno += 1;
     try tplt_xfer(lemp.name, &in, out, &lineno);
+    // Generate code which executes whenever the parser stack overflows
+    try tplt_print(out, lemp, lemp.overflow, &lineno);
+    try tplt_xfer(lemp.name, &in, out, &lineno);
+
+    // Generate the tables of rule information.  yyRuleInfoLhs[] and
+    // yyRuleInfoNRhs[].
+    //
+    // Note: This code depends on the fact that rules are numbered
+    // sequentially beginning with 0.
+    {
+        var m_rp: ?*Rule = lemp.rule;
+        var i: usize = 0; // zig fmt: off
+        while (m_rp) |rp| : ({m_rp = rp.next; i += 1; }) {
+            try out.print("  {d: >4},  /* ({d}) ", .{ rp.lhs.index, i });
+            try rule_print(out, rp);
+            try out.writeAll( " */\n" ); lineno += 1;
+        }
+        try tplt_xfer(lemp.name, &in, out, &lineno);
+        i = 0; m_rp = lemp.rule;
+
+        while (m_rp) |rp| : ({m_rp = rp.next; i += 1; }) {
+            if (rp.nrhs == 0) {
+                try out.print("  {d: >3},", .{rp.nrhs});
+            } else {
+                try out.print("  {d: >3},", .{-sint(rp.nrhs)});
+            }
+            try out.print("  /* ({d}) ", .{i});
+            try rule_print(out, rp);
+            try out.writeAll(" */\n"); lineno += 1;
+        }
+        try tplt_xfer(lemp.name, &in, out, &lineno);
+            // zig fmt: on
+    }
 }
 
 /// The state vector for the entire parser generator is recorded as
