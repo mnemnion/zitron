@@ -1239,12 +1239,12 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
     var dontUseRhs0 = false; // If true, use of left-most RHS label is illegal
     var lhsused = false; // True if the LHS element has been used
     var lhsdirect = false; // True if LHS writes directly into stack
-    const used: [MAXRHS]bool = undefined; // True for each RHS element which is used
-    const zLhsBuf: [50]u8 = undefined; // Convert the LHS symbol into this string
-    const zSkip: ?usize = null; // Index of skippable special comment
+    var used: [MAXRHS]bool = undefined; // True for each RHS element which is used
+    var zLhsBuf: [50]u8 = undefined; // Convert the LHS symbol into this string
+    var zSkip: ?usize = null; // Index of skippable special comment
     var zLhs: []const u8 = "";
     if (is_safe) {
-        @memset(used, false);
+        @memset(&used, false);
     }
     const alloc = lemp.allocator;
     // XXX: This works for Pikchr, so you can scrape by, but it
@@ -1252,7 +1252,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
     // allocator and use Strsafe_find to free what you write.
     // Mostly it will be on the stack anyway, so this is fine.
     var string_builder: std.BoundedArray(u8, 1024) = .{};
-    const writer = string_builder.writer(alloc);
+    const writer = string_builder.writer();
     if (rp.code.len == 0) {
         rp.code = "\n";
         rp.noCode = true;
@@ -1268,17 +1268,17 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         lhsdirect = true;
         if (has_destructor(rp.rhs[0], lemp)) {
             writer.print(
-                "  yy_destructor(yypParser,%d,&yymsp[%d].minor);\n",
-                .{ 0, rp.rhs[0].index, 1 - sint(rp.rhs.len) },
+                "  yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
+                .{ rp.rhs[0].index, 1 - sint(rp.rhs.len) },
             ) catch unreachable;
             alloc.free(rp.codePrefix);
-            rp.codePrefix = Strsafe(string_builder.slice());
+            rp.codePrefix = try Strsafe(string_builder.slice());
             string_builder.clear();
             rp.noCode = false;
         }
     } else if (rp.lhsalias.len == 0) {
         // There is no LHS value symbol.
-    } else if (strcmp(rp.lhsalias, rp.rhsalias)) {
+    } else if (strcmp(rp.lhsalias, rp.rhsalias[0])) {
         // The LHS symbol and the left-most RHS symbol are the same, so
         // direct writing is allowed
         lhsdirect = true;
@@ -1291,7 +1291,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
             lemp.errorcnt += 1;
         }
     } else {
-        writer.print("/*%s-overwrites-%s*/", .{ rp.lhsalias, rp.rhsalias[0] }) catch unreachable;
+        writer.print("/*{s}-overwrites-{s}*/", .{ rp.lhsalias, rp.rhsalias[0] }) catch unreachable;
         if (mem.indexOf(u8, string_builder.slice(), rp.code)) |skip_idx| {
             // The code contains a special comment that indicates that it is safe
             // for the LHS label to overwrite left-most RHS label.
@@ -1302,13 +1302,13 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         }
     }
     if (lhsdirect) {
-        zLhs = std.fmt.bufPrint(zLhsBuf, "yymsp[{d}].minor.yy{d}", .{
+        zLhs = std.fmt.bufPrint(&zLhsBuf, "yymsp[{d}].minor.yy{d}", .{
             1 - sint(rp.rhs.len),
             rp.lhs.dtnum,
         }) catch unreachable;
     } else {
         rc = true;
-        zLhs = std.fmt.bufPrint(zLhsBuf, "yylhsminor.yy{d}", .{rp.lhs.dtnum}) catch unreachable;
+        zLhs = std.fmt.bufPrint(&zLhsBuf, "yylhsminor.yy{d}", .{rp.lhs.dtnum}) catch unreachable;
     }
     string_builder.clear();
     {
@@ -1328,7 +1328,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
                 special_end = i;
                 dontUseRhs0 = true;
             }
-            if ((isAlpha(cp[i] or cp[i] == '@')) and
+            if ((isAlpha(cp[i]) or cp[i] == '@') and
                 (i == 0 or (!isAlnum(cp[i - 1]) and cp[i] - 1 != '_')))
             {
                 try writer.writeAll(cp[start..i]);
@@ -1383,7 +1383,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         try writer.writeAll(cp[start..]);
         // Main code generation completed
         // The previous value was also interned so it's freed at the end:
-        rp.code = Strsafe(try string_builder.slice());
+        rp.code = try Strsafe(string_builder.slice());
         string_builder.clear();
     }
 
@@ -1403,7 +1403,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         if (alias.len > 0) {
             if (strcmp(rp.lhsalias, alias)) {
                 ErrorMsg(lemp.filename, rp.ruleline, "" ++
-                    "%s(%s) has the same label as the LHS but is not the left-most " ++
+                    "{s}({s}) has the same label as the LHS but is not the left-most " ++
                     "symbol on the RHS.", .{ rp.rhs[i].name, alias });
                 lemp.errorcnt += 1;
             } // k-k-k-quadratic
@@ -1430,11 +1430,11 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
     // If unable to write LHS values directly into the stack, write the
     // saved LHS value now.
     if (!lhsdirect) {
-        try writer.print("  yymsp[%d].minor.yy%d = ", .{ 1 - sint(rp.rhs.len), rp.index });
+        try writer.print("  yymsp[{d}].minor.yy{d} = ", .{ 1 - sint(rp.rhs.len), rp.index });
         try writer.print("{s};\n", .{zLhs});
     }
     // Suffix code generation complete
-    rp.codeSuffix = try Strsafe(writer.slice());
+    rp.codeSuffix = try Strsafe(string_builder.slice());
     return rc;
 }
 
@@ -1943,7 +1943,8 @@ fn reportTableImpl(
             var action = pActtab.yyaction(i);
             if (action < 0) action = @intCast(lemp.noAction);
             if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
-            // Fuck you Zig.  "Align width" doesn't mean "Add a +" you twat
+            // This bit of brain-damage is to prevent a width-specified
+            // positive signed value from getting a spurious `+`.  Whyyyy
             if (action >= 0) {
                 try out.print(" {d: >4},", .{uint(action)});
             } else {
@@ -2277,13 +2278,15 @@ fn reportTableImpl(
 
     // Generate code which execution during each REDUCE action
     {
-        var i: usize = 0;
+        var i = false;
         var m_rp: ?*Rule = lemp.rule;
         while (m_rp) |rp| : (m_rp = rp.next) {
-            i += 1; // translate_code(lemp, rp);
+            i = i or try translate_code(lemp, rp);
         }
-        // if( i ){
-        //   fprintf(out,"        YYMINORTYPE yylhsminor;\n"); lineno++;
+        if (i) {
+            try out.writeAll("        YYMINORTYPE yylhsminor;\n");
+            lineno += 1;
+        }
     }
 }
 
@@ -2377,13 +2380,21 @@ const Lemon = struct {
     /// Function to use to free stack space
     freeFunc: []u8,
     nconflict: u32,
+    /// Number of entries in the yy_action[] table
     nactiontab: u32,
+    ///  Number of entries in yy_lookahead[]
     nlookaheadtab: u32,
+    /// Total table size of all tables in bytes
     tablesize: u32,
+    /// Print only basis configurations
     basisflag: bool,
+    /// Show preprocessor output on stdout
     printPreprocessed: bool,
+    /// True if any %fallback is seen in the grammar
     has_fallback: bool,
+    /// True if #line statements should not be printed
     nolineosflag: bool,
+    /// Command-line arguments
     argv: [][:0]u8,
 
     // TODO: we leave several things undefined here which are not
@@ -4021,6 +4032,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                         "More than one fallback assigned to token {s}", .{sp.name});
                     psp.errorcnt += 1;
                     // TODO: no resync here, is that right?
+                    // yeah so it can collect more tokens
                 } else {
                     sp.fallback = psp.fallback;
                     psp.gp.has_fallback = true;
