@@ -2370,6 +2370,48 @@ fn reportTableImpl(
             rp.codeEmitted = true;
         }
     }
+    // Finally, output the default: rule.  We choose as the default: all
+    // empty actions.
+
+    try out.writeAll("      default:\n");
+    lineno += 1;
+    {
+        var m_rp: ?*Rule = lemp.rule;
+        while (m_rp) |rp| : (m_rp = rp.next) {
+            if (rp.codeEmitted) continue;
+            dbgassert(rp.noCode);
+            try out.print("      /* ({d}) ", .{rp.iRule});
+            try writeRuleText(out, rp);
+            if (rp.neverReduce) {
+                try out.print(" (NEVER REDUCES) */ assert(yyruleno!={d});\n", .{rp.iRule});
+                lineno += 1;
+            } else if (rp.doesReduce) {
+                try out.print(" */ yytestcase(yyruleno=={d});\n", .{rp.iRule});
+                lineno += 1;
+            } else {
+                try out.print(" (OPTIMIZED OUT) */ assert(yyruleno!={d});\n", .{rp.iRule});
+                lineno += 1;
+            }
+        }
+    }
+    try out.writeAll("        break;\n");
+    lineno += 1;
+    try tplt_xfer(lemp.name, &in, out, &lineno);
+
+    // Generate code which executes if a parse fails
+    try tplt_print(out, lemp, lemp.failure, &lineno);
+    try tplt_xfer(lemp.name, &in, out, &lineno);
+
+    // Generate code which executes when a syntax error occurs
+    try tplt_print(out, lemp, lemp.@"error", &lineno);
+    try tplt_xfer(lemp.name, &in, out, &lineno);
+
+    // Generate code which executes when the parser accepts its input
+    try tplt_print(out, lemp, lemp.accept, &lineno);
+    try tplt_xfer(lemp.name, &in, out, &lineno);
+
+    // Append any addition code the user desires
+    try tplt_print(out, lemp, lemp.extracode, &lineno);
 }
 
 /// The state vector for the entire parser generator is recorded as
