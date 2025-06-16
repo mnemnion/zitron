@@ -1167,7 +1167,7 @@ fn tplt_print(out: anytype, lemp: *Lemon, str: []const u8, lineno: *usize) !void
         try out.writeByte('\n');
         lineno.* += 1;
     }
-    if (!lemp.nolineosflag) {
+    if (!lemp.nolinenosflag) {
         lineno.* += 1;
         try tplt_linedir(out, lineno.*, lemp.quoted_outname);
     }
@@ -1187,7 +1187,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
         } else if (sp.destructor.len > 0) {
             try out.writeAll("{\n");
             lineno.* += 1;
-            if (!lemp.nolineosflag) {
+            if (!lemp.nolinenosflag) {
                 lineno.* += 1;
                 try tplt_linedir(out, sp.destLineno.?, lemp.quoted_filename);
             }
@@ -1210,7 +1210,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
     try out.writeAll(cp[cursor..]);
     try out.writeByte('\n');
     lineno.* += 1;
-    if (!lemp.nolineosflag) {
+    if (!lemp.nolinenosflag) {
         lineno.* += 1;
         try tplt_linedir(out, lineno.*, lemp.quoted_outname);
     }
@@ -1436,6 +1436,44 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
     // Suffix code generation complete
     rp.codeSuffix = try Strsafe(string_builder.slice());
     return rc;
+}
+
+//
+// Generate code which executes when the rule "rp" is reduced.  Write
+// the code to "out".  Make sure lineno stays up-to-date.
+//
+fn emit_code(out: anytype, rp: *Rule, lemp: *Lemon, lineno: *usize) !void {
+    //
+    // Setup code prior to the #line directive
+    if (rp.codePrefix.len > 0) {
+        try out.print("{{{s}", .{rp.codePrefix});
+        lineno.* += mem.count(u8, rp.codePrefix, "\n");
+    }
+    // Generate code to do the reduce action
+    if (rp.code.len > 0) {
+        if (!lemp.nolinenosflag) {
+            lineno.* += 1;
+            try tplt_linedir(out, rp.line, lemp.quoted_filename);
+        }
+        try out.print("{{{s}", .{rp.code});
+        lineno.* += mem.count(u8, rp.code, "\n") + 1;
+        try out.writeAll("}\n");
+        if (!lemp.nolinenosflag) {
+            lineno.* += 1;
+            try tplt_linedir(out, lineno.*, lemp.quoted_filename);
+        }
+    }
+
+    // Generate breakdown code that occurs after the #line directive
+    if (rp.codeSuffix.len > 0) {
+        try out.print("{s}", .{rp.codeSuffix});
+        lineno.* += mem.count(u8, rp.codeSuffix, "\n");
+    }
+    if (rp.codePrefix.len > 0) {
+        try out.writeAll("}\n");
+        lineno.* += 1;
+    }
+    return;
 }
 
 /// Handle any crazy-pants filenames we might happen to encounter.
@@ -2287,6 +2325,38 @@ fn reportTableImpl(
             try out.writeAll("        YYMINORTYPE yylhsminor;\n");
             lineno += 1;
         }
+        // First output rules other than the default: rule
+        m_rp = lemp.rule;
+        rules: while (m_rp) |rp| : (m_rp = rp.next) {
+            if (rp.codeEmitted) continue :rules;
+            if (rp.noCode) {
+                // No C code actions, so this will be part of the "default:" rule
+                continue :rules;
+            }
+            try out.print("      case {d}: /* ", .{rp.iRule});
+            try writeRuleText(out, rp);
+            try out.writeAll(" */\n");
+            lineno += 1;
+            var m_rp2: ?*Rule = rp.next; // Other rules with the same action
+            while (m_rp2) |rp2| : (m_rp2 = rp2.next) {
+                // TODO: these are all interned so we can just use
+                // pointer comparison
+                if (strcmp(rp.code, rp2.code) and
+                    strcmp(rp.codePrefix, rp2.codePrefix) and
+                    strcmp(rp.codeSuffix, rp2.codeSuffix))
+                {
+                    try out.print("      case {d}: /* ", .{rp2.iRule});
+                    try writeRuleText(out, rp2);
+                    try out.print(" */ yytestcase(yyruleno=={d});\n", .{rp2.iRule});
+                    lineno += 1;
+                    rp2.codeEmitted = true;
+                }
+            }
+            try emit_code(out, rp, lemp, &lineno);
+            try out.writeAll("        break;\n");
+            lineno += 1;
+            rp.codeEmitted = true;
+        }
     }
 }
 
@@ -2393,7 +2463,7 @@ const Lemon = struct {
     /// True if any %fallback is seen in the grammar
     has_fallback: bool,
     /// True if #line statements should not be printed
-    nolineosflag: bool,
+    nolinenosflag: bool,
     /// Command-line arguments
     argv: [][:0]u8,
 
@@ -2459,7 +2529,7 @@ const Lemon = struct {
         .basisflag = false,
         .printPreprocessed = false,
         .has_fallback = false,
-        .nolineosflag = false,
+        .nolinenosflag = false,
         .argv = &.{},
     };
 
@@ -3966,7 +4036,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 // we do not have.
                 var n = zOld.len + zNew.len;
                 // Do we need a line macro?
-                const addLineMacro = !psp.gp.nolineosflag and
+                const addLineMacro = !psp.gp.nolinenosflag and
                     psp.insertLineMacro and
                     psp.tokenlineno > 1 and
                     (psp.decllinenoslot == null or psp.decllinenoslot.?.* != 0);
@@ -4691,7 +4761,7 @@ pub fn main() !void {
     lem.filename = filename;
     lem.quoted_filename = try esc_filename(allocator, filename);
     lem.basisflag = basisflag;
-    lem.nolineosflag = nolinenosflag;
+    lem.nolinenosflag = nolinenosflag;
     lem.printPreprocessed = printPP;
     _ = try Symbol_new("$"); // Why?
     // TODO: Write a full parse file and move the file opening stuff there,
