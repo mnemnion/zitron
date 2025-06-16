@@ -82,6 +82,7 @@ const p_statefind = false;
 // I can decide how to handle that then.
 
 fn strcmp(a: []const u8, b: []const u8) bool {
+    if (a.len == 0 and b.len == 0) return false;
     return std.mem.eql(u8, a, b);
 }
 
@@ -1222,7 +1223,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
 /// Return TRUE (non-zero) if the given symbol has a destructor.
 ///
 fn has_destructor(sp: *Symbol, lemp: *Lemon) bool {
-    if (sp.type != .nonterminal) {
+    if (sp.type == .terminal) {
         return lemp.tokendest.len > 0;
     } else {
         return lemp.vardest.len > 0 or sp.destructor.len > 0;
@@ -1267,6 +1268,9 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         // we have to call the destructor on the RHS symbol first.
         lhsdirect = true;
         if (has_destructor(rp.rhs[0], lemp)) {
+            if (p_check1) {
+                dprint("destructor: rp {s} {d}\n", .{ rp.lhs.name, rp.iRule });
+            }
             writer.print(
                 "  yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
                 .{ rp.rhs[0].index, 1 - sint(rp.rhs.len) },
@@ -1278,6 +1282,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         }
     } else if (rp.lhsalias.len == 0) {
         // There is no LHS value symbol.
+        lhsdirect = true;
     } else if (strcmp(rp.lhsalias, rp.rhsalias[0])) {
         // The LHS symbol and the left-most RHS symbol are the same, so
         // direct writing is allowed
@@ -1332,6 +1337,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
                 (i == 0 or (!isAlnum(cp[i - 1]) and cp[i] - 1 != '_')))
             {
                 try writer.writeAll(cp[start..i]);
+                start = i;
                 const at = if (cp[i] == '@') true else false;
                 if (at) i += 1;
                 var id = i;
@@ -1347,7 +1353,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
                     i = id - 1; // Because we increment in the loop
                     start = id;
                 } else rhs: for (rp.rhsalias, rp.rhs, 0..) |alias, rhs, j| {
-                    if (strcmp(alias, cp[i..id])) {
+                    if (alias.len > 0 and strcmp(alias, cp[i..id])) {
                         if (j == 0 and dontUseRhs0) {
                             ErrorMsg(lemp.filename, rp.ruleline, "" ++
                                 "Label {s} used after '{s}'.", .{
@@ -1372,11 +1378,11 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
                                 .{ sint(j) - sint(rp.nrhs) + 1, dtnum },
                             );
                         }
+                        used[j] = true;
+                        i = id - 1;
+                        start = id;
+                        break :rhs;
                     }
-                    used[j] = true;
-                    i = id - 1;
-                    start = id;
-                    break :rhs;
                 }
             } // end alias substitution, if we did nothing i has not changed
         }
@@ -1401,25 +1407,27 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
     // Generate error messages for unused labels and duplicate labels.
     for (rp.rhsalias, 0..rp.rhs.len) |alias, i| {
         if (alias.len > 0) {
-            if (strcmp(rp.lhsalias, alias)) {
-                ErrorMsg(lemp.filename, rp.ruleline, "" ++
-                    "{s}({s}) has the same label as the LHS but is not the left-most " ++
-                    "symbol on the RHS.", .{ rp.rhs[i].name, alias });
-                lemp.errorcnt += 1;
-            } // k-k-k-quadratic
-            dupe: for (rp.rhsalias[0..i]) |alien| {
-                if (strcmp(alias, alien)) {
+            if (i > 0) {
+                if (strcmp(rp.lhsalias, alias)) {
                     ErrorMsg(lemp.filename, rp.ruleline, "" ++
-                        "Label {s} used for multiple symbols on the RHS of a rule.", .{alias});
+                        "{s}({s}) has the same label as the LHS ({s}) but is not the left-most " ++
+                        "symbol on the RHS.", .{ rp.rhs[i].name, alias, rp.lhsalias });
                     lemp.errorcnt += 1;
+                } // k-k-k-quadratic
+                dupe: for (rp.rhsalias[0..i]) |alien| {
+                    if (strcmp(alias, alien)) {
+                        ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                            "Label {s} used for multiple symbols on the RHS of a rule.", .{alias});
+                        lemp.errorcnt += 1;
+                    }
+                    break :dupe;
                 }
-                break :dupe;
             }
-        }
-        if (!used[i]) {
-            ErrorMsg(lemp.filename, rp.ruleline, "" ++
-                "Label {s} for \"{s}({s})\" is never used.", .{ alias, rp.rhs[i].name, alias });
-            lemp.errorcnt += 1;
+            if (!used[i]) {
+                ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                    "Label {s} for \"{s}({s})\" is never used.", .{ alias, rp.rhs[i].name, alias });
+                lemp.errorcnt += 1;
+            }
         } else if (i > 0 and has_destructor(rp.rhs[i], lemp)) {
             try writer.print(
                 "  yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
@@ -1427,10 +1435,11 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
             );
         }
     }
+
     // If unable to write LHS values directly into the stack, write the
     // saved LHS value now.
     if (!lhsdirect) {
-        try writer.print("  yymsp[{d}].minor.yy{d} = ", .{ 1 - sint(rp.rhs.len), rp.index });
+        try writer.print("  yymsp[{d}].minor.yy{d} = ", .{ 1 - sint(rp.rhs.len), rp.lhs.dtnum });
         try writer.print("{s};\n", .{zLhs});
     }
     // Suffix code generation complete
@@ -1460,7 +1469,7 @@ fn emit_code(out: anytype, rp: *Rule, lemp: *Lemon, lineno: *usize) !void {
         try out.writeAll("}\n");
         if (!lemp.nolinenosflag) {
             lineno.* += 1;
-            try tplt_linedir(out, lineno.*, lemp.quoted_filename);
+            try tplt_linedir(out, lineno.*, lemp.quoted_outname);
         }
     }
 
@@ -2278,7 +2287,6 @@ fn reportTableImpl(
         try out.writeAll("      break;\n");
         lineno += 1;
     }
-    lineno += 1;
     try tplt_xfer(lemp.name, &in, out, &lineno);
     // Generate code which executes whenever the parser stack overflows
     try tplt_print(out, lemp, lemp.overflow, &lineno);
@@ -2316,12 +2324,13 @@ fn reportTableImpl(
 
     // Generate code which execution during each REDUCE action
     {
-        var i = false;
+        var minor_type = false;
         var m_rp: ?*Rule = lemp.rule;
         while (m_rp) |rp| : (m_rp = rp.next) {
-            i = i or try translate_code(lemp, rp);
+            const did = try translate_code(lemp, rp);
+            minor_type = minor_type or did;
         }
-        if (i) {
+        if (minor_type) {
             try out.writeAll("        YYMINORTYPE yylhsminor;\n");
             lineno += 1;
         }
@@ -2341,10 +2350,13 @@ fn reportTableImpl(
             while (m_rp2) |rp2| : (m_rp2 = rp2.next) {
                 // TODO: these are all interned so we can just use
                 // pointer comparison
-                if (strcmp(rp.code, rp2.code) and
-                    strcmp(rp.codePrefix, rp2.codePrefix) and
-                    strcmp(rp.codeSuffix, rp2.codeSuffix))
+                if (rp.code.ptr == rp2.code.ptr and
+                    rp.codePrefix.ptr == rp2.codePrefix.ptr and
+                    rp.codeSuffix.ptr == rp2.codeSuffix.ptr)
                 {
+                    if (p_check1) {
+                        dprint("case: merging rp2 {d} with rp {d}\n", .{ rp2.iRule, rp.iRule });
+                    }
                     try out.print("      case {d}: /* ", .{rp2.iRule});
                     try writeRuleText(out, rp2);
                     try out.print(" */ yytestcase(yyruleno=={d});\n", .{rp2.iRule});
