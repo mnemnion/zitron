@@ -4423,7 +4423,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     else
                         break :subsym try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
                 };
-                msp.subsym[msp.subsym.len - 1] = try Symbol_new(if (!isUpper(x[0])) x else x[1..]);
+                msp.subsym[msp.subsym.len - 1] = try Symbol_new(if (isUpper(x[0])) x else x[1..]);
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "%token_class argument \"{s}\" should be a token", .{x});
@@ -5058,13 +5058,6 @@ pub fn main() !void {
         lem.nterminal = i;
     }
     sequenceRules(lem);
-    // [1726]
-    // /* Generate a reprint of the grammar, if requested on the command line */
-    // else
-    //
-    SetSize(lem.nterminal + 1);
-    // Find the precedence for every production rule (that has one)
-    FindRulePrecedences(lem);
     if (p_check1 or p_symbols) {
         dprint("Sorted rules: {s}\n", .{lem.filename});
         var rp: ?*Rule = lem.rule;
@@ -5072,7 +5065,19 @@ pub fn main() !void {
             dprint("{s} ({d})  ", .{ rule.lhs.name, rule.iRule });
         }
         dprint("\n", .{});
+        dprint("nsymbols {d} nsymbol {d} nterminal {d}\n", .{ lem.nsymbol, lem.nsymbol, lem.nterminal });
+        for (lem.symbols[0..lem.nsymbol]) |symbol| {
+            dprint("{s} ", .{symbol.name});
+        }
+        dprint("\n", .{});
     }
+    // [1726]
+    // /* Generate a reprint of the grammar, if requested on the command line */
+    // else
+    //
+    SetSize(lem.nterminal + 1);
+    // Find the precedence for every production rule (that has one)
+    FindRulePrecedences(lem);
     // Compute the lambda-nonterminals and the first-sets for every
     // nonterminal
     try FindFirstSets(lem);
