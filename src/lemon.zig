@@ -4276,6 +4276,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 const declargslot = psp.declargslot.?;
                 const zOld: []const u8 = declargslot.*;
                 const zNew = if (x[0] == '"' or x[0] == '{') x[1..] else x;
+                const q_file = psp.gp.quoted_filename;
                 var zLine: []u8 = zBuffer[0..0];
                 // To build the new slice, we have to track bytes written:
                 var zIdx: usize = 0;
@@ -4296,13 +4297,12 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                         psp.errorcnt += 1;
                         break :slice zBuffer[0..0];
                     };
-                    n += zLine.len + psp.gp.quoted_filename.len + 1; // newline
-                    if (zOld.len > 0 and zOld[zOld.len - 1] == '\n') n += 1; // also newline
+                    n += zLine.len + q_file.len + 1; // newline
+                    if (zOld.len > 0 and zOld[zOld.len - 1] != '\n') n += 1; // also newline
                 }
                 // We put this back on declargslot and PSP once we know how long the
                 // slice actually should be.
                 const zBuf = try psp.allocator.realloc(declargslot.*, n);
-                @memcpy(zBuf[0..zOld.len], zOld);
                 zIdx += zOld.len;
                 if (addLineMacro) {
                     if (zIdx > 0 and zBuf[zIdx - 1] != '\n') {
@@ -4311,7 +4311,6 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     }
                     @memcpy(zBuf[zIdx..][0..zLine.len], zLine);
                     zIdx += zLine.len;
-                    const q_file = psp.gp.quoted_filename;
                     @memcpy(zBuf[zIdx..][0..q_file.len], q_file);
                     zIdx += q_file.len;
                     zBuf[zIdx] = '\n';
