@@ -3755,21 +3755,23 @@ fn preprocess_input(z: [:0]u8) void {
         if (z[i] != '%' or (i > 0 and z[i - 1] != '\n')) continue :scan;
         if (i + 6 <= zl and strcmp(z[i..][0..6], "%endif") and isSpace(z[i + 6])) {
             if (exclude != 0) {
-                exclude -= 1; // Negative should be a problem here yeah?
-                if (p_pp) dprint("exclude now {d}\n", .{exclude});
+                exclude -= 1;
                 if (exclude == 0) {
-                    if (p_pp) dprint("erasing:\n {s}\n", .{z[start..i]});
                     j = start;
-                    while (j < i and z[j] != '\n') : (j += 1) z[j] = ' ';
+                    while (j < i) : (j += 1) {
+                        if (z[j] != '\n') z[j] = ' ';
+                    }
                 }
             }
             j = i;
             while (z[j] != 0 and z[j] != '\n') : (j += 1) z[j] = ' ';
         } else if (i + 5 < zl and strcmp(z[i..][0..5], "%else") and isSpace(z[i + 5])) {
-            if (exclude == 1) {
+            if (exclude != 0) {
                 exclude = 0;
                 j = start;
-                while (j < i and z[j] != '\n') : (j += 1) z[j] = ' ';
+                while (j < i) : (j += 1) {
+                    if (z[j] != '\n') z[j] = ' ';
+                }
             } else if (exclude == 0) {
                 exclude = 1;
                 start = i;
@@ -3790,11 +3792,11 @@ fn preprocess_input(z: [:0]u8) void {
                 const iBool = j;
                 const isNot = j == i + 7;
                 while (z[j] != 0 and z[j] != '\n') : (j += 1) {}
-                if (p_pp) dprint("preprocessor evaluates {s} ", .{z[iBool..j]});
+                if (p_check1) dprint("preprocessor evaluates '{s}' ", .{z[iBool..j]});
                 exclude = eval_preprocessor_boolean(z[iBool..j], lineno);
-                if (p_pp) dprint("as {} ", .{exclude == 1});
-                if (!isNot) exclude = if (exclude == 1) 0 else 1;
-                if (p_pp) dprint("then {}\n", .{exclude == 1});
+                if (p_check1) dprint("as {} ", .{exclude == 1});
+                if (!isNot) exclude = if (exclude != 0) 0 else 1;
+                if (p_check1) dprint("then {}\n", .{exclude == 1});
                 if (exclude == 1) {
                     start = i;
                     start_lineno = lineno;
@@ -4987,7 +4989,7 @@ pub fn main() !void {
     const nolinenosflag = false;
     const noResort = false;
     const sqlFlag = false;
-    const printPP = false;
+    const printPP = true;
     // Reconcile Zig to this unfortunate situation:
     _ = .{ version, rpflag, basisflag, compress, quiet, statistics, mhflag, nolinenosflag, noResort, sqlFlag, printPP };
 
@@ -5061,11 +5063,13 @@ pub fn main() !void {
     if (p_check1 or p_symbols) {
         dprint("Sorted rules: {s}\n", .{lem.filename});
         var rp: ?*Rule = lem.rule;
+        var i: usize = 0;
         while (rp) |rule| : (rp = rule.next) {
-            dprint("{s} ({d})  ", .{ rule.lhs.name, rule.iRule });
+            dprint("{s} ({d})\n", .{ rule.lhs.name, rule.iRule });
+            i += 1;
         }
-        dprint("\n", .{});
-        dprint("nsymbols {d} nsymbol {d} nterminal {d}\n", .{ lem.nsymbol, lem.nsymbol, lem.nterminal });
+        dprint("Rule count: {d}\n", .{i});
+        dprint("nsymbol {d} nterminal {d}\n", .{ lem.nsymbol, lem.nterminal });
         for (lem.symbols[0..lem.nsymbol]) |symbol| {
             dprint("{s} ", .{symbol.name});
         }
@@ -5514,7 +5518,7 @@ fn Symbol_lessThanFn(_: void, a: *Symbol, b: *Symbol) bool {
     const a_val: u8 = if (a.type == .multiterminal) 3 else if (a.name[0] > 'Z') 2 else 1;
     const b_val: u8 = if (b.type == .multiterminal) 3 else if (b.name[0] > 'Z') 2 else 1;
     if (a_val < b_val) return true else if (a_val > b_val) return false;
-    return (a.index < b.index);
+    return (a.index > b.index);
 }
 
 //| [1300] configlist.c
