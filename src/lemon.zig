@@ -69,6 +69,8 @@ const p_check2 = false;
 const p_check_this = false;
 /// Possibly-useful prints which are ahead of the curve
 const p_check_next = false;
+/// Check the preprocessor.
+const p_pp = false;
 
 const p_debug = false;
 
@@ -1248,12 +1250,11 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         @memset(&used, false);
     }
     const alloc = lemp.allocator;
-    // XXX: This works for Pikchr, so you can scrape by, but it
-    // is wrong in general.  Replace with a stack fallback
-    // allocator and use Strsafe_find to free what you write.
-    // Mostly it will be on the stack anyway, so this is fine.
-    var string_builder: std.BoundedArray(u8, 1024) = .{};
-    const writer = string_builder.writer();
+    var fallback = std.heap.stackFallback(2048, alloc);
+    const f_alloc = fallback.get();
+    var string_builder: ArrayList(u8) = .empty;
+    defer string_builder.deinit(f_alloc);
+    const writer = string_builder.writer(f_alloc);
     if (rp.code.len == 0) {
         rp.code = "\n";
         rp.noCode = true;
@@ -1271,13 +1272,13 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
             if (p_check1) {
                 dprint("destructor: rp {s} {d}\n", .{ rp.lhs.name, rp.iRule });
             }
-            writer.print(
+            try writer.print(
                 "  yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
                 .{ rp.rhs[0].index, 1 - sint(rp.rhs.len) },
-            ) catch unreachable;
+            );
             alloc.free(rp.codePrefix);
-            rp.codePrefix = try Strsafe(string_builder.slice());
-            string_builder.clear();
+            rp.codePrefix = try Strsafe(string_builder.items);
+            string_builder.clearRetainingCapacity();
             rp.noCode = false;
         }
     } else if (rp.lhsalias.len == 0) {
@@ -1296,8 +1297,8 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
             lemp.errorcnt += 1;
         }
     } else {
-        writer.print("/*{s}-overwrites-{s}*/", .{ rp.lhsalias, rp.rhsalias[0] }) catch unreachable;
-        if (mem.indexOf(u8, string_builder.slice(), rp.code)) |skip_idx| {
+        try writer.print("/*{s}-overwrites-{s}*/", .{ rp.lhsalias, rp.rhsalias[0] });
+        if (mem.indexOf(u8, string_builder.items, rp.code)) |skip_idx| {
             // The code contains a special comment that indicates that it is safe
             // for the LHS label to overwrite left-most RHS label.
             zSkip = skip_idx;
@@ -1315,7 +1316,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         rc = true;
         zLhs = std.fmt.bufPrint(&zLhsBuf, "yylhsminor.yy{d}", .{rp.lhs.dtnum}) catch unreachable;
     }
-    string_builder.clear();
+    string_builder.clearRetainingCapacity();
     {
         // Build the translated code
         var i: usize = 0;
@@ -1389,8 +1390,8 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         try writer.writeAll(cp[start..]);
         // Main code generation completed
         // The previous value was also interned so it's freed at the end:
-        rp.code = try Strsafe(string_builder.slice());
-        string_builder.clear();
+        rp.code = try Strsafe(string_builder.items);
+        string_builder.clearRetainingCapacity();
     }
 
     // Check to make sure the LHS has been used
@@ -1443,7 +1444,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         try writer.print("{s};\n", .{zLhs});
     }
     // Suffix code generation complete
-    rp.codeSuffix = try Strsafe(string_builder.slice());
+    rp.codeSuffix = try Strsafe(string_builder.items);
     return rc;
 }
 
@@ -1721,7 +1722,7 @@ fn ReportTable(
     if (sqlflag) {
         // later
     }
-    const m_out_fh = try file_open(lemp, ".zig.c", .{});
+    const m_out_fh = try file_open(lemp, ".c", .{});
     if (m_out_fh) |fh| {
         defer fh.close();
         const f_writer = fh.writer();
@@ -1736,10 +1737,10 @@ fn ReportTable(
 
 //| XXX: dummy 'static' options, put an options table on Lemon
 
-const nDefineUsed: usize = 0; // %ifdef macros, NYI
-const bDefineUsed: []bool = &.{};
-const nDefine: usize = 0;
-const azDefine: [][]const u8 = &.{""};
+threadlocal var nDefineUsed: usize = 0; // %ifdef macros, NYI
+threadlocal var bDefineUsed: []bool = undefined;
+threadlocal var nDefine: usize = 0;
+threadlocal var azDefine: [][]const u8 = undefined;
 
 fn reportTableImpl(
     lemp: *Lemon,
@@ -2853,9 +2854,8 @@ const ActTable = struct {
                 var n: i32 = 0;
                 j = 0;
                 j_check: while (j < p.nAction) : (j += 1) {
-                    const jj: i32 = @intCast(j);
                     if (act_items[j].lookahead < 0) continue :j_check;
-                    if (act_items[j].lookahead == jj + p.mnLookahead - i) n += 1;
+                    if (act_items[j].lookahead == cast(i32, j) + p.mnLookahead - i) n += 1;
                 }
 
                 if (n == p.nLookahead) {
@@ -3624,8 +3624,200 @@ pub const PState = struct {
     }
 };
 
-// TODO: move the file stuff here, and use a stack psp like the OG
+const PpState = enum {
+    ok,
+    pp_syntax_error,
+};
+
+/// The text in the input is part of the argument to an %ifdef or %ifndef.
+/// Evaluate the text as a boolean expression.  Return true or false.
+/// Actually: returns one or zero, because the consumer uses the result
+/// variable to track nested ifdefs.
+fn eval_preprocessor_boolean(z: []const u8, lineno: usize) u8 {
+    var dummy: usize = 0;
+    return if (eval_impl(z, lineno, &dummy) catch unreachable) 1 else 0;
+}
+
+/// `progress` is some wacky thing, we're imitating the all-powerful
+/// C integer.
+fn eval_impl(z: []const u8, lineno: usize, progress: *usize) !bool {
+    var neg: bool = false; // Term is negated
+    var res: bool = false; // Result
+    var okTerm: bool = true; // Ok to have a term
+    var i: usize = 0;
+    const which: PpState = .ok;
+    goto: switch (which) {
+        .ok => {
+            scan: while (i < z.len) : (i += 1) {
+                const fwd = i + 1 < z.len;
+                const c = z[i];
+                if (isSpace(c)) continue :scan;
+                if (c == '!') {
+                    if (!okTerm) continue :goto .pp_syntax_error;
+                    neg = !neg;
+                    continue :scan;
+                }
+                if (c == '|' and fwd and z[i + 1] == '|') {
+                    if (okTerm) continue :goto .pp_syntax_error;
+                    if (res) return true;
+                    i += 1;
+                    okTerm = true;
+                    continue :scan;
+                }
+                if (c == '&' and fwd and z[i + 1] == '&') {
+                    if (okTerm) continue :goto .pp_syntax_error;
+                    if (!res) return false;
+                    i += 1;
+                    okTerm = true;
+                    continue :scan;
+                }
+                if (c == '(') {
+                    if (!okTerm) continue :goto .pp_syntax_error;
+                    var k = i + 1;
+                    var n: usize = 1;
+                    while (k < z.len) : (k += 1) {
+                        if (z[k] == ')') {
+                            n -= 1;
+                            if (n == 0) {
+                                var prog: usize = i;
+                                res = eval_impl(z[i..k], lineno, &prog) catch {
+                                    i = prog;
+                                    continue :goto .pp_syntax_error;
+                                };
+                                i = k;
+                                if (neg) {
+                                    res = !res;
+                                    neg = false;
+                                }
+                                continue :scan;
+                            }
+                        } else if (z[i] == '(') {
+                            n += 1;
+                        }
+                    } else continue :goto .pp_syntax_error;
+                }
+                if (isAlpha(c)) {
+                    var k = i + 1;
+                    while (k < z.len and (isAlnum(z[k]) or z[k] == '_')) : (k += 1) {}
+                    res = false;
+                    var j: usize = 0;
+                    check_defs: while (j < azDefine.len) : (j += 1) {
+                        if (strcmp(
+                            z[i..k],
+                            azDefine[j],
+                        )) {
+                            if (!bDefineUsed[j]) {
+                                bDefineUsed[j] = true;
+                                nDefineUsed += 1;
+                            }
+                            res = true;
+                            break :check_defs;
+                        }
+                    }
+                    i = k - 1;
+                    if (neg) {
+                        res = !res;
+                        neg = false;
+                    }
+                    okTerm = false;
+                    continue :scan;
+                }
+                continue :goto .pp_syntax_error;
+            }
+        },
+        .pp_syntax_error => {
+            if (progress.* == 0) {
+                dprint("%%if syntax error on line {d}.\n", .{lineno});
+                dprint("  {s} <-- syntax error here\n", .{z[i..]});
+            } else {
+                progress.* += i;
+                return error.ThisWasCWhatAreYouGonnaDo;
+            }
+        },
+    }
+    return res;
+}
+
+/// Run the preprocessor over the input file text.  The global variables
+/// azDefine[0] through azDefine[nDefine-1] contains the names of all defined
+/// macros.  This routine looks for "%ifdef" and "%ifndef" and "%endif" and
+/// comments them out.  Text in between is also commented out as appropriate.
+fn preprocess_input(z: [:0]u8) void {
+    var exclude: isize = 0; // Handles nested %ifdefs so not boolean
+    var start: usize = 0;
+    var lineno: usize = 1;
+    var start_lineno: usize = 1;
+    var i = start;
+    var j = start;
+    const zl = z.len;
+    scan: while (z[i] != 0) : (i += 1) {
+        if (z[i] == '\n') lineno += 1;
+        if (z[i] != '%' or (i > 0 and z[i - 1] != '\n')) continue :scan;
+        if (i + 6 <= zl and strcmp(z[i..][0..6], "%endif") and isSpace(z[i + 6])) {
+            if (exclude != 0) {
+                exclude -= 1; // Negative should be a problem here yeah?
+                if (p_pp) dprint("exclude now {d}\n", .{exclude});
+                if (exclude == 0) {
+                    if (p_pp) dprint("erasing:\n {s}\n", .{z[start..i]});
+                    j = start;
+                    while (j < i and z[j] != '\n') : (j += 1) z[j] = ' ';
+                }
+            }
+            j = i;
+            while (z[j] != 0 and z[j] != '\n') : (j += 1) z[j] = ' ';
+        } else if (i + 5 < zl and strcmp(z[i..][0..5], "%else") and isSpace(z[i + 5])) {
+            if (exclude == 1) {
+                exclude = 0;
+                j = start;
+                while (j < i and z[j] != '\n') : (j += 1) z[j] = ' ';
+            } else if (exclude == 0) {
+                exclude = 1;
+                start = i;
+                start_lineno = lineno;
+            }
+            j = i;
+            while (z[j] != 0 and z[j] != '\n') : (j += 1) z[j] = ' ';
+        } else if (i + 8 <= zl and
+            (strcmp(z[i..][0..7], "%ifdef ") or
+                strcmp(z[i..][0..4], "%if ") or
+                strcmp(z[i..][0..8], "%ifndef ")))
+        {
+            if (exclude != 0) {
+                exclude += 1;
+            } else {
+                j = i;
+                while (z[j] != ' ') : (j += 1) {}
+                const iBool = j;
+                const isNot = j == i + 7;
+                while (z[j] != 0 and z[j] != '\n') : (j += 1) {}
+                if (p_pp) dprint("preprocessor evaluates {s} ", .{z[iBool..j]});
+                exclude = eval_preprocessor_boolean(z[iBool..j], lineno);
+                if (p_pp) dprint("as {} ", .{exclude == 1});
+                if (!isNot) exclude = if (exclude == 1) 0 else 1;
+                if (p_pp) dprint("then {}\n", .{exclude == 1});
+                if (exclude == 1) {
+                    start = i;
+                    start_lineno = lineno;
+                }
+            }
+            j = i;
+            while (z[j] != 0 and z[j] != '\n') : (j += 1) z[j] = ' ';
+        }
+    }
+    if (exclude != 0) {
+        dprint("unterminated %ifdef starting on line {d}\n", .{start_lineno});
+        std.process.exit(1);
+    }
+}
+
+/// In spite of its name, this function is really a scanner.  It read
+/// in the entire input file (all at once) then tokenizes it.  Each
+/// token is passed to the function "parseonetoken" which builds all
+/// the appropriate data structures in the global state vector "gp".
 fn Parse(psp: *PState) !void {
+    // TODO: the original creates PState (and Lemon) on the stack,
+    // and does the former here, passing in the latter.  Cleanup should
+    // do likewise.
     const file = if (std.fs.cwd().openFile(psp.filename, .{})) |f| file: {
         break :file f;
     } else |err| {
@@ -3643,12 +3835,14 @@ fn Parse(psp: *PState) !void {
         std.process.exit(1);
     }
     // /* Make an initial pass through the file to handle %ifdef and %ifndef */
-    // preprocess_input(filebuf);
-    // if( gp->printPreprocessed ){
-    //   printf("%s\n", filebuf);
-    //   return;
-    // }
-    //
+    preprocess_input(filebuf);
+    if (psp.gp.printPreprocessed) {
+        const stdout = std.io.getStdOut();
+        const std_write = stdout.writer();
+        try std_write.print("{s}\n", .{filebuf});
+        return;
+    }
+
     try scan(psp, filebuf);
     if (psp.gp.nrule > 0) {
         psp.gp.rule = psp.firstrule.?;
@@ -4103,6 +4297,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                         break :slice zBuffer[0..0];
                     };
                     n += zLine.len + psp.gp.quoted_filename.len + 1; // newline
+                    if (zOld.len > 0 and zOld[zOld.len - 1] == '\n') n += 1; // also newline
                 }
                 // We put this back on declargslot and PSP once we know how long the
                 // slice actually should be.
@@ -4782,7 +4977,7 @@ pub fn main() !void {
 
     // These need to exist so that some later argument parser can
     // assign them.  That that point of course, variable, but one
-    // damn thing at a damn time.
+    // thing at a time.
     const version = true;
     const rpflag = true;
     const basisflag = true;
@@ -4796,6 +4991,14 @@ pub fn main() !void {
     const printPP = false;
     // Reconcile Zig to this unfortunate situation:
     _ = .{ version, rpflag, basisflag, compress, quiet, statistics, mhflag, nolinenosflag, noResort, sqlFlag, printPP };
+
+    // Add a dummy array to azDefine.  We're getting there...
+    azDefine = try allocator.alloc([]const u8, 1);
+    defer allocator.free(azDefine); // I think these strings belong to argv, TODO: confirm
+    azDefine[0] = "";
+    bDefineUsed = try allocator.alloc(bool, 1);
+    defer allocator.free(bDefineUsed);
+    bDefineUsed[0] = true; // TODO: all of this is nonsense, to be clear
 
     const args = try std.process.argsAlloc(allocator);
     // TODO: Quirk-compatible flags parser.  Do this last-ish.
