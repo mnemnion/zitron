@@ -2275,11 +2275,10 @@ fn reportTableImpl(
             const sp2 = lemp.symbols[j];
             if (sp2.type != .terminal and
                 sp2.dtnum == sp.dtnum and
-                sp2.destructor.len > 0) //and mem.eql(u8, sp.destructor, sp2.destructor))
+                sp2.destructor.len > 0 and mem.eql(u8, sp.destructor, sp2.destructor))
             {
                 try out.print("    case {d}: /* {s} */\n", .{ sp2.index, sp2.name });
                 lineno += 1;
-                if (p_debug) dprint("{s} #{d}: destLineno set to null\n", .{ sp2.name, sp2.index });
                 sp2.destLineno = null; // Avoid emitting this destructor again */
             }
         }
