@@ -55,6 +55,10 @@ const lemon_classic = true;
 const do_not_optimize_terminals = true;
 const print_aliases = false;
 
+/// Do we drift like lemon.c does?
+/// For now, yes: we do.
+const line_compat = true;
+
 //| Useful Constants
 
 const C_SPACE = " \t\n\r\x0b\x0c"; // C locale definition of isspace(3)
@@ -62,7 +66,7 @@ const C_SPACE = " \t\n\r\x0b\x0c"; // C locale definition of isspace(3)
 // Various print control variables
 
 /// Prints which are already passing
-const p_check1 = true;
+const p_check1 = false;
 /// Failing prints which I don't want to see
 const p_check2 = false;
 /// Prints I'm trying to get to pass
@@ -665,9 +669,8 @@ fn State_arrayof() []*State {
 }
 
 fn State_free() void {
-    for (state_map.safe.values()) |stp| {
-        Configlist_eat(stp.cfp, state_map.allocator);
-        Configlist_eat(stp.bp, state_map.allocator);
+    for (state_map.safe.values()) |st| {
+        state_map.allocator.destroy(st);
     }
     state_map.safe.deinit(state_map.allocator);
 }
@@ -708,6 +711,10 @@ fn Plink_copy(to: *?*PLink, from_in: ?*PLink) void {
         to.* = this_pl;
         from = nextpl;
     }
+}
+
+fn Plink_deinit() void {
+    plink_freelist.deinit();
 }
 
 /// Delete every plink on the list
@@ -1125,7 +1132,7 @@ fn tplt_xfer(name: []const u8, in: *[:0]const u8, out: anytype, lineno: *usize) 
 fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
     const h_idx = mem.indexOf(u8, in.*, "\n%%");
     if (h_idx) |i| {
-        lineno.* += mem.count(u8, in.*[0 .. i + 1], "\n");
+        if (line_compat) lineno.* += mem.count(u8, in.*[0 .. i + 1], "\n");
         in.* = in.*[i + 4 ..];
     } else {
         logger.err("Header of template file: /^%%/ not found", .{});
@@ -1549,11 +1556,11 @@ fn print_stack_union(
     // scan every symbol and count it to determine it.  Which in the original
     // also demands a scan of the string itself to count that length.
 
-    //   Build a hash table of datatypes. The ".dtnum" field of each symbol
-    //   is filled in with the hash index plus 1.  A ".dtnum" value of 0 is
-    //   used for terminal symbols.  If there is no %default_type defined then
-    //   0 is also used as the .dtnum value for nonterminals which do not specify
-    //   a datatype using the %type directive.
+    //  Build a hash table of datatypes. The ".dtnum" field of each symbol
+    //  is filled in with the hash index plus 1.  A ".dtnum" value of 0 is
+    //  used for terminal symbols.  If there is no %default_type defined then
+    //  0 is also used as the .dtnum value for nonterminals which do not specify
+    //  a datatype using the %type directive.
     hash: for (lemp.symbols[0..lemp.nsymbol]) |sp| {
         if (sp == lemp.errsym) {
             sp.dtnum = arraysize + 1;
@@ -1796,6 +1803,7 @@ fn reportTableImpl(
         // free(incName);
     }
     try tplt_xfer(lemp.name, &in, out, &lineno);
+    if (line_compat) lineno -= 1; // hehe
     // Generate #defines for all tokens
     const prefix = if (lemp.tokenprefix.len > 0) lemp.tokenprefix else "";
     if (mhflag) {
@@ -2042,6 +2050,7 @@ fn reportTableImpl(
             if (j == 9) {
                 try out.writeByte('\n');
                 j = 0;
+                lineno += 1;
             } else {
                 j += 1;
             }
@@ -2633,7 +2642,7 @@ const Lemon = struct {
 
     pub fn destroy(gp: *Lemon, allocator: Allocator) void {
         allocator.free(gp.symbols);
-        allocator.free(gp.sorted);
+        // allocator.free(gp.sorted);
         allocator.free(gp.name);
         allocator.free(gp.arg);
         allocator.free(gp.ctx);
@@ -4990,13 +4999,13 @@ pub fn main() !void {
     defer action_allocator.deinit();
     Configlist_init(allocator, .init(std.heap.page_allocator));
     defer {
-        Configlist_reset();
+        Configlist_deinit();
     }
     cf_ls.allocator = allocator;
     plink_freelist = .init(std.heap.page_allocator);
     is_plink_freelist = true;
     defer {
-        plink_freelist.deinit();
+        Plink_deinit();
         is_plink_freelist = false;
     }
     try plink_freelist.preheat(100);
@@ -5241,7 +5250,7 @@ pub fn main() !void {
     //
     // Which is adequately straightforward imho.
     //
-    //std.process.cleanExit();
+    // std.process.cleanExit();
     std.process.exit(0);
 }
 
@@ -5635,6 +5644,13 @@ fn Configlist_init(allocator: Allocator, pool: MemoryPool(Config)) void {
     cf_ls.basis = null;
     cf_ls.basisend = &cf_ls.basis;
     cf_ls.config_table = .empty;
+}
+
+fn Configlist_deinit() void {
+    dbgassert(is_a_configlists);
+    defer is_a_configlists = false;
+    cf_ls.config_table.clearAndFree(cf_ls.allocator);
+    cf_ls.pool.deinit();
 }
 
 fn Configlist_reset() void {
