@@ -520,12 +520,10 @@ const Action = struct {
         }
         {
             // otherwise... raw pointer comparison??
-            // Let's see if this ever needs to happen:
-            dprint("action sort: raw pointer comparison is reachable\n", .{});
-            // .. and then not do it.
-            return ap1.age <= ap2.age; // Equal is impossible but ¯\_(ツ)_/¯
+            // Turns up in the SQLite parser, but this works too:
+            return ap1.age < ap2.age;
             // This is the order they're subtracted in the original:
-            //if (@intFromPtr(ap2) > @intFromPtr(ap1)) return false;
+            // return (@intFromPtr(ap2) < @intFromPtr(ap1));
         }
     }
 };
@@ -1297,8 +1295,9 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
             lemp.errorcnt += 1;
         }
     } else {
+        string_builder.clearRetainingCapacity();
         try writer.print("/*{s}-overwrites-{s}*/", .{ rp.lhsalias, rp.rhsalias[0] });
-        if (mem.indexOf(u8, string_builder.items, rp.code)) |skip_idx| {
+        if (mem.indexOf(u8, rp.code, string_builder.items)) |skip_idx| {
             // The code contains a special comment that indicates that it is safe
             // for the LHS label to overwrite left-most RHS label.
             zSkip = skip_idx;
@@ -1327,12 +1326,14 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
             if (i == zSkip) {
                 special_start = i;
                 dbgassert(cp[i] == '/');
+                i += 2;
+                while (i < cp.len and (cp[i] != '/' or cp[i - 1] != '*')) : (i += 1) {}
                 i += 1;
-                while (cp[i] != '/' and cp[i - 1] != '*') : (i += 1) {}
                 try writer.writeAll(cp[start..i]);
                 start = i;
                 special_end = i;
                 dontUseRhs0 = true;
+                continue;
             }
             if ((isAlpha(cp[i]) or cp[i] == '@') and
                 (i == 0 or (!isAlnum(cp[i - 1]) and cp[i] - 1 != '_')))
@@ -1678,9 +1679,7 @@ pub const AxSet = struct {
 fn axset_compare(_: void, p1: AxSet, p2: AxSet) bool {
     if (p1.nAction > p2.nAction) return true;
     if (p1.nAction < p2.nAction) return false;
-    if (p1.iOrder < p2.iOrder) return true;
-    if (p1.iOrder > p2.iOrder) return false;
-    return true;
+    return p1.iOrder < p2.iOrder;
 }
 
 // /*
@@ -2634,6 +2633,7 @@ const Lemon = struct {
     }
 
     pub fn destroy(gp: *Lemon, allocator: Allocator) void {
+        allocator.free(gp.symbols);
         allocator.free(gp.sorted);
         allocator.free(gp.name);
         allocator.free(gp.arg);
@@ -2784,6 +2784,7 @@ const ActTable = struct {
         tab.nLookahead += 1;
     }
 
+    threadlocal var a_ct: usize = 0;
     // [683]
     /// Add the transaction set built up with prior calls to acttab_action()
     /// into the current action table.  Then reset the transaction set back
@@ -2801,10 +2802,12 @@ const ActTable = struct {
     ///
     pub fn insert(p: *ActTable, makeItSafe: bool) !int {
         if (p_check1) {
-            dprint("Acttab: mnLookahead {d}\n", .{p.mnLookahead});
+            a_ct += 1;
+            dprint("({d}) Acttab: mnLookahead {d}\n", .{ a_ct, p.mnLookahead });
             dprint("Acttab: mxLookahead {d}\n", .{p.mxLookahead});
             dprint("Acttab: mnAction {d}\n", .{p.mnAction});
             dprint("Acttab: nAction {d}\n", .{p.nAction});
+            dprint("Acttab: nLookahead {d}\n", .{p.nLookahead});
             if (makeItSafe) {
                 dprint("make it safe.\n", .{});
             } else {
@@ -3235,6 +3238,9 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
         // /* The state "newstp" is reached from the state "stp" by a shift action
         // ** on the symbol "sp" */
         if (sp.type == .multiterminal) {
+            if (p_check2) {
+                dprint("buildshifts: adding state {s}\n", .{sp.name});
+            }
             for (sp.subsym) |subsym| {
                 try Action.addState(&stp.ap, .shift, subsym, newstp);
             }
@@ -3857,7 +3863,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
     // This seems to be presumed (?)
     assert(x.len != 0);
     if (p_print) std.debug.print("state: {s}  ", .{@tagName(psp.state)});
-    if (p_print) if (x.len < 50) {
+    if (p_check1) if (x.len < 50) {
         std.debug.print("token: {s}\n", .{x});
     } else {
         std.debug.print("token: {s}...\n", .{x[0..50]});
@@ -4529,9 +4535,9 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
         // Skip C style comments
         if (fb[i] == '/' and fb[i + 1] == '*') {
             i += 2;
-            if (fb[i] != 0) break :scanning;
+            if (fb[i] == 0) break :scanning;
             if (fb[i] == '*') i += 1;
-            if (fb[i] != 0) break :scanning;
+            if (fb[i] == 0) break :scanning;
             while (fb[i] != 0 and (fb[i] != '/' or fb[i - 1] != '*')) : (i += 1) {
                 if (fb[i] == '\n') lineno += 1;
             }
@@ -4652,13 +4658,26 @@ fn CompressTables(lemp: *Lemon) !void {
             //
         }
         if (nbest < 1 or usesWildcard) continue :states;
+
+        if (p_check1) dprint("can optimize State {d}\n", .{stp.statenum});
+
+        if (p_check1) {
+            m_ap = stp.ap;
+            const stderr = std.io.getStdErr().writer();
+            while (m_ap) |ap| : (m_ap = ap.next) {
+                _ = try PrintAction(stderr, ap, 0);
+            }
+            m_ap = stp.ap;
+        }
         // Combine matching REDUCE actions into a single default.
         m_ap = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
             if (ap.type == .reduce and ap.x.rp == rbest) break;
         }
         dbgassert(m_ap != null);
+        if (p_check1) dprint("old symbol name {s}\n", .{m_ap.?.sp.name});
         m_ap.?.sp = try Symbol_new("{default}");
+        if (p_check1) dprint("new symbol name {s}\n", .{m_ap.?.sp.name});
         m_ap = m_ap.?.next;
         while (m_ap) |ap| : (m_ap = ap.next) {
             if (ap.type == .reduce and ap.x.rp == rbest) {
@@ -4667,6 +4686,7 @@ fn CompressTables(lemp: *Lemon) !void {
         }
         stp.ap = if (stp.ap) |ap| Action.sort(ap) else null;
         m_ap = stp.ap;
+
         while (m_ap) |ap| : (m_ap = ap.next) {
             if (ap.type == .shift) break;
             if (ap.type == .reduce and ap.x.rp != rbest) break;
@@ -4695,7 +4715,6 @@ fn CompressTables(lemp: *Lemon) !void {
     // then we can go ahead and convert the action to be the same as the
     // action for the RHS of the rule.
     //
-    // TODO: do_not_optimize_terminals
     for (lemp.sorted) |stp| {
         var m_ap: ?*Action = stp.ap;
         var nextap: ?*Action = null;
@@ -4834,6 +4853,14 @@ fn Compute_actiontable(lemp: *Lemon) !*ActTable {
     // of placing the largest action sets first */
     for (0..lemp.nxstate * 2) |i| ax[i].iOrder = @intCast(i);
     mem.sort(AxSet, ax, {}, axset_compare);
+    if (p_check1) {
+        dprint("Action table: ", .{});
+        for (ax) |an_x| {
+            dprint("{d} ", .{an_x.iOrder});
+        }
+        dprint("\n", .{});
+        dprint("nterminal {d} nsymbol {d}\n", .{ lemp.nterminal, lemp.nsymbol });
+    }
     const pActtab = try ActTable.create(lemp.allocator, lemp.nsymbol, lemp.nterminal);
     errdefer pActtab.destroy();
     var i: usize = 0;
@@ -4841,27 +4868,43 @@ fn Compute_actiontable(lemp: *Lemon) !*ActTable {
         const stp = ax[i].stp;
         if (ax[i].isTkn) {
             var m_ap: ?*Action = stp.ap;
+            var j: usize = 0;
             actions: while (m_ap) |ap| : (m_ap = ap.next) {
                 if (ap.sp.index >= lemp.nterminal) continue :actions;
+                if (p_check1) j += 1;
                 if (p_debug) dprint("adding >= nterminal type {s}\n", .{@tagName(ap.type)});
                 const m_action = compute_action(lemp, ap);
                 if (m_action) |action| {
                     try pActtab.action(ap.sp.index, @intCast(action));
                 }
             }
+            if (p_check1) {
+                dprint("token: State {d} with {d} actions\n", .{ stp.statenum, j });
+            }
             stp.iTknOfst = try pActtab.insert(true);
             if (stp.iTknOfst < mnTknOfst) mnTknOfst = stp.iTknOfst;
             if (stp.iTknOfst > mxTknOfst) mxTknOfst = stp.iTknOfst;
         } else {
+            var j: usize = 0;
             var m_ap: ?*Action = stp.ap;
+            if (p_check1) {
+                dprint("nonterminal action list:", .{});
+            }
             actions: while (m_ap) |ap| : (m_ap = ap.next) {
+                if (p_check1) {
+                    dprint(" {s}", .{ap.sp.name});
+                }
                 if (ap.sp.index < lemp.nterminal) continue :actions;
                 if (ap.sp.index == lemp.nsymbol) continue :actions;
+                if (p_check1) j += 1;
                 if (p_debug) dprint("adding < nterminal type {s}\n", .{@tagName(ap.type)});
                 const m_action = compute_action(lemp, ap);
                 if (m_action) |action| {
                     try pActtab.action(ap.sp.index, @intCast(action));
                 }
+            }
+            if (p_check1) {
+                dprint("\n nonterminal: State {d} with {d} actions\n", .{ stp.statenum, j });
             }
             stp.iNtOfst = try pActtab.insert(false);
             if (stp.iNtOfst < mnNtOfst) mnNtOfst = stp.iNtOfst;
@@ -4989,7 +5032,7 @@ pub fn main() !void {
     const nolinenosflag = false;
     const noResort = false;
     const sqlFlag = false;
-    const printPP = true;
+    const printPP = false;
     // Reconcile Zig to this unfortunate situation:
     _ = .{ version, rpflag, basisflag, compress, quiet, statistics, mhflag, nolinenosflag, noResort, sqlFlag, printPP };
 
@@ -5042,7 +5085,7 @@ pub fn main() !void {
 
     // Count and index the symbols of the grammar
     _ = try Symbol_new("{default}");
-    lem.symbols = Symbol_arrayof();
+    lem.symbols = try Symbol_arrayof(allocator);
     sort(*Symbol, lem.symbols, {}, Symbol_lessThanFn);
     if (p_symbols) for (lem.symbols) |symbol| {
         std.debug.print("{s} ", .{symbol.name});
@@ -5065,7 +5108,7 @@ pub fn main() !void {
         var rp: ?*Rule = lem.rule;
         var i: usize = 0;
         while (rp) |rule| : (rp = rule.next) {
-            dprint("{s} ({d})\n", .{ rule.lhs.name, rule.iRule });
+            dprint("~~~ {s} ({d})\n", .{ rule.lhs.name, rule.iRule });
             i += 1;
         }
         dprint("Rule count: {d}\n", .{i});
@@ -5147,6 +5190,16 @@ pub fn main() !void {
     try FindActions(lem);
     // Compress the action tables
     if (compress) try CompressTables(lem);
+    if (p_check1) {
+        for (lem.sorted[0..lem.nstate]) |stp| {
+            dprint("State {d}:", .{stp.statenum});
+            var m_ap: ?*Action = stp.ap;
+            while (m_ap) |ap| : (m_ap = ap.next) {
+                dprint(" {s}", .{ap.sp.name});
+            }
+            dprint("\n", .{});
+        }
+    }
     // Reorder and renumber the states so that states with fewer choices
     // occur at the end.  This is an optimization that helps make the
     // generated parser tables smaller.
@@ -5492,9 +5545,14 @@ fn Symbol_find(str: []const u8) ?*Symbol {
     return symbol_map.safe.get(str);
 }
 
-fn Symbol_arrayof() []*Symbol {
+// TODO: It's just default that we need, I could probably
+// cache that pointer on the lemon and use it instead.
+fn Symbol_arrayof(allocator: Allocator) ![]*Symbol {
     dbgassert(is_symbol_map);
-    return symbol_map.safe.values();
+    const vals = symbol_map.safe.values();
+    const new_vals = try allocator.alloc(*Symbol, vals.len);
+    @memcpy(new_vals, vals);
+    return new_vals;
 }
 
 // /* Compare two symbols for sorting purposes.  Return negative,
