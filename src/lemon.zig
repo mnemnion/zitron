@@ -670,6 +670,8 @@ fn State_arrayof() []*State {
 
 fn State_free() void {
     for (state_map.safe.values()) |st| {
+        Configlist_freesets(st.cfp, state_map.allocator);
+        Configlist_freesets(st.bp, state_map.allocator);
         state_map.allocator.destroy(st);
     }
     state_map.safe.deinit(state_map.allocator);
@@ -765,6 +767,7 @@ fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM!
 /// to the stream.
 fn file_open(lemp: *Lemon, suffix: []const u8, mode: File.CreateFlags) OOM!?File {
     if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
+    if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
     try file_makename(lemp, suffix, null); // TODO: decide how to handle outputDir
     const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
         lemp.errorcnt += 1;
@@ -1497,7 +1500,7 @@ fn emit_code(out: anytype, rp: *Rule, lemp: *Lemon, lineno: *usize) !void {
 /// Handle any crazy-pants filenames we might happen to encounter.
 fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
     var a_list: ArrayList(u8) = .empty;
-    errdefer a_list.deinit(allocator);
+    defer a_list.deinit(allocator);
     try a_list.ensureTotalCapacity(allocator, filename.len + 2);
     const writer = a_list.writer(allocator);
     var i: usize = 0;
@@ -2636,11 +2639,18 @@ const Lemon = struct {
         errdefer allocator.free(gp.tokenprefix);
         gp.reallocFunc = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.reallocFunc);
+        gp.freeFunc = try allocator.alloc(u8, 0);
         gp.argv = undefined; // populated by std.process.argsAlloc.
         return gp;
     }
 
     pub fn destroy(gp: *Lemon, allocator: Allocator) void {
+        var m_rp: ?*Rule = gp.rule;
+        var rp_next = m_rp;
+        while (m_rp) |rp| : (m_rp = rp_next) {
+            rp_next = rp.next;
+            rp.destroy(allocator);
+        }
         allocator.free(gp.symbols);
         // allocator.free(gp.sorted);
         allocator.free(gp.name);
@@ -2663,6 +2673,7 @@ const Lemon = struct {
         allocator.free(gp.quoted_outname);
         allocator.free(gp.tokenprefix);
         allocator.free(gp.reallocFunc);
+        allocator.free(gp.freeFunc);
         allocator.destroy(gp);
     }
 };
@@ -3117,21 +3128,21 @@ fn getstate(lemp: *Lemon) Allocator.Error!*State {
     // Extract the sorted basis of the new state.  The basis was constructed
     // by prior calls to "Configlist_addbasis()".
     Configlist_sortbasis();
-    const maybe_bp = Configlist_basis();
+    const bp = Configlist_basis();
     if (p_check1) {
         state_count += 1;
         dprint("State basis {d}: ", .{state_count});
-        var mbp = maybe_bp;
-        while (mbp) |bp| : (mbp = bp.bp) {
-            if (bp.dot < bp.rp.rhs.len) {
-                dprint("{s}:{d} #({d}) {s} ", .{ bp.rp.lhs.name, bp.rp.iRule, bp.dot, bp.rp.rhs[bp.dot].name });
+        var m_bp: ?*Config = bp;
+        while (m_bp) |a_bp| : (m_bp = a_bp.bp) {
+            if (a_bp.dot < a_bp.rp.rhs.len) {
+                dprint("{s}:{d} #({d}) {s} ", .{ a_bp.rp.lhs.name, a_bp.rp.iRule, a_bp.dot, a_bp.rp.rhs[a_bp.dot].name });
             } else {
-                dprint("{s}:{d} #({d}) [end] ", .{ bp.rp.lhs.name, bp.rp.iRule, bp.dot });
+                dprint("{s}:{d} #({d}) [end] ", .{ a_bp.rp.lhs.name, a_bp.rp.iRule, a_bp.dot });
             }
         }
         dprint("\n", .{});
     }
-    const maybe_stp = if (maybe_bp) |bp| State_find(bp) else null;
+    const maybe_stp = State_find(bp);
     if (maybe_stp) |stp| {
         if (p_check1) {
             dprint("  state found: {d}\n", .{stp.statenum});
@@ -3139,7 +3150,7 @@ fn getstate(lemp: *Lemon) Allocator.Error!*State {
         // A state with the same basis already exists!  Copy all the follow-set
         // propagation links from the state under construction into the
         // preexisting state, then return a pointer to the preexisting state
-        var maybe_x: ?*Config = maybe_bp;
+        var maybe_x: ?*Config = bp;
         var maybe_y: ?*Config = stp.bp;
         while (maybe_x != null and maybe_y != null) {
             const x = maybe_x.?;
@@ -3172,12 +3183,12 @@ fn getstate(lemp: *Lemon) Allocator.Error!*State {
             dprint(" ({d})\n", .{cfp_count});
         }
         const stp = try State_new(); //  A new state structure */
-        stp.bp = maybe_bp.?;
+        stp.bp = bp;
         stp.cfp = cfp;
         stp.statenum = lemp.nstate;
         lemp.nstate += 1;
         stp.ap = null;
-        dbgassert(try State_insert(stp, stp.bp.?));
+        dbgassert(try State_insert(stp, bp));
         try buildshifts(lemp, stp);
         return stp;
     }
@@ -3628,12 +3639,6 @@ pub const PState = struct {
     pub fn destroy(ps: *PState) void {
         ps.allocator.free(ps.rhs);
         ps.allocator.free(ps.alias);
-        var rule_p = ps.firstrule;
-        while (rule_p) |r| {
-            const next = r.next;
-            r.destroy(ps.allocator);
-            rule_p = next;
-        }
         ps.allocator.destroy(ps);
     }
 };
@@ -5250,8 +5255,8 @@ pub fn main() !void {
     //
     // Which is adequately straightforward imho.
     //
-    // std.process.cleanExit();
-    std.process.exit(0);
+    std.process.cleanExit();
+    // std.process.exit(0);
 }
 
 //| [1809] MergeSort
@@ -5818,11 +5823,11 @@ fn Configlist_return() ?*Config {
 
 /// Return a pointer to the head of the configuration basis list
 /// and reset the list.
-fn Configlist_basis() ?*Config {
+fn Configlist_basis() *Config {
     const old = cf_ls.basis;
     cf_ls.basis = null;
     cf_ls.basisend.* = cf_ls.basis;
-    return old;
+    return old.?;
 }
 
 /// Free all elements of the given configuration list.
@@ -5834,6 +5839,16 @@ fn Configlist_eat(cfp: ?*Config, allocator: Allocator) void {
         dbgassert(this_cfp.bplp == null);
         if (this_cfp.fws.len > 0) allocator.free(this_cfp.fws);
         deleteconfig(this_cfp);
+    }
+}
+
+/// Free all sets in a Configuration list
+fn Configlist_freesets(cfp: ?*Config, allocator: Allocator) void {
+    var nextcfp: ?*Config = cfp;
+    while (nextcfp) |this_cfp| {
+        nextcfp = this_cfp.next;
+        if (this_cfp.fws.len > 0) allocator.free(this_cfp.fws);
+        this_cfp.fws.len = 0;
     }
 }
 
