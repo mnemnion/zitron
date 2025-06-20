@@ -468,8 +468,6 @@ const Action = struct {
     spOpt: ?*Symbol = null,
     /// Next action for this state
     next: ?*Action = null,
-    /// Next action with the same hash
-    collide: ?*Action = null,
     /// Tie-breaker in sorting
     age: usize,
 
@@ -3623,19 +3621,20 @@ pub const PState = struct {
     pub fn create(allocator: Allocator, gp: *Lemon) !*PState {
         var psp = try allocator.create(PState);
         errdefer allocator.destroy(psp);
-        psp.* = .empty;
-        psp.allocator = allocator;
-        psp.gp = gp;
-        psp.rhs = try allocator.alloc(*Symbol, MAXRHS);
-        errdefer allocator.free(psp.rhs);
-        psp.alias = try allocator.alloc([]const u8, MAXRHS);
-        errdefer allocator.free(psp.alias);
+        try psp.setup(gp);
         return psp;
     }
 
-    // No clue how to dispose of things yet. But I think the answer is that Symbols all
-    // live in the intern pool, with the strings, and we just nuke 'em at the end.
-    // So...
+    pub fn setup(psp: *PState, gp: *Lemon) !void {
+        psp.* = .empty;
+        psp.allocator = gp.allocator;
+        psp.gp = gp;
+        psp.rhs = try gp.allocator.alloc(*Symbol, MAXRHS);
+        errdefer gp.allocator.free(psp.rhs);
+        psp.alias = try gp.allocator.alloc([]const u8, MAXRHS);
+        errdefer gp.allocator.free(psp.alias);
+    }
+
     pub fn destroy(ps: *PState) void {
         ps.allocator.free(ps.rhs);
         ps.allocator.free(ps.alias);
@@ -3650,15 +3649,19 @@ const PpState = enum {
 
 /// The text in the input is part of the argument to an %ifdef or %ifndef.
 /// Evaluate the text as a boolean expression.  Return true or false.
-/// Actually: returns one or zero, because the consumer uses the result
-/// variable to track nested ifdefs.
+/// Actually (zig edition): returns one or zero, because the consumer uses the
+/// result variable to track nested ifdefs.
 fn eval_preprocessor_boolean(z: []const u8, lineno: usize) u8 {
     var dummy: usize = 0;
     return if (eval_impl(z, lineno, &dummy) catch unreachable) 1 else 0;
 }
 
+// TODO: Re-evaluate all of this once have a reproducing case for the
+// error message.
+
 /// `progress` is some wacky thing, we're imitating the all-powerful
-/// C integer.
+/// C integer. If 0 we're not in a recursive call, if positive, we
+/// are.
 fn eval_impl(z: []const u8, lineno: usize, progress: *usize) !bool {
     var neg: bool = false; // Term is negated
     var res: bool = false; // Result
@@ -3747,6 +3750,7 @@ fn eval_impl(z: []const u8, lineno: usize, progress: *usize) !bool {
         .pp_syntax_error => {
             if (progress.* == 0) {
                 dprint("%%if syntax error on line {d}.\n", .{lineno});
+                // We already sliced z down to one line, so this is fine
                 dprint("  {s} <-- syntax error here\n", .{z[i..]});
             } else {
                 progress.* += i;
@@ -4948,7 +4952,20 @@ fn Compute_actiontable(lemp: *Lemon) !*ActTable {
     return pActtab;
 }
 
-//| [5230] Set manipulation
+const Options = struct {
+    version: bool = false,
+    rpflag: bool = false,
+    mhflag: bool = false,
+    no_compress: bool = false,
+    print_pp: bool = false,
+    no_linenos: bool = false,
+    quiet: bool = false,
+    statistics: bool = false,
+    sql_flag: bool = false,
+    only_basis: bool = false,
+    no_resort: bool = false,
+};
+
 //|
 //| This is actually pretty straightforward, we use a []bool instead of a
 //| *char but same same.  It can probably be refined later but honestly
@@ -4990,24 +5007,27 @@ fn SetUnion(s1: []bool, s2: []bool) bool {
 }
 
 pub fn main() !void {
-    // We begin, as always, with the Allocator Dance
-    var dbga: std.heap.DebugAllocator(.{}) = .init;
+    var gpa = gpa: {
+        if (is_debug) {
+            const dbgpa: std.heap.DebugAllocator(.{}) = .init;
+            break :gpa dbgpa;
+        } else {
+            break :gpa std.heap.smp_allocator;
+        }
+    };
     defer {
-        assert(.ok == dbga.deinit());
+        if (is_debug) assert(.ok == gpa.deinit());
     }
-    // TODO: Use dbga for debug builds and page otherwise, use smp (?!)
-    // for not-pools.
-
+    const allocator = if (is_debug) gpa.allocator() else gpa;
     // Set up pools.
-    const allocator = dbga.allocator();
-    action_allocator = ActionAllocator.init(std.heap.page_allocator);
+    action_allocator = .init(if (is_debug) allocator else std.heap.page_allocator);
     defer action_allocator.deinit();
-    Configlist_init(allocator, .init(std.heap.page_allocator));
+    Configlist_init(allocator, .init(if (is_debug) allocator else std.heap.page_allocator));
     defer {
         Configlist_deinit();
     }
     cf_ls.allocator = allocator;
-    plink_freelist = .init(std.heap.page_allocator);
+    plink_freelist = .init(if (is_debug) allocator else std.heap.page_allocator);
     is_plink_freelist = true;
     defer {
         Plink_deinit();
@@ -5033,7 +5053,7 @@ pub fn main() !void {
     }
 
     // These need to exist so that some later argument parser can
-    // assign them.  That that point of course, variable, but one
+    // assign them.  At that point of course, variable, but one
     // thing at a time.
     const version = true;
     const rpflag = true;
