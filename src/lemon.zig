@@ -2430,6 +2430,8 @@ fn reportTableImpl(
 const Lemon = struct {
     /// Allocator
     allocator: Allocator,
+    /// Command-line options
+    opt: Options,
     /// Table of states sorted by state number
     sorted: []*State,
     /// List of all rules
@@ -2544,6 +2546,7 @@ const Lemon = struct {
 
     pub const empty: Lemon = .{
         .allocator = undefined,
+        .opt = .{},
         .sorted = &.{},
         .rule = undefined,
         .startRule = undefined,
@@ -4959,12 +4962,98 @@ const Options = struct {
     no_compress: bool = false,
     print_pp: bool = false,
     no_linenos: bool = false,
+    show_precedence_conflict: bool = false,
     quiet: bool = false,
     statistics: bool = false,
     sql_flag: bool = false,
     only_basis: bool = false,
     no_resort: bool = false,
+    user_templatename: []const u8 = "",
+    output_directory: []const u8 = "",
+    azDefine: [][]const u8 = undefined,
+    bDefineUsed: []bool = undefined,
+
+    pub fn deinit(o: *Options, alloc: Allocator) void {
+        alloc.free(o.azDefine);
+        alloc.free(o.bDefineUsed);
+    }
 };
+
+fn handleflags(opt: *Options, flag: u8, arg: []const u8, allocator: Allocator) !usize {
+    switch (flag) {
+        'b' => opt.only_basis = true,
+        'c' => opt.no_compress = true,
+        'd' => {
+            if (arg.len > 0) {
+                opt.output_directory = arg;
+            } else {
+                return 1;
+            }
+        },
+        'D' => {
+            if (arg.len > 0) {
+                opt.azDefine = try allocator.realloc(opt.azDefine, opt.azDefine.len + 1);
+                opt.azDefine[opt.azDefine.len - 1] = arg;
+                opt.bDefineUsed = try allocator.realloc(opt.bDefineUsed, opt.bDefineUsed.len + 1);
+                opt.bDefineUsed[opt.bDefineUsed.len - 1] = false;
+            } else {
+                return 1;
+            }
+        },
+        'E' => opt.print_pp = true,
+        'f' => {}, // Ignored,
+        'g' => opt.rpflag = true,
+        'I' => {},
+        'm' => opt.mhflag = true,
+        'l' => opt.no_linenos = true,
+        'O' => {},
+        'p' => opt.show_precedence_conflict = true,
+        'q' => opt.quiet = true,
+        'r' => opt.no_resort = true,
+        's' => opt.statistics = true,
+        'S' => opt.sql_flag = true,
+        'x' => opt.version = true,
+        'T' => {
+            if (arg.len > 0) {
+                opt.user_templatename = arg;
+            } else {
+                return 1;
+            }
+        },
+        'W' => {},
+        else => return 1,
+    }
+    return 0;
+}
+
+fn handleswitch(opt: *Options, arg: []const u8, allocator: Allocator) !usize {
+    const opt_t = arg[0];
+    const eq_idx = mem.indexOfScalar(u8, arg, '=').?;
+    if (eq_idx + 1 == arg.len) return 1;
+    const opt_rest = arg[eq_idx + 1 ..];
+    return try handleflags(opt, opt_t, opt_rest, allocator);
+}
+
+fn OptInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !void {
+    var errcnt: usize = 0;
+
+    for (args) |arg| {
+        if (arg.len < 2) {
+            errcnt += 1;
+            continue;
+        }
+        if (arg[0] == '+' or arg[0] == '-') {
+            errcnt += try handleflags(opt, arg[1], arg[2..], allocator);
+        } else if (mem.indexOfScalar(u8, arg, '=')) |_| {
+            errcnt += try handleswitch(opt, arg, allocator);
+        }
+    }
+    if (errcnt > 0) {
+        dprint("Valid command-line options for {s} are:\n", .{args[0]});
+        // OptPrint();
+    }
+    return;
+}
 
 //|
 //| This is actually pretty straightforward, we use a []bool instead of a
@@ -5078,19 +5167,28 @@ pub fn main() !void {
     bDefineUsed[0] = true; // TODO: all of this is nonsense, to be clear
 
     const args = try std.process.argsAlloc(allocator);
-    // TODO: Quirk-compatible flags parser.  Do this last-ish.
-    // [1636-1689] - todo
     defer std.process.argsFree(allocator, args);
     const filename: []const u8 = file: {
         if (args.len >= 1) {
             break :file args[1];
         } else {
-            std.debug.print("lemon.zig needs a filename\n", .{});
-            std.process.exit(1);
+            dprint("lemon.zig needs a filename\n", .{});
+            exit(1);
         }
     };
-    var lem = try Lemon.create(allocator);
+    var opts: Options = .{};
+    {
+        opts.azDefine = try allocator.alloc([]const u8, 0);
+        errdefer allocator.free(opts.azDefine);
+        opts.bDefineUsed = try allocator.alloc(bool, 0);
+    }
+    var lem = lemon: {
+        errdefer opts.deinit(allocator);
+        break :lemon try Lemon.create(allocator);
+    };
     defer lem.destroy(allocator);
+    lem.opt = opts;
+    try OptInit(&lem.opt, args, allocator);
     lem.argv = args;
     lem.filename = filename;
     lem.quoted_filename = try esc_filename(allocator, filename);
