@@ -11,6 +11,14 @@
 //! which will ultimately be a Zig code generator and use idiomatic
 //! Zig (lemon.zig will be fairly C flavored by comparison).
 //!
+//! The author and translator of this program disclaim copyright.
+//!
+//!  In place of a legal notice, here is a blessing:
+//!
+//!    May you do good and not evil.
+//!    May you find forgiveness for yourself and forgive others.
+//!    May you share freely, never taking more than you give.
+//!
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -66,7 +74,7 @@ const C_SPACE = " \t\n\r\x0b\x0c"; // C locale definition of isspace(3)
 // Various print control variables
 
 /// Prints which are already passing
-const p_check1 = false;
+const p_check1 = true;
 /// Failing prints which I don't want to see
 const p_check2 = false;
 /// Prints I'm trying to get to pass
@@ -736,7 +744,7 @@ fn Plink_delete(plp_delete: ?*PLink) void {
 /// name comes from malloc() and must be freed by the calling
 /// function.  Quote outname for line directives, and assign the
 /// filenames to the correct fields of `lemp`.
-fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM!void {
+fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
     var buf = ArrayList(u8){};
     errdefer buf.deinit(lemp.allocator);
 
@@ -757,16 +765,18 @@ fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM!
     try w.print("{s}{s}", .{ filename, suffix });
 
     lemp.outname = try buf.toOwnedSlice(lemp.allocator);
-    lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
+    if (escape) lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
 }
 
 /// Open a file with a name based on the name of the input file,
 /// but with a different (specified) suffix, and return a pointer
 /// to the stream.
-fn file_open(lemp: *Lemon, suffix: []const u8, mode: File.CreateFlags) OOM!?File {
-    if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
-    if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
-    try file_makename(lemp, suffix, null); // TODO: decide how to handle outputDir
+fn file_open(lemp: *Lemon, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
+    if (escape) {
+        if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
+        if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
+    }
+    try file_makename(lemp, suffix, null, escape); // TODO: decide how to handle outputDir
     const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
         lemp.errorcnt += 1;
         switch (err) {
@@ -969,7 +979,7 @@ fn PrintAction(writer: anytype, ap: *Action, indent: usize) !bool {
 
 /// Generate the "*.out" log file
 fn ReportOutput(lemp: *Lemon) !void {
-    const m_fh = try file_open(lemp, ".zig.out", .{});
+    const m_fh = try file_open(lemp, ".zig.out", false, .{});
     if (m_fh) |fh| {
         defer fh.close();
         const f_writer = fh.writer();
@@ -1629,7 +1639,7 @@ fn print_stack_union(
 // for that type (1, 2, or 4) into *pnByte.
 fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8) []const u8 {
     var zType: []const u8 = "";
-    var nByte: u8 = 4;
+    var nByte: ?u8 = null;
     // TODO: the shifts and then magic numbers here are ugly
     // (my fault, the original uses the magic excluslively),
     // come back and use std.math here.
@@ -1658,7 +1668,7 @@ fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8) []const u8 {
             nByte = 4;
         }
     }
-    if (pNbyte) |pNb| pNb.* = nByte;
+    if (pNbyte) |pNb| pNb.* = nByte.?;
     return zType;
 }
 
@@ -1708,6 +1718,68 @@ fn writeRuleText(out: anytype, rp: *Rule) !void {
     }
 }
 
+fn ReportSql(lemp: *Lemon, sql: anytype) !void {
+    try sql.writeAll("BEGIN;\n" ++
+        "CREATE TABLE symbol(\n" ++
+        "  id INTEGER PRIMARY KEY,\n" ++
+        "  name TEXT NOT NULL,\n" ++
+        "  isTerminal BOOLEAN NOT NULL,\n" ++
+        "  fallback INTEGER REFERENCES symbol" ++
+        " DEFERRABLE INITIALLY DEFERRED\n" ++
+        ");\n");
+    for (0..lemp.nsymbol) |i| {
+        const sp = lemp.symbols[i];
+        try sql.print(
+            "" ++
+                "INSERT INTO symbol(id,name,isTerminal,fallback)" ++
+                "VALUES({d},'{s}',{s}",
+            .{ i, sp.name, if (i < lemp.nterminal) "TRUE" else "FALSE" },
+        );
+        if (sp.fallback) |fp| {
+            try sql.print(",{d});\n", .{fp.index});
+        } else {
+            try sql.writeAll(",NULL);\n");
+        }
+    }
+    try sql.writeAll("CREATE TABLE rule(\n" ++
+        "  ruleid INTEGER PRIMARY KEY,\n" ++
+        "  lhs INTEGER REFERENCES symbol(id),\n" ++
+        "  txt TEXT\n" ++
+        ");\n" ++
+        "CREATE TABLE rulerhs(\n" ++
+        "  ruleid INTEGER REFERENCES rule(ruleid),\n" ++
+        "  pos INTEGER,\n" ++
+        "  sym INTEGER REFERENCES symbol(id)\n" ++
+        ");\n");
+    var i: usize = 0;
+    var m_rp: ?*Rule = lemp.rule;
+    // zig fmt: off
+    while (m_rp) |rp| : ({i += 1; m_rp = rp.next;}) {
+        // zig fmt: on
+        dbgassert(i == rp.iRule);
+        try sql.print(
+            "INSERT INTO rule(ruleid,lhs,txt)VALUES({d},{d},'",
+            .{ rp.iRule, rp.lhs.index },
+        );
+        for (rp.rhs, 0..) |sp, j| {
+            if (sp.type != .multiterminal) {
+                try sql.print(
+                    "INSERT INTO rulerhs(ruleid,pos,sym)VALUES({d},{d},{d});\n",
+                    .{ i, j, sp.index },
+                );
+            } else {
+                for (sp.subsym) |ssp| {
+                    try sql.print(
+                        "INSERT INTO rulerhs(ruleid,pos,sym)VALUES({d},{d},{d});\n",
+                        .{ i, j, ssp.index },
+                    );
+                }
+            }
+        }
+    }
+    try sql.writeAll("COMMIT;\n");
+}
+
 //| [4287]
 
 /// Generate C code for the parser
@@ -1728,9 +1800,17 @@ fn ReportTable(
     const free_buffer, const in = try tplt_open(lemp);
     defer if (free_buffer) lemp.allocator.free(in);
     if (sqlflag) {
-        // later
+        const m_sql_fh = try file_open(lemp, ".sql", false, .{});
+        if (m_sql_fh) |fh| {
+            defer fh.close();
+            const f_writer = fh.writer();
+            var write_buffer = std.io.bufferedWriter(f_writer);
+            const b_writer = write_buffer.writer();
+            try ReportSql(lemp, b_writer);
+            try write_buffer.flush();
+        } else return; // No file handle
     }
-    const m_out_fh = try file_open(lemp, ".c", .{});
+    const m_out_fh = try file_open(lemp, ".c", true, .{});
     if (m_out_fh) |fh| {
         defer fh.close();
         const f_writer = fh.writer();
@@ -2653,7 +2733,7 @@ const Lemon = struct {
             rp_next = rp.next;
             rp.destroy(allocator);
         }
-        allocator.free(gp.symbols);
+        // allocator.free(gp.symbols);
         // allocator.free(gp.sorted);
         allocator.free(gp.name);
         allocator.free(gp.arg);
@@ -4697,7 +4777,8 @@ fn CompressTables(lemp: *Lemon) !void {
         }
         dbgassert(m_ap != null);
         if (p_check1) dprint("old symbol name {s}\n", .{m_ap.?.sp.name});
-        m_ap.?.sp = try Symbol_new("{default}");
+        m_ap.?.sp = lemp.symbols[lemp.nsymbol];
+        dbgassert(strcmp(m_ap.?.sp.name, "{default}"));
         if (p_check1) dprint("new symbol name {s}\n", .{m_ap.?.sp.name});
         m_ap = m_ap.?.next;
         while (m_ap) |ap| : (m_ap = ap.next) {
@@ -5235,7 +5316,7 @@ pub fn main() !void {
         exit(0);
     }
     if (OptNArgs(args) != 1) {
-        dprint("Exactly one filename argument is required (got {d}).\n", .{OptNArgs(args)});
+        dprint("Exactly one filename argument is required.\n", .{});
         exit(1);
     }
     const filename: []const u8 = OptArg(args, 0);
@@ -5252,8 +5333,6 @@ pub fn main() !void {
     lem.nolinenosflag = nolinenosflag;
     lem.printPreprocessed = printPP;
     _ = try Symbol_new("$"); // Why?
-    // TODO: Write a full parse file and move the file opening stuff there,
-    // with the Pstate, etc.
     var pstate = try PState.create(allocator, lem);
     defer pstate.destroy();
     pstate.gp = lem;
@@ -5272,7 +5351,7 @@ pub fn main() !void {
 
     // Count and index the symbols of the grammar
     _ = try Symbol_new("{default}");
-    lem.symbols = try Symbol_arrayof(allocator);
+    lem.symbols = Symbol_arrayof();
     sort(*Symbol, lem.symbols, {}, Symbol_lessThanFn);
     if (p_symbols) for (lem.symbols) |symbol| {
         std.debug.print("{s} ", .{symbol.name});
@@ -5732,12 +5811,9 @@ fn Symbol_find(str: []const u8) ?*Symbol {
 
 // TODO: It's just default that we need, I could probably
 // cache that pointer on the lemon and use it instead.
-fn Symbol_arrayof(allocator: Allocator) ![]*Symbol {
+fn Symbol_arrayof() []*Symbol {
     dbgassert(is_symbol_map);
-    const vals = symbol_map.safe.values();
-    const new_vals = try allocator.alloc(*Symbol, vals.len);
-    @memcpy(new_vals, vals);
-    return new_vals;
+    return symbol_map.safe.values();
 }
 
 // /* Compare two symbols for sorting purposes.  Return negative,
