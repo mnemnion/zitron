@@ -747,6 +747,15 @@ fn Plink_delete(plp_delete: ?*PLink) void {
 /// function.  Quote outname for line directives, and assign the
 /// filenames to the correct fields of `lemp`.
 fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
+    if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
+    if (escape) {
+        if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
+    }
+    lemp.outname = try file_justname(lemp, suffix, output_dir);
+    if (escape) lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
+}
+
+fn file_justname(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM![]const u8 {
     var buf = ArrayList(u8){};
     errdefer buf.deinit(lemp.allocator);
 
@@ -766,18 +775,13 @@ fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8, esca
 
     try w.print("{s}{s}{s}", .{ filename, extra_suffix, suffix });
 
-    lemp.outname = try buf.toOwnedSlice(lemp.allocator);
-    if (escape) lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
+    return buf.toOwnedSlice(lemp.allocator);
 }
 
 /// Open a file with a name based on the name of the input file,
 /// but with a different (specified) suffix, and return a pointer
 /// to the stream.
 fn file_open(lemp: *Lemon, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
-    if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
-    if (escape) {
-        if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
-    }
     try file_makename(lemp, suffix, null, escape);
     const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
         lemp.errorcnt += 1;
@@ -1883,10 +1887,10 @@ fn reportTableImpl(
         try tplt_print(out, lemp, include, &lineno);
     }
     if (mhflag) {
-        // TODO:
-        // char *incName = file_makename(lemp, ".h");
-        // fprintf(out,"#include \"%s\"\n", incName); lineno++;
-        // free(incName);
+        const incName = try file_justname(lemp, ".h", null);
+        defer lemp.allocator.free(incName);
+        try out.print("#include \"{s}\"\n", .{incName});
+        lineno += 1;
     }
     try tplt_xfer(lemp.name, &in, out, &lineno);
     if (line_compat) lineno -= 1; // hehe
@@ -5477,7 +5481,7 @@ pub fn main() !void {
     // Generate a report of the parser generated.  (the "y.output" file)
     if (!quiet) try ReportOutput(lem);
     // Generate the source code for the parser.
-    try ReportTable(lem, mhflag, opts.sql_flag);
+    try ReportTable(lem, opts.mhflag, opts.sql_flag);
     {
         // /* Produce a header file for use by the scanner.  (This step is
         // ** omitted if the "-m" option is used because makeheaders will
