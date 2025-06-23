@@ -1639,6 +1639,7 @@ fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8) []const u8 {
             nByte = 1;
         } else if (upr <= (1 << 16) - 1) {
             zType = "unsigned short int";
+            nByte = 2;
         } else {
             zType = "unsigned int";
             nByte = 4; // redundant
@@ -2183,7 +2184,7 @@ fn reportTableImpl(
         //   /* 2019-08-28:  Generate fallback entries for every token to avoid
         //   ** having to do a range check on the index */
         //   /* while( mx>0 && lemp->symbols[mx]->fallback==0 ){ mx--; } */
-        lemp.tablesize += (max + 1) * szCodeType;
+        lemp.tablesize += (max) * szCodeType;
         for (0..max) |i| {
             const sp = lemp.symbols[i];
             if (sp.fallback) |fallback| {
