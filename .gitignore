@@ -8,3 +8,4 @@ samples/*.out
 compare
 samples/*.tmp
 samples/*.trimmed
+samples/*.sql

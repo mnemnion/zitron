@@ -91,6 +91,8 @@ const p_errcnt = true;
 const p_symbols = false;
 const p_statefind = false;
 
+const extra_suffix = if (p_check1) ".zig" else "";
+
 // NOTE: This is not, in fact, how strcmp works.  If it turns out
 // I need anything other than != 0 and == 0 from strcmp, which I doubt,
 // I can decide how to handle that then.
@@ -762,7 +764,7 @@ fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8, esca
         filename = filename[0..dot];
     }
 
-    try w.print("{s}{s}", .{ filename, suffix });
+    try w.print("{s}{s}{s}", .{ filename, extra_suffix, suffix });
 
     lemp.outname = try buf.toOwnedSlice(lemp.allocator);
     if (escape) lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
@@ -772,11 +774,11 @@ fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8, esca
 /// but with a different (specified) suffix, and return a pointer
 /// to the stream.
 fn file_open(lemp: *Lemon, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
+    if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
     if (escape) {
-        if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
         if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
     }
-    try file_makename(lemp, suffix, null, escape); // TODO: decide how to handle outputDir
+    try file_makename(lemp, suffix, null, escape);
     const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
         lemp.errorcnt += 1;
         switch (err) {
@@ -1761,6 +1763,8 @@ fn ReportSql(lemp: *Lemon, sql: anytype) !void {
             "INSERT INTO rule(ruleid,lhs,txt)VALUES({d},{d},'",
             .{ rp.iRule, rp.lhs.index },
         );
+        try writeRuleText(sql, rp);
+        try sql.writeAll("');\n");
         for (rp.rhs, 0..) |sp, j| {
             if (sp.type != .multiterminal) {
                 try sql.print(
@@ -5473,7 +5477,7 @@ pub fn main() !void {
     // Generate a report of the parser generated.  (the "y.output" file)
     if (!quiet) try ReportOutput(lem);
     // Generate the source code for the parser.
-    try ReportTable(lem, mhflag, sqlFlag);
+    try ReportTable(lem, mhflag, opts.sql_flag);
     {
         // /* Produce a header file for use by the scanner.  (This step is
         // ** omitted if the "-m" option is used because makeheaders will
