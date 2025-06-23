@@ -1988,7 +1988,7 @@ fn reportTableImpl(
     {
         lemp.nactiontab = pActtab.actionSize();
         const n = lemp.nactiontab;
-        lemp.tablesize = n * szActionType;
+        lemp.tablesize += n * szActionType;
         try out.print("#define YY_ACTTAB_COUNT ({d})\n", .{n});
         lineno += 1;
         try out.writeAll("static const YYACTIONTYPE yy_action[] = {\n");
@@ -2183,7 +2183,7 @@ fn reportTableImpl(
         //   /* 2019-08-28:  Generate fallback entries for every token to avoid
         //   ** having to do a range check on the index */
         //   /* while( mx>0 && lemp->symbols[mx]->fallback==0 ){ mx--; } */
-        lemp.tablesize += max * szCodeType;
+        lemp.tablesize += (max + 1) * szCodeType;
         for (0..max) |i| {
             const sp = lemp.symbols[i];
             if (sp.fallback) |fallback| {
@@ -4979,17 +4979,61 @@ const Options = struct {
     }
 };
 
-fn handleflags(opt: *Options, flag: u8, arg: []const u8, allocator: Allocator) !usize {
+fn argindex(args: [][:0]u8, n: i65) ?usize {
+    var n2 = n;
+    var dashdash: bool = false;
+    for (args[1..], 1..) |arg, i| {
+        if (dashdash or !isOpt(arg)) {
+            if (n2 == 0) return i;
+            n2 -= 1;
+        }
+        if (strcmp(arg, "--")) dashdash = true;
+    }
+    return null;
+}
+
+fn isOpt(arg: []const u8) bool {
+    return arg[0] == '-' or arg[0] == '+' or mem.indexOfScalar(u8, arg, '=') != null;
+}
+
+fn OptArg(args: [][:0]u8, n: usize) []const u8 {
+    const m_i = argindex(args, n);
+    return if (m_i) |i| args[i] else "";
+}
+
+fn OptNArgs(args: [][:0]u8) usize {
+    var cnt: usize = 0;
+    var dashdash: bool = false;
+    for (args[1..]) |arg| {
+        if (dashdash or !isOpt(arg)) cnt += 1;
+        if (strcmp(arg, "--")) dashdash = true;
+    }
+    return cnt;
+}
+// int OptNArgs(void){
+//   int cnt = 0;
+//   int dashdash = 0;
+//   int i;
+//   if( g_argv!=0 && g_argv[0]!=0 ){
+//     for(i=1; g_argv[i]; i++){
+//       if( dashdash || !ISOPT(g_argv[i]) ) cnt++;
+//       if( strcmp(g_argv[i],"--")==0 ) dashdash = 1;
+//     }
+//   }
+//   return cnt;
+// }
+
+/// Print the command line with a carrot pointing to the k-th character
+/// of the n-th field.
+fn errline(args: [][:0]u8, i: usize) void {
+    _ = .{ args, i };
+}
+
+fn handleflags(opt: *Options, flag: u8, arg: []const u8, set: bool, allocator: Allocator) !usize {
     switch (flag) {
-        'b' => opt.only_basis = true,
-        'c' => opt.no_compress = true,
-        'd' => {
-            if (arg.len > 0) {
-                opt.output_directory = arg;
-            } else {
-                return 1;
-            }
-        },
+        'b' => opt.only_basis = set,
+        'c' => opt.no_compress = set,
+        'd' => opt.output_directory = arg,
         'D' => {
             if (arg.len > 0) {
                 opt.azDefine = try allocator.realloc(opt.azDefine, opt.azDefine.len + 1);
@@ -5000,26 +5044,20 @@ fn handleflags(opt: *Options, flag: u8, arg: []const u8, allocator: Allocator) !
                 return 1;
             }
         },
-        'E' => opt.print_pp = true,
+        'E' => opt.print_pp = set,
         'f' => {}, // Ignored,
-        'g' => opt.rpflag = true,
+        'g' => opt.rpflag = set,
         'I' => {},
-        'm' => opt.mhflag = true,
-        'l' => opt.no_linenos = true,
+        'm' => opt.mhflag = set,
+        'l' => opt.no_linenos = set,
         'O' => {},
-        'p' => opt.show_precedence_conflict = true,
-        'q' => opt.quiet = true,
-        'r' => opt.no_resort = true,
-        's' => opt.statistics = true,
-        'S' => opt.sql_flag = true,
-        'x' => opt.version = true,
-        'T' => {
-            if (arg.len > 0) {
-                opt.user_templatename = arg;
-            } else {
-                return 1;
-            }
-        },
+        'p' => opt.show_precedence_conflict = set,
+        'q' => opt.quiet = set,
+        'r' => opt.no_resort = set,
+        's' => opt.statistics = set,
+        'S' => opt.sql_flag = set,
+        'x' => opt.version = set,
+        'T' => opt.user_templatename = arg,
         'W' => {},
         else => return 1,
     }
@@ -5029,30 +5067,39 @@ fn handleflags(opt: *Options, flag: u8, arg: []const u8, allocator: Allocator) !
 fn handleswitch(opt: *Options, arg: []const u8, allocator: Allocator) !usize {
     const opt_t = arg[0];
     const eq_idx = mem.indexOfScalar(u8, arg, '=').?;
-    if (eq_idx + 1 == arg.len) return 1;
+    if (eq_idx + 1 >= arg.len) return 1;
     const opt_rest = arg[eq_idx + 1 ..];
-    return try handleflags(opt, opt_t, opt_rest, allocator);
+    return try handleflags(opt, opt_t, opt_rest, true, allocator);
 }
 
 fn OptInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !void {
-    var errcnt: usize = 0;
-
-    for (args) |arg| {
-        if (arg.len < 2) {
-            errcnt += 1;
-            continue;
+    errdefer opt.deinit(allocator);
+    if (lemon_classic) {
+        var errcnt: usize = 0;
+        var last_err: usize = 0;
+        for (args, 0..) |arg, i| {
+            if (arg.len < 2) {
+                errcnt += 1;
+                continue;
+            }
+            if (arg[0] == '+' or arg[0] == '-') {
+                errcnt += try handleflags(opt, arg[1], arg[2..], arg[0] == '-', allocator);
+            } else if (mem.indexOfScalar(u8, arg, '=')) |_| {
+                errcnt += try handleswitch(opt, arg, allocator);
+            }
+            if (errcnt > last_err) {
+                last_err = errcnt;
+                errline(args, i);
+            }
         }
-        if (arg[0] == '+' or arg[0] == '-') {
-            errcnt += try handleflags(opt, arg[1], arg[2..], allocator);
-        } else if (mem.indexOfScalar(u8, arg, '=')) |_| {
-            errcnt += try handleswitch(opt, arg, allocator);
+        if (errcnt > 0) {
+            dprint("Valid command-line options for {s} are:\n", .{args[0]});
+            // OptPrint();
         }
+        return;
+    } else {
+        @compileError("Implement not-lemon-classic options parser\n");
     }
-    if (errcnt > 0) {
-        dprint("Valid command-line options for {s} are:\n", .{args[0]});
-        // OptPrint();
-    }
-    return;
 }
 
 //|
@@ -5093,6 +5140,12 @@ fn SetUnion(s1: []bool, s2: []bool) bool {
         }
     }
     return changed;
+}
+
+fn stats_line(in: anytype, zLabel: []const u8, iValue: usize) !void {
+    try in.print("  {s}", .{zLabel});
+    try in.writeByteNTimes('.', 35 - zLabel.len);
+    try in.print(" {d: >5}\n", .{iValue});
 }
 
 pub fn main() !void {
@@ -5168,27 +5221,29 @@ pub fn main() !void {
 
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
-    const filename: []const u8 = file: {
-        if (args.len >= 1) {
-            break :file args[1];
-        } else {
-            dprint("lemon.zig needs a filename\n", .{});
-            exit(1);
-        }
-    };
     var opts: Options = .{};
     {
         opts.azDefine = try allocator.alloc([]const u8, 0);
         errdefer allocator.free(opts.azDefine);
         opts.bDefineUsed = try allocator.alloc(bool, 0);
+        errdefer allocator.free(opts.bDefineUsed);
+        try OptInit(&opts, args, allocator);
     }
+    if (opts.version) {
+        std.io.getStdOut().writer().writeAll("Lemon.zig version 0.1\n") catch {};
+        exit(0);
+    }
+    if (OptNArgs(args) != 1) {
+        dprint("Exactly one filename argument is required (got {d}).\n", .{OptNArgs(args)});
+        exit(1);
+    }
+    const filename: []const u8 = OptArg(args, 0);
     var lem = lemon: {
         errdefer opts.deinit(allocator);
         break :lemon try Lemon.create(allocator);
     };
     defer lem.destroy(allocator);
     lem.opt = opts;
-    try OptInit(&lem.opt, args, allocator);
     lem.argv = args;
     lem.filename = filename;
     lem.quoted_filename = try esc_filename(allocator, filename);
@@ -5339,10 +5394,7 @@ pub fn main() !void {
     if (!quiet) try ReportOutput(lem);
     // Generate the source code for the parser.
     try ReportTable(lem, mhflag, sqlFlag);
-    { // This is the bulk of the remaining work:
-        // /* Generate the source code for the parser */
-        // ReportTable(&lem, mhflag, sqlFlag);
-        //
+    {
         // /* Produce a header file for use by the scanner.  (This step is
         // ** omitted if the "-m" option is used because makeheaders will
         // ** generate the file for us.) */
@@ -5350,18 +5402,19 @@ pub fn main() !void {
     }
     // The finale looks like this:
     //
-    // if( statistics ){
-    //   printf("Parser statistics:\n");
-    //   stats_line("terminal symbols", lem.nterminal);
-    //   stats_line("non-terminal symbols", lem.nsymbol - lem.nterminal);
-    //   stats_line("total symbols", lem.nsymbol);
-    //   stats_line("rules", lem.nrule);
-    //   stats_line("states", lem.nxstate);
-    //   stats_line("conflicts", lem.nconflict);
-    //   stats_line("action table entries", lem.nactiontab);
-    //   stats_line("lookahead table entries", lem.nlookaheadtab);
-    //   stats_line("total table size (bytes)", lem.tablesize);
-    // }
+    if (opts.statistics) {
+        const in = std.io.getStdIn().writer();
+        try in.writeAll("Parser statistics:\n");
+        try stats_line(in, "terminal symbols", lem.nterminal);
+        try stats_line(in, "non-terminal symbols", lem.nsymbol - lem.nterminal);
+        try stats_line(in, "total symbols", lem.nsymbol);
+        try stats_line(in, "rules", lem.nrule);
+        try stats_line(in, "states", lem.nxstate);
+        try stats_line(in, "conflicts", lem.nconflict);
+        try stats_line(in, "action table entries", lem.nactiontab);
+        try stats_line(in, "lookahead table entries", lem.nlookaheadtab);
+        try stats_line(in, "total table size (bytes)", lem.tablesize);
+    }
     // if( lem.nconflict > 0 ){
     //   fprintf(stderr,"%d parsing conflicts.\n",lem.nconflict);
     // }
