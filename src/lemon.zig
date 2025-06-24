@@ -324,9 +324,6 @@ const Rule = struct {
     ruleline: usize,
     /// The RHS symbols
     rhs: []*Symbol,
-    /// Number of RHS symbols
-    nrhs: usize, // NOTE: This should use rule.rhs.len, eventually.
-
     /// An alias for each RHS symbol (empty if none)
     rhsalias: [][]const u8,
     /// Line number at which code begins
@@ -746,16 +743,16 @@ fn Plink_delete(plp_delete: ?*PLink) void {
 /// name comes from malloc() and must be freed by the calling
 /// function.  Quote outname for line directives, and assign the
 /// filenames to the correct fields of `lemp`.
-fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
+fn assign_outname(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
     if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
     if (escape) {
         if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
     }
-    lemp.outname = try file_justname(lemp, suffix, output_dir);
+    lemp.outname = try file_makename(lemp, suffix, output_dir);
     if (escape) lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
 }
 
-fn file_justname(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM![]const u8 {
+fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM![]const u8 {
     var buf = ArrayList(u8){};
     errdefer buf.deinit(lemp.allocator);
 
@@ -782,7 +779,7 @@ fn file_justname(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM!
 /// but with a different (specified) suffix, and return a pointer
 /// to the stream.
 fn file_open(lemp: *Lemon, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
-    try file_makename(lemp, suffix, null, escape);
+    try assign_outname(lemp, suffix, null, escape);
     const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
         lemp.errorcnt += 1;
         switch (err) {
@@ -1392,7 +1389,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
                             // the token number of X, not the value of X
                             try writer.print(
                                 "yymsp[{d}].major",
-                                .{sint(j) - sint(rp.nrhs) + 1},
+                                .{sint(j) - sint(rp.rhs.len) + 1},
                             );
                         } else {
                             const dtnum = if (rhs.type == .multiterminal)
@@ -1401,7 +1398,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
                                 rhs.dtnum;
                             try writer.print(
                                 "yymsp[{d}].minor.yy{d}",
-                                .{ sint(j) - sint(rp.nrhs) + 1, dtnum },
+                                .{ sint(j) - sint(rp.rhs.len) + 1, dtnum },
                             );
                         }
                         used[j] = true;
@@ -1457,7 +1454,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         } else if (i > 0 and has_destructor(rp.rhs[i], lemp)) {
             try writer.print(
                 "  yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
-                .{ rp.rhs[i].index, sint(i) - sint(rp.nrhs) + 1 },
+                .{ rp.rhs[i].index, sint(i) - sint(rp.rhs.len) + 1 },
             );
         }
     }
@@ -1887,7 +1884,7 @@ fn reportTableImpl(
         try tplt_print(out, lemp, include, &lineno);
     }
     if (mhflag) {
-        const incName = try file_justname(lemp, ".h", null);
+        const incName = try file_makename(lemp, ".h", null);
         defer lemp.allocator.free(incName);
         try out.print("#include \"{s}\"\n", .{incName});
         lineno += 1;
@@ -2407,10 +2404,10 @@ fn reportTableImpl(
         i = 0; m_rp = lemp.rule;
 
         while (m_rp) |rp| : ({m_rp = rp.next; i += 1; }) {
-            if (rp.nrhs == 0) {
-                try out.print("  {d: >3},", .{rp.nrhs});
+            if (rp.rhs.len == 0) {
+                try out.print("  {d: >3},", .{rp.rhs.len});
             } else {
-                try out.print("  {d: >3},", .{-sint(rp.nrhs)});
+                try out.print("  {d: >3},", .{-sint(rp.rhs.len)});
             }
             try out.print("  /* ({d}) ", .{i});
             try rule_print(out, rp);
@@ -3050,7 +3047,7 @@ fn FindRulePrecedences(lem: *Lemon) void {
     while (maybe_rp) |rp| : (maybe_rp = rp.next) {
         if (rp.precsym == null) {
             var i: usize = 0;
-            while (i < rp.nrhs and rp.precsym == null) : (i += 1) {
+            while (i < rp.rhs.len and rp.precsym == null) : (i += 1) {
                 const sp: *Symbol = rp.rhs[i];
                 if (sp.type == .multiterminal) {
                     precsym: for (sp.subsym) |subsym| {
@@ -3089,12 +3086,12 @@ fn FindFirstSets(lemp: *Lemon) !void {
         walk: while (rp) |rule| : (rp = rule.next) {
             if (rule.lhs.lambda) continue :walk;
             var i: usize = 0;
-            sym: while (i < rule.nrhs) : (i += 1) { // TODO: just rule.rhs yeah
+            sym: while (i < rule.rhs.len) : (i += 1) {
                 const sp = rule.rhs[i];
                 dbgassert(sp.type == .nonterminal or sp.lambda == false);
                 if (sp.lambda == false) break :sym;
             } // A rule with no nrhs, or, all lambda, is lambda.
-            if (i == rule.nrhs) {
+            if (i == rule.rhs.len) {
                 rule.lhs.lambda = true;
                 progress = true;
             }
@@ -4115,7 +4112,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 }
                 rp.lhs = psp.lhs;
                 rp.lhsalias = psp.lhsalias;
-                rp.nrhs = psp.nrhs;
+                dbgassert(rp.rhs.len == psp.nrhs);
                 rp.noCode = true;
                 dbgassert(rp.precsym == null);
                 rp.index = psp.gp.nrule;
@@ -5418,7 +5415,6 @@ pub fn main() !void {
                 }
             }
             dprint("\n", .{});
-            dbgassert(rule.rhs.len == rule.nrhs);
             for (rule.rhs, 0..) |s2, i| {
                 dprint("  {d}:{s} ({d})\n", .{ i, s2.name, s2.index });
             }
@@ -6023,7 +6019,7 @@ fn Configlist_closure(lemp: *Lemon) !void {
                 }
                 const newcfp = try Configlist_add(newrp, 0);
                 var i: usize = dot + 1;
-                dots: while (i < rp.nrhs) : (i += 1) {
+                dots: while (i < rp.rhs.len) : (i += 1) {
                     const xsp = rp.rhs[i];
                     if (p_check1) {
                         dprint("{s}, ", .{xsp.name});
@@ -6043,7 +6039,7 @@ fn Configlist_closure(lemp: *Lemon) !void {
                         if (!xsp.lambda) break :dots;
                     }
                 }
-                if (i == rp.nrhs) try Plink_add(&cfp.fplp, newcfp);
+                if (i == rp.rhs.len) try Plink_add(&cfp.fplp, newcfp);
                 if (p_check1) {
                     dprint("\n", .{});
                 }
