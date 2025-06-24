@@ -982,7 +982,7 @@ fn PrintAction(writer: anytype, ap: *Action, indent: usize) !bool {
 
 /// Generate the "*.out" log file
 fn ReportOutput(lemp: *Lemon) !void {
-    const m_fh = try file_open(lemp, ".zig.out", false, .{});
+    const m_fh = try file_open(lemp, ".out", false, .{});
     if (m_fh) |fh| {
         defer fh.close();
         const f_writer = fh.writer();
@@ -1516,7 +1516,14 @@ fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
     const writer = a_list.writer(allocator);
     var i: usize = 0;
     try writer.writeByte('"');
+    const skipper = if (extra_suffix.len > 0) mem.indexOf(u8, filename, ".zig") else null;
     while (i < filename.len) : (i += 1) {
+        if (skipper) |skip| {
+            if (skip == i) {
+                i += 3;
+                continue;
+            }
+        }
         switch (filename[i]) {
             '\t' => try writer.writeAll("\\t"),
             '\n' => try writer.writeAll("\\n"),
@@ -1879,7 +1886,9 @@ fn reportTableImpl(
     if (mhflag) {
         const incName = try file_makename(lemp, ".h", null);
         defer lemp.allocator.free(incName);
-        try out.print("#include \"{s}\"\n", .{incName});
+        const inc_esc = try esc_filename(lemp.allocator, incName);
+        defer lemp.allocator.free(inc_esc);
+        try out.print("#include {s}\n", .{inc_esc});
         lineno += 1;
     }
     try tplt_xfer(lemp.name, &in, out, &lineno);
@@ -5303,7 +5312,7 @@ pub fn main() !void {
     lem.argv = args;
     lem.filename = filename;
     lem.quoted_filename = try esc_filename(allocator, filename);
-    lem.basisflag = opt.only_basis;
+    lem.basisflag = !opt.only_basis; // TODO: clean this up
     lem.nolinenosflag = opt.no_linenos;
     lem.printPreprocessed = opt.print_pp;
     _ = try Symbol_new("$"); // Why?
