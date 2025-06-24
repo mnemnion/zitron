@@ -1828,13 +1828,6 @@ fn ReportTable(
     }
 }
 
-//| XXX: dummy 'static' options, put an options table on Lemon
-
-threadlocal var nDefineUsed: usize = 0; // %ifdef macros, NYI
-threadlocal var bDefineUsed: []bool = undefined;
-threadlocal var nDefine: usize = 0;
-threadlocal var azDefine: [][]const u8 = undefined;
-
 fn reportTableImpl(
     lemp: *Lemon,
     in_template: [:0]const u8,
@@ -1848,15 +1841,15 @@ fn reportTableImpl(
         \\** source file "{s}"
     , .{lemp.filename});
     lineno += 1;
-    if (nDefineUsed == 0) {
+    if (lemp.opt.nDefineUsed == 0) {
         try out.writeAll(".\n*/\n");
         lineno += 2;
     } else {
         try out.writeAll(" with these options:\n**\n");
         lineno += 2;
-        for (0..nDefine) |i| {
-            if (!bDefineUsed[i]) continue;
-            try out.print("**   -D{s}\n", .{azDefine[i]});
+        for (0..lemp.opt.azDefine.len) |i| {
+            if (!lemp.opt.bDefineUsed[i]) continue;
+            try out.print("**   -D{s}\n", .{lemp.opt.azDefine[i]});
             lineno += 1;
         }
         try out.writeAll("*/\n");
@@ -3740,9 +3733,9 @@ const PpState = enum {
 /// Evaluate the text as a boolean expression.  Return true or false.
 /// Actually (zig edition): returns one or zero, because the consumer uses the
 /// result variable to track nested ifdefs.
-fn eval_preprocessor_boolean(z: []const u8, lineno: usize) u8 {
+fn eval_preprocessor_boolean(opt: *Options, z: []const u8, lineno: usize) u8 {
     var dummy: usize = 0;
-    return if (eval_impl(z, lineno, &dummy) catch unreachable) 1 else 0;
+    return if (eval_impl(opt, z, lineno, &dummy) catch unreachable) 1 else 0;
 }
 
 // TODO: Re-evaluate all of this once have a reproducing case for the
@@ -3751,7 +3744,7 @@ fn eval_preprocessor_boolean(z: []const u8, lineno: usize) u8 {
 /// `progress` is some wacky thing, we're imitating the all-powerful
 /// C integer. If 0 we're not in a recursive call, if positive, we
 /// are.
-fn eval_impl(z: []const u8, lineno: usize, progress: *usize) !bool {
+fn eval_impl(opt: *Options, z: []const u8, lineno: usize, progress: *usize) !bool {
     var neg: bool = false; // Term is negated
     var res: bool = false; // Result
     var okTerm: bool = true; // Ok to have a term
@@ -3791,7 +3784,7 @@ fn eval_impl(z: []const u8, lineno: usize, progress: *usize) !bool {
                             n -= 1;
                             if (n == 0) {
                                 var prog: usize = i;
-                                res = eval_impl(z[i..k], lineno, &prog) catch {
+                                res = eval_impl(opt, z[i..k], lineno, &prog) catch {
                                     i = prog;
                                     continue :goto .pp_syntax_error;
                                 };
@@ -3812,14 +3805,14 @@ fn eval_impl(z: []const u8, lineno: usize, progress: *usize) !bool {
                     while (k < z.len and (isAlnum(z[k]) or z[k] == '_')) : (k += 1) {}
                     res = false;
                     var j: usize = 0;
-                    check_defs: while (j < azDefine.len) : (j += 1) {
+                    check_defs: while (j < opt.azDefine.len) : (j += 1) {
                         if (strcmp(
                             z[i..k],
-                            azDefine[j],
+                            opt.azDefine[j],
                         )) {
-                            if (!bDefineUsed[j]) {
-                                bDefineUsed[j] = true;
-                                nDefineUsed += 1;
+                            if (!opt.bDefineUsed[j]) {
+                                opt.bDefineUsed[j] = true;
+                                opt.nDefineUsed += 1;
                             }
                             res = true;
                             break :check_defs;
@@ -3854,7 +3847,7 @@ fn eval_impl(z: []const u8, lineno: usize, progress: *usize) !bool {
 /// azDefine[0] through azDefine[nDefine-1] contains the names of all defined
 /// macros.  This routine looks for "%ifdef" and "%ifndef" and "%endif" and
 /// comments them out.  Text in between is also commented out as appropriate.
-fn preprocess_input(z: [:0]u8) void {
+fn preprocess_input(opt: *Options, z: [:0]u8) void {
     var exclude: isize = 0; // Handles nested %ifdefs so not boolean
     var start: usize = 0;
     var lineno: usize = 1;
@@ -3905,7 +3898,7 @@ fn preprocess_input(z: [:0]u8) void {
                 const isNot = j == i + 7;
                 while (z[j] != 0 and z[j] != '\n') : (j += 1) {}
                 if (p_check1) dprint("preprocessor evaluates '{s}' ", .{z[iBool..j]});
-                exclude = eval_preprocessor_boolean(z[iBool..j], lineno);
+                exclude = eval_preprocessor_boolean(opt, z[iBool..j], lineno);
                 if (p_check1) dprint("as {} ", .{exclude == 1});
                 if (!isNot) exclude = if (exclude != 0) 0 else 1;
                 if (p_check1) dprint("then {}\n", .{exclude == 1});
@@ -3949,7 +3942,7 @@ fn Parse(psp: *PState) !void {
         std.process.exit(1);
     }
     // /* Make an initial pass through the file to handle %ifdef and %ifndef */
-    preprocess_input(filebuf);
+    preprocess_input(&psp.gp.opt, filebuf);
     if (psp.gp.printPreprocessed) {
         const stdout = std.io.getStdOut();
         const std_write = stdout.writer();
@@ -5058,6 +5051,7 @@ const Options = struct {
     user_templatename: []const u8 = "",
     output_directory: []const u8 = "",
     azDefine: [][]const u8 = undefined,
+    nDefineUsed: u32 = 0,
     bDefineUsed: []bool = undefined,
 
     pub fn deinit(o: *Options, alloc: Allocator) void {
@@ -5281,42 +5275,17 @@ pub fn main() !void {
         }
     }
 
-    // These need to exist so that some later argument parser can
-    // assign them.  At that point of course, variable, but one
-    // thing at a time.
-    const version = true;
-    const rpflag = true;
-    const basisflag = true;
-    const compress = true;
-    const quiet = false;
-    const statistics = true;
-    const mhflag = false;
-    const nolinenosflag = false;
-    const noResort = false;
-    const sqlFlag = false;
-    const printPP = false;
-    // Reconcile Zig to this unfortunate situation:
-    _ = .{ version, rpflag, basisflag, compress, quiet, statistics, mhflag, nolinenosflag, noResort, sqlFlag, printPP };
-
-    // Add a dummy array to azDefine.  We're getting there...
-    azDefine = try allocator.alloc([]const u8, 1);
-    defer allocator.free(azDefine); // I think these strings belong to argv, TODO: confirm
-    azDefine[0] = "";
-    bDefineUsed = try allocator.alloc(bool, 1);
-    defer allocator.free(bDefineUsed);
-    bDefineUsed[0] = true; // TODO: all of this is nonsense, to be clear
-
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
-    var opts: Options = .{};
+    var opt: Options = .{};
     {
-        opts.azDefine = try allocator.alloc([]const u8, 0);
-        errdefer allocator.free(opts.azDefine);
-        opts.bDefineUsed = try allocator.alloc(bool, 0);
-        errdefer allocator.free(opts.bDefineUsed);
-        try OptInit(&opts, args, allocator);
+        opt.azDefine = try allocator.alloc([]const u8, 0);
+        errdefer allocator.free(opt.azDefine);
+        opt.bDefineUsed = try allocator.alloc(bool, 0);
+        errdefer allocator.free(opt.bDefineUsed);
+        try OptInit(&opt, args, allocator);
     }
-    if (opts.version) {
+    if (opt.version) {
         std.io.getStdOut().writer().writeAll("Lemon.zig version 0.1\n") catch {};
         exit(0);
     }
@@ -5326,17 +5295,17 @@ pub fn main() !void {
     }
     const filename: []const u8 = OptArg(args, 0);
     var lem = lemon: {
-        errdefer opts.deinit(allocator);
+        errdefer opt.deinit(allocator);
         break :lemon try Lemon.create(allocator);
     };
     defer lem.destroy(allocator);
-    lem.opt = opts;
+    lem.opt = opt;
     lem.argv = args;
     lem.filename = filename;
     lem.quoted_filename = try esc_filename(allocator, filename);
-    lem.basisflag = basisflag;
-    lem.nolinenosflag = nolinenosflag;
-    lem.printPreprocessed = printPP;
+    lem.basisflag = opt.only_basis;
+    lem.nolinenosflag = opt.no_linenos;
+    lem.printPreprocessed = opt.print_pp;
     _ = try Symbol_new("$"); // Why?
     var pstate = try PState.create(allocator, lem);
     defer pstate.destroy();
@@ -5459,7 +5428,7 @@ pub fn main() !void {
     // Compute the action tables
     try FindActions(lem);
     // Compress the action tables
-    if (compress) try CompressTables(lem);
+    if (!opt.no_compress) try CompressTables(lem);
     if (p_check1) {
         for (lem.sorted[0..lem.nstate]) |stp| {
             dprint("State {d}:", .{stp.statenum});
@@ -5473,11 +5442,11 @@ pub fn main() !void {
     // Reorder and renumber the states so that states with fewer choices
     // occur at the end.  This is an optimization that helps make the
     // generated parser tables smaller.
-    if (!noResort) ResortStates(lem);
+    if (!opt.no_resort) ResortStates(lem);
     // Generate a report of the parser generated.  (the "y.output" file)
-    if (!quiet) try ReportOutput(lem);
+    if (!opt.quiet) try ReportOutput(lem);
     // Generate the source code for the parser.
-    try ReportTable(lem, opts.mhflag, opts.sql_flag);
+    try ReportTable(lem, opt.mhflag, opt.sql_flag);
     {
         // /* Produce a header file for use by the scanner.  (This step is
         // ** omitted if the "-m" option is used because makeheaders will
@@ -5486,7 +5455,7 @@ pub fn main() !void {
     }
     // The finale looks like this:
     //
-    if (opts.statistics) {
+    if (opt.statistics) {
         const in = std.io.getStdIn().writer();
         try in.writeAll("Parser statistics:\n");
         try stats_line(in, "terminal symbols", lem.nterminal);
