@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+shopt -s nullglob
+
+OUTDIR=./samples
+
+FLAGS="-S -m"
+
+zig build install || exit 1
+
+for src in "$OUTDIR"/*.y; do
+  echo "Running on $src"
+
+  # Compare generated .c vs .zig.c
+  base="${src%.y}"
+  ref_dump="$base.dump"
+  zig_dump="$base.zig.dump"
+  ref_c="$base.c"
+  zig_c="$base.zig.c"
+  ref_out="$base.out"
+  zig_out="$base.zig.out"
+  ref_sql="$base.sql"
+  zig_sql="$base.zig.sql"
+
+
+  # Run Zig.
+  zig-out/bin/lemon "$FLAGS" "$src" > "$zig_dump" 2>&1
+
+  # Run C.
+  lemonc "$FLAGS" "$src" > "$ref_dump" 2>&1
+
+  # Compare dump outputs.
+  diff -q "$ref_dump" "$zig_dump"
+
+  # Compare .c outputs.
+  diff -q "$ref_c" "$zig_c"
+
+  # Compare .out outputs.
+  diff -q "$ref_out" "$zig_out"
+
+  # Compare .sql outputs.
+  diff -q "$ref_sql" "$zig_sql"
+
+done

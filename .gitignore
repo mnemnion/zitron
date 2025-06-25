@@ -5,7 +5,7 @@ zig-out/
 samples/*.c
 samples/*.h
 samples/*.out
-compare
 samples/*.tmp
+samples/*.dump
 samples/*.trimmed
 samples/*.sql
