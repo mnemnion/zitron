@@ -63,9 +63,9 @@ const lemon_classic = true;
 const do_not_optimize_terminals = true;
 const print_aliases = false;
 
-/// Do we drift like lemon.c does?
-/// For now, yes: we do.
-const line_compat = true;
+/// Do various bug-compatible things precisely
+/// as Lemon does them.
+const lemon_compat = true;
 
 //| Useful Constants
 
@@ -1146,7 +1146,7 @@ fn tplt_xfer(name: []const u8, in: *[:0]const u8, out: anytype, lineno: *usize) 
 fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
     const h_idx = mem.indexOf(u8, in.*, "\n%%");
     if (h_idx) |i| {
-        if (line_compat) lineno.* += mem.count(u8, in.*[0 .. i + 1], "\n");
+        if (lemon_compat) lineno.* += mem.count(u8, in.*[0 .. i + 1], "\n");
         in.* = in.*[i + 4 ..];
     } else {
         logger.err("Header of template file: /^%%/ not found", .{});
@@ -1289,7 +1289,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         lhsdirect = true;
         if (has_destructor(rp.rhs[0], lemp)) {
             if (p_check1) {
-                dprint("destructor: rp {s} {d}\n", .{ rp.lhs.name, rp.iRule });
+                dprint("destructor: {s} {d}\n", .{ rp.lhs.name, rp.iRule });
             }
             try writer.print(
                 "  yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
@@ -1452,6 +1452,9 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
                 lemp.errorcnt += 1;
             }
         } else if (i > 0 and has_destructor(rp.rhs[i], lemp)) {
+            if (p_check1) {
+                dprint("destructor 2.0: {s} {d}\n", .{ rp.lhs.name, rp.iRule });
+            }
             try writer.print(
                 "  yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
                 .{ rp.rhs[i].index, sint(i) - sint(rp.rhs.len) + 1 },
@@ -1824,6 +1827,9 @@ fn ReportTable(
     }
     const m_out_fh = try file_open(lemp, ".c", true, .{});
     if (m_out_fh) |fh| {
+        if (sqlflag and lemon_compat) {
+            try assign_outname(lemp, ".sql", null, true);
+        }
         defer fh.close();
         const f_writer = fh.writer();
         var write_buffer = std.io.bufferedWriter(f_writer);
@@ -1892,7 +1898,7 @@ fn reportTableImpl(
         lineno += 1;
     }
     try tplt_xfer(lemp.name, &in, out, &lineno);
-    if (line_compat) lineno -= 1; // hehe
+    if (lemon_compat) lineno -= 1; // hehe
     // Generate #defines for all tokens
     const prefix = if (lemp.tokenprefix.len > 0) lemp.tokenprefix else "";
     if (mhflag) {
@@ -2339,7 +2345,7 @@ fn reportTableImpl(
         var dflt_sp: ?*Symbol = null;
         for (0..lemp.nsymbol) |i| {
             const sp = lemp.symbols[i];
-            if (sp.type != .terminal or sp.index == 0) continue;
+            if (sp.type == .terminal or sp.index == 0 or sp.destructor.len > 0) continue;
             if (once) {
                 try out.writeAll("      /* Default NON-TERMINAL Destructor */\n");
                 lineno += 1;
@@ -4865,7 +4871,7 @@ fn stateResortCompare(_: void, pA: *State, pB: *State) bool {
     if (pA.nTknAct > pB.nTknAct) return true;
     if (pA.nTknAct < pB.nTknAct) return false;
     if (pA.statenum > pB.statenum) return true;
-    if (pA.statenum < pB.statenum) return false;
+    if (pA.statenum <= pB.statenum) return false;
     unreachable;
 }
 
@@ -5653,9 +5659,9 @@ fn sequenceRules(lem: *Lemon) void {
     // We must have at least one rule, or we bailed already, so this works too:
     lem.rule = if (action_head) |act_head| act_head else no_act_head.?;
     if (action_head) |_| {
-        // Means we have an action_tail too:
+        // Means we have an action_tail too.  Not necessarily a no_act_head,
+        // but this is fine:
         action_tail.?.next = no_act_head;
-        dbgassert(no_act_tail != null and no_act_tail.?.next == null);
     } // Sorted!
     rp = lem.startRule;
     if (builtin.mode == .Debug) while (rp) |rule| : (rp = rule.next) {
