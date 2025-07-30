@@ -62,6 +62,7 @@ const dprint = std.debug.print;
 const lemon_classic = true;
 const do_not_optimize_terminals = true;
 const print_aliases = false;
+const print_code = false;
 
 /// Do various bug-compatible things precisely
 /// as Lemon does them.
@@ -138,8 +139,6 @@ const int = i32;
 
 // Set low to exercise exception code
 const MAXRHS = if (builtin.is_test) 5 else 1000;
-
-threadlocal var showPrecendenceConflict: bool = false;
 
 // Rules of thumb: Capitalize types, convert truthy ints to bool,
 // and otherwise stick to the original types and names insofar as
@@ -521,7 +520,7 @@ const Action = struct {
         if (ap1.sp.index > ap2.sp.index) return false;
         if (@intFromEnum(ap1.type) < @intFromEnum(ap2.type)) return true;
         if (@intFromEnum(ap1.type) > @intFromEnum(ap2.type)) return false;
-        // ap2 will cast identically because they have the same type:
+        // ap2.x will cast identically because they have the same type:
         if (ap1.type == .reduce or ap1.type == .shiftreduce) {
             if (p_debug) dprint("ap1.type {s} ap2.type {s}\n", .{ @tagName(ap1.type), @tagName(ap2.type) });
             if (ap1.x.rp.?.index < ap2.x.rp.?.index) return true;
@@ -664,11 +663,8 @@ fn State_insert(data: *State, key: *Config) !bool {
     return true;
 }
 
-//| NOTE: These will be sorted, which invalidates the, uh, state,
-//| of the state_map.  I think that's ok though.  Tracking what
-//| of this data belongs to whom'st will be interesting.
-//|
-
+/// Returns the values array of all states.  Nothing is allowed to
+/// use the state map after this is called.
 fn State_arrayof() []*State {
     return state_map.safe.values();
 }
@@ -826,41 +822,45 @@ fn rule_print(writer: anytype, rp: *Rule) !void {
     }
 }
 
-// /* Duplicate the input file without comments and without actions
-// ** on rules */
-// void Reprint(struct lemon *lemp)
-// {
-//   struct rule *rp;
-//   struct symbol *sp;
-//   int i, j, maxlen, len, ncolumns, skip;
-//   printf("// Reprint of input file \"%s\".\n// Symbols:\n",lemp->filename);
-//   maxlen = 10;
-//   for(i=0; i<lemp->nsymbol; i++){
-//     sp = lemp->symbols[i];
-//     len = lemonStrlen(sp->name);
-//     if( len>maxlen ) maxlen = len;
-//   }
-//   ncolumns = 76/(maxlen+5);
-//   if( ncolumns<1 ) ncolumns = 1;
-//   skip = (lemp->nsymbol + ncolumns - 1)/ncolumns;
-//   for(i=0; i<skip; i++){
-//     printf("//");
-//     for(j=i; j<lemp->nsymbol; j+=skip){
-//       sp = lemp->symbols[j];
-//       assert( sp->index==j );
-//       printf(" %3d %-*.*s",j,maxlen,maxlen,sp->name);
-//     }
-//     printf("\n");
-//   }
-//   for(rp=lemp->rule; rp; rp=rp->next){
-//     rule_print(stdout, rp);
-//     printf(".");
-//     if( rp->precsym ) printf(" [%s]",rp->precsym->name);
-//     /* if( rp->code ) printf("\n    %s",rp->code); */
-//     printf("\n");
-//   }
-// }
-//
+/// Duplicate the input file without comments and without actions
+/// on rules
+fn Reprint(lemp: *Lemon) !void {
+    const std_write = std.io.getStdIn().writer();
+    var buffer = std.io.bufferedWriter(std_write);
+    var out = buffer.writer();
+    try out.print("// Reprint of input file {s}.\n// Symbols:\n", .{lemp.quoted_filename});
+    var maxlen: usize = 10;
+    for (lemp.symbols[0..lemp.nsymbol]) |sp| {
+        const len = sp.name.len;
+        if (len > maxlen) maxlen = len;
+    }
+    const ncolumns = @max(1, 76 / (maxlen + 5));
+    const skip = (lemp.nsymbol + ncolumns - 1) / ncolumns;
+    for (0..skip) |i| {
+        try out.writeAll("//");
+        var j: usize = i;
+        while (j < lemp.nsymbol) : (j += skip) {
+            const sp = lemp.symbols[j];
+            dbgassert(sp.index == j);
+            const ptsym = if (maxlen < sp.name.len) sp.name[0..maxlen] else sp.name;
+            try out.print(" {d: >3} ", .{j});
+            try out.print("{s}", .{ptsym});
+            if (ptsym.len < maxlen) {
+                try out.writeByteNTimes(' ', maxlen - ptsym.len);
+            }
+            try out.writeByte('\n');
+        }
+    }
+    var m_rp: ?*Rule = lemp.rule;
+    while (m_rp) |rp| : (m_rp = rp.next) {
+        try rule_print(out, rp);
+        try out.writeByte('.');
+        if (rp.precsym) |precsym| try out.print(" [{s}]", .{precsym.name});
+        if (comptime print_code) if (rp.code) try out.print("\n    {s}", .{rp.code});
+        try out.writeByte('\n');
+    }
+    try buffer.flush();
+}
 
 /// Print a single rule.
 fn RulePrint(writer: anytype, rp: *Rule, iCursor: ?usize) !void {
@@ -890,7 +890,12 @@ fn ConfigPrint(writer: anytype, cfp: *Config) !void {
 
 // Print an action to the given file descriptor.  Return FALSE if
 // nothing was actually printed.
-fn PrintAction(writer: anytype, ap: *Action, indent: usize) !bool {
+fn PrintAction(
+    writer: anytype,
+    ap: *Action,
+    indent: usize,
+    showPrecendenceConflict: bool,
+) !bool {
     var printed = true;
     switch (ap.type) {
         .shift => {
@@ -1000,7 +1005,7 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
     for (0..lemp.nxstate) |i| {
         const stp = lemp.sorted[i];
         try writer.print("State {d}:\n", .{stp.statenum});
-        var m_cfp: ?*Config = if (lemp.basisflag) stp.cfp else stp.bp;
+        var m_cfp: ?*Config = if (!lemp.opt.only_basis) stp.cfp else stp.bp;
         while (m_cfp) |cfp| {
             var buf: [20]u8 = .{0} ** 20;
             if (cfp.dot == cfp.rp.rhs.len) {
@@ -1011,7 +1016,7 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
             }
             try ConfigPrint(writer, cfp);
             try writer.writeByte('\n');
-            if (lemp.basisflag) {
+            if (!lemp.opt.only_basis) {
                 m_cfp = cfp.next;
             } else {
                 m_cfp = cfp.bp;
@@ -1020,7 +1025,7 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
         try writer.writeByte('\n');
         var m_ap = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
-            if (try PrintAction(writer, ap, 30)) try writer.writeByte('\n');
+            if (try PrintAction(writer, ap, 30, lemp.opt.show_precedence_conflict)) try writer.writeByte('\n');
         }
         try writer.writeByte('\n');
     }
@@ -1040,6 +1045,7 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
                 }
             }
         }
+        // TODO: Zitron should indicate associativity here also
         if (sp.prec) |prec| try writer.print(" (precedence={d})", .{prec});
         try writer.writeByte('\n');
     }
@@ -1166,7 +1172,7 @@ fn tplt_open(lemp: *Lemon) !struct { bool, [:0]const u8 } {
     // --
     // In 'modern' mode, we accept an argument for the template, which we check
     // here if set, and it's an error not to find it.  Otherwise we return the
-    // embed.
+    // embed. (remember: classic mode also has the template name argument).
     //
     const lempar = @embedFile("lempar");
     _ = lemp;
@@ -1364,7 +1370,8 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
                 const at = if (cp[i] == '@') true else false;
                 if (at) i += 1;
                 var id = i;
-                while (isAlnum(cp[id]) or cp[id] == '_') : (id += 1) {}
+                // _valid_ C code ends in `;` but we want to stay in bounds anyway:
+                while (id < cp.len and isAlnum(cp[id]) or cp[id] == '_') : (id += 1) {}
                 if (strcmp(rp.lhsalias, cp[i..id])) {
                     if (at) {
                         ErrorMsg(lemp.filename, rp.ruleline, "" ++
@@ -1385,7 +1392,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
                             });
                             lemp.errorcnt += 1;
                         } else if (at) {
-                            // If the argument is of the form @X then substituted
+                            // If the argument is of the form @X then substitute
                             // the token number of X, not the value of X
                             try writer.print(
                                 "yymsp[{d}].major",
@@ -1411,7 +1418,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         }
         try writer.writeAll(cp[start..]);
         // Main code generation completed
-        // The previous value was also interned so it's freed at the end:
+        // The previous value was also interned (in parseonetoken) so it's freed at the end:
         rp.code = try Strsafe(string_builder.items);
         string_builder.clearRetainingCapacity();
     }
@@ -2517,6 +2524,25 @@ fn reportTableImpl(
     try tplt_print(out, lemp, lemp.extracode, &lineno);
 }
 
+/// Generate a header file for the parser
+fn ReportHeader(lemp: *Lemon) !void {
+    // The original opens the file to read and checks if anything
+    // has changed, only then does it write.  We're just going to
+    // do it.
+    const prefix = lemp.tokenprefix;
+    const m_fh = try file_open(lemp, ".h", false, .{});
+    if (m_fh) |fh| {
+        defer fh.close();
+        const f_writer = fh.writer();
+        var write_buffer = std.io.bufferedWriter(f_writer);
+        const out = write_buffer.writer();
+        for (1..lemp.nterminal) |i| {
+            try out.print("#define {s}{s: <30} {d:>3}\n", .{ prefix, lemp.symbols[i].name, i });
+        }
+        try write_buffer.flush();
+    }
+}
+
 /// The state vector for the entire parser generator is recorded as
 /// follows.  (LEMON uses no global variables and makes little use of
 /// static variables.  Fields in the following structure can be thought
@@ -2615,8 +2641,6 @@ const Lemon = struct {
     nlookaheadtab: u32,
     /// Total table size of all tables in bytes
     tablesize: u32,
-    /// Print only basis configurations
-    basisflag: bool,
     /// Show preprocessor output on stdout
     printPreprocessed: bool,
     /// True if any %fallback is seen in the grammar
@@ -2686,7 +2710,6 @@ const Lemon = struct {
         .nactiontab = 0,
         .nlookaheadtab = 0,
         .tablesize = 0,
-        .basisflag = false,
         .printPreprocessed = false,
         .has_fallback = false,
         .nolinenosflag = false,
@@ -3051,14 +3074,17 @@ const ActTable = struct {
 /// are not RHS symbols with a defined precedence, the precedence
 /// symbol field is left blank.
 fn FindRulePrecedences(lem: *Lemon) void {
+    // TODO: yacc uses the rightmost symbol apparently.  Do we want
+    // that to be an option?  I think the precedence disambiguator is
+    // enough..
     var maybe_rp: ?*Rule = lem.rule;
     while (maybe_rp) |rp| : (maybe_rp = rp.next) {
         if (rp.precsym == null) {
             var i: usize = 0;
-            while (i < rp.rhs.len and rp.precsym == null) : (i += 1) {
+            precsym: while (i < rp.rhs.len) : (i += 1) {
                 const sp: *Symbol = rp.rhs[i];
                 if (sp.type == .multiterminal) {
-                    precsym: for (sp.subsym) |subsym| {
+                    for (sp.subsym) |subsym| {
                         if (subsym.prec) |_| {
                             rp.precsym = subsym;
                             break :precsym;
@@ -3066,6 +3092,7 @@ fn FindRulePrecedences(lem: *Lemon) void {
                     }
                 } else if (sp.prec) |_| {
                     rp.precsym = rp.rhs[i];
+                    break :precsym;
                 }
             }
         }
@@ -3120,15 +3147,13 @@ fn FindFirstSets(lemp: *Lemon) !void {
                     break :rhs;
                 } else if (s2.type == .multiterminal) {
                     for (s2.subsym) |ss2| {
-                        const p = SetAdd(s1.firstset, ss2.index);
-                        progress = progress or p;
+                        progress = SetAdd(s1.firstset, ss2.index) or progress;
                     }
                     break :rhs;
                 } else if (s1 == s2) {
                     if (s1.lambda == false) break :rhs;
                 } else {
-                    const p = SetUnion(s1.firstset, s2.firstset);
-                    progress = progress or p;
+                    progress = SetUnion(s1.firstset, s2.firstset) or progress;
                     if (s2.lambda == false) break :rhs;
                 }
             }
@@ -3306,6 +3331,7 @@ fn same_symbol(a: *const Symbol, b: *const Symbol) bool {
 fn buildshifts(lemp: *Lemon, stp: *State) !void {
     var maybe_cfp: ?*Config = stp.cfp; // For looping thru the config closure of "stp"
     // Initialize with a conveniently available symbol, this is never used:
+    // (So we don't do it)
     // /* Each configuration becomes complete after it contributes to a successor
     // ** state.  Initially, all configurations are incomplete.
     if (p_check_next) {
@@ -3370,26 +3396,22 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
 /// Construct the propagation links
 ///
 fn FindLinks(lemp: *Lemon) !void {
-
-    // /* Housekeeping detail:
-    // ** Add to every propagate link a pointer back to the state to
-    // ** which the link is attached. */
-    for (0..lemp.nstate) |i| {
-        const stp: ?*State = lemp.sorted[i];
-        var maybe_cfp: ?*Config = stp.?.cfp;
+    // Housekeeping detail:
+    // Add to every propagate link a pointer back to the state to
+    // which the link is attached.
+    for (lemp.sorted) |stp| {
+        var maybe_cfp: ?*Config = stp.cfp;
         while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
             if (p_check1) {
-                dprint("cfp: {s}:{d} -> {d}\n", .{ cfp.rp.lhs.name, cfp.rp.index, stp.?.statenum });
+                dprint("cfp: {s}:{d} -> {d}\n", .{ cfp.rp.lhs.name, cfp.rp.index, stp.statenum });
             }
             cfp.stp = stp;
         }
     }
-
-    // /* Convert all backlinks into forward links.  Only the forward
-    // ** links are used in the follow-set computation. */
-    for (0..lemp.nstate) |i| {
-        const stp: ?*State = lemp.sorted[i];
-        var maybe_cfp = if (stp) |sp| sp.cfp else null;
+    // Convert all backlinks into forward links.  Only the forward
+    // links are used in the follow-set computation.
+    for (lemp.sorted) |stp| {
+        var maybe_cfp: ?*Config = stp.cfp;
         while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
             if (p_check1) {
                 dprint("cfp: {s}:{d} <-> ", .{ cfp.rp.lhs.name, cfp.rp.index });
@@ -3408,10 +3430,10 @@ fn FindLinks(lemp: *Lemon) !void {
 }
 
 // [1112]
-// Compute all followsets.
-//
-// A followset is the set of all symbols which can come immediately
-// after a configuration.
+/// Compute all followsets.
+///
+/// A followset is the set of all symbols which can come immediately
+/// after a configuration.
 fn FindFollowSets(lemp: *Lemon) void {
     for (lemp.sorted) |stp| {
         var maybe_cfp: ?*Config = stp.cfp;
@@ -3492,8 +3514,8 @@ fn FindActions(lemp: *Lemon) !void {
     //   Resolve conflicts
     for (lemp.sorted) |stp| {
         stp.ap = if (stp.ap) |ap| Action.sort(ap) else null;
-        var maybe_ap: ?*Action = stp.ap;
-        while (maybe_ap) |ap| : (maybe_ap = ap.next) {
+        var m_ap: ?*Action = stp.ap;
+        while (m_ap) |ap| : (m_ap = ap.next) {
             var nap = ap.next;
             while (nap != null and nap.?.sp == ap.sp) : (nap = nap.?.next) {
                 // The two actions "ap" and "nap" have the same lookahead.
@@ -3520,7 +3542,7 @@ fn FindActions(lemp: *Lemon) !void {
     m_rp = lemp.rule;
     while (m_rp) |rp| : (m_rp = rp.next) {
         if (rp.canReduce) continue;
-        ErrorMsg(lemp.filename, 0, "" ++
+        ErrorMsg(lemp.filename, rp.ruleline, "" ++
             "This rule can not be reduced.\n", .{});
         lemp.errorcnt += 1;
     }
@@ -3573,16 +3595,15 @@ fn resolve_conflict(apx: *Action, apy: *Action) u32 {
             errcnt += 1;
             return errcnt;
         }
+        // TODO: decide whether we resolve reduces on precedence, or make
+        // that optional, or what.  It's fairly opinionated behavior.
         const spx = maybe_spx.?;
         const spy = maybe_spy.?;
-        // NOTE: the logic here is correct, and matches the order in
-        // lemon.c.  Come back and rewrite it to use two <, so that
-        // the states collapse symmetrically.
-        if (spx.prec.? > spy.prec.?) {
+        if (spy.prec.? < spx.prec.?) {
             apy.type = .rd_resolved;
         } else if (spx.prec.? < spy.prec.?) {
             apx.type = .rd_resolved;
-        }
+        } // Equality is checked in the first if statement.
     } else {
         // The REDUCE/SHIFT case cannot happen because SHIFTs come before
         // REDUCEs on the list.  If we reach this point it must be because
@@ -4629,7 +4650,12 @@ const declarations = std.StaticStringMap(Declaration).initComptime(directive_lis
 fn scan(ps: *PState, fb: [:0]const u8) !void {
     var i: usize = 0;
     var lineno: usize = 1;
-    scanning: while (i < fb.len) {
+    // BOM check
+    if (fb.len >= 3 and fb[0] == 0xef and fb[1] == 0xbb and fb[2] == 0xbf) {
+        logger.warn("Spurious BOM at head of file, skipping\n", .{});
+        i = 3;
+    }
+    scanning: while (fb[i] != 0) {
         var skip: bool = false; // True when we advance one more before loop
         if (fb[i] == '\n') lineno += 1;
         if (isSpace(fb[i])) {
@@ -4724,7 +4750,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
             i += 2;
             while (fb[i] != 0 and (isAlnum(fb[i]) or fb[i] == '_')) : (i += 1) {}
         } else { //  All other (one character) operators
-            i += 1;
+            i += 1; // TODO: skip a codepoint, not a byte
         }
         const x = fb[ps.tokenstart..i];
         if (p_print) std.debug.print("i == {d} '{u}' ", .{ i, fb[i] });
@@ -4779,7 +4805,7 @@ fn CompressTables(lemp: *Lemon) !void {
             m_ap = stp.ap;
             const stderr = std.io.getStdErr().writer();
             while (m_ap) |ap| : (m_ap = ap.next) {
-                _ = try PrintAction(stderr, ap, 0);
+                _ = try PrintAction(stderr, ap, 0, lemp.opt.show_precedence_conflict);
             }
             m_ap = stp.ap;
         }
@@ -5140,6 +5166,19 @@ fn handleflags(opt: *Options, flag: u8, arg: []const u8, set: bool, allocator: A
                 return 1;
             }
         },
+        'U' => {
+            if (arg.len > 0) {
+                for (opt.azDefine, 0..) |def, i| {
+                    if (strcmp(def, arg)) {
+                        // Clobber with the last value (aliasing is harmless)
+                        opt.azDefine[i] = opt.azDefine[opt.azDefine.len - 1];
+                        opt.bDefineUsed[i] = opt.bDefineUsed[opt.bDefineUsed.len - 1];
+                        opt.azDefine = try allocator.realloc(opt.azDefine, opt.azDefine.len - 1);
+                        opt.bDefineUsed = try allocator.realloc(opt.bDefineUsed, opt.bDefineUsed.len - 1);
+                    }
+                }
+            }
+        },
         'E' => opt.print_pp = set,
         'f' => {}, // Ignored,
         'g' => opt.rpflag = set,
@@ -5189,13 +5228,52 @@ fn OptInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !void {
             }
         }
         if (errcnt > 0) {
-            dprint("Valid command-line options for {s} are:\n", .{args[0]});
-            // OptPrint();
+            OptPrint(args);
         }
         return;
     } else {
         @compileError("Implement not-lemon-classic options parser\n");
     }
+}
+
+const help_string =
+    \\Valid command line options for "{s}" are:
+    \\  -b           Print only the basis in report.
+    \\  -c           Don't compress the action table.
+    \\  -d<string>   Output directory.  Default '.'
+    \\  -D<string>   Define an %ifdef macro.
+    \\  -E           Print input file after preprocessing.
+    \\  -f<string>   Ignored.  (Placeholder for -f compiler options.)
+    \\  -g           Print grammar without actions.
+    \\  -I<string>   Ignored.  (Placeholder for '-I' compiler options.)
+    \\  -m           Output a makeheaders compatible file.
+    \\  -l           Do not print #line statements.
+    \\  -O<string>   Ignored.  (Placeholder for '-O' compiler options.)
+    \\  -p           Show conflicts resolved by precedence rules
+    \\  -q           (Quiet) Don't print the report file.
+    \\  -r           Do not sort or renumber states
+    \\  -s           Print parser stats to standard output.
+    \\  -S           Generate the *.sql file describing the parser tables.
+    \\  -x           Print the version number.
+    \\  -T<string>   Specify a template file.
+    \\  -U<string>   Undefine a macro.
+    \\  -W<string>   Ignored.  (Placeholder for '-W' compiler options.)
+;
+
+fn OptPrint(args: [][:0]u8) noreturn {
+    const idx = if (mem.lastIndexOfScalar(u8, args[0], '/')) |i| i + 1 else 0;
+    dprint(help_string, .{args[0][idx..]});
+    exit(1);
+}
+
+fn strLessThan(_: void, a: []const u8, b: []const u8) bool {
+    if (a.len < b.len) return true;
+    if (b.len < a.len) return false;
+    for (a, b) |ac, bc| {
+        if (ac < bc) return true;
+        if (bc > ac) return false;
+    }
+    return false; // Equal is not less than
 }
 
 //|
@@ -5215,8 +5293,8 @@ fn SetSize(n: usize) void {
 //| SetNew is just allocating []bool, SetFree needs the allocator so we
 //| take care of it when destroying things with sets on them.
 
-// Add a new element to the set.  Return `true` if the element was added
-// and `false` if it was already there.
+/// Add a new element to the set.  Return `true` if the element was added
+/// and `false` if it was already there.
 fn SetAdd(set: []bool, n: usize) bool {
     const was = set[n];
     assert(n < set_size);
@@ -5238,6 +5316,7 @@ fn SetUnion(s1: []bool, s2: []bool) bool {
     return changed;
 }
 
+/// Print a statistic to the provided Writer.
 fn stats_line(in: anytype, zLabel: []const u8, iValue: usize) !void {
     try in.print("  {s}", .{zLabel});
     try in.writeByteNTimes('.', 35 - zLabel.len);
@@ -5258,14 +5337,14 @@ pub fn main() !void {
     }
     const allocator = if (is_debug) gpa.allocator() else gpa;
     // Set up pools.
-    action_allocator = .init(if (is_debug) allocator else std.heap.page_allocator);
+    action_allocator = .init(allocator);
     defer action_allocator.deinit();
-    Configlist_init(allocator, .init(if (is_debug) allocator else std.heap.page_allocator));
+    Configlist_init(allocator, .init(allocator));
     defer {
         Configlist_deinit();
     }
     cf_ls.allocator = allocator;
-    plink_freelist = .init(if (is_debug) allocator else std.heap.page_allocator);
+    plink_freelist = .init(allocator);
     is_plink_freelist = true;
     defer {
         Plink_deinit();
@@ -5308,6 +5387,7 @@ pub fn main() !void {
         dprint("Exactly one filename argument is required.\n", .{});
         exit(1);
     }
+    std.mem.sort([]const u8, opt.azDefine, {}, strLessThan);
     const filename: []const u8 = OptArg(args, 0);
     var lem = lemon: {
         errdefer opt.deinit(allocator);
@@ -5318,7 +5398,6 @@ pub fn main() !void {
     lem.argv = args;
     lem.filename = filename;
     lem.quoted_filename = try esc_filename(allocator, filename);
-    lem.basisflag = !opt.only_basis; // TODO: clean this up
     lem.nolinenosflag = opt.no_linenos;
     lem.printPreprocessed = opt.print_pp;
     _ = try Symbol_new("$"); // Why?
@@ -5375,101 +5454,99 @@ pub fn main() !void {
     }
     // [1726]
     // /* Generate a reprint of the grammar, if requested on the command line */
-    // else
-    //
-    SetSize(lem.nterminal + 1);
-    // Find the precedence for every production rule (that has one)
-    FindRulePrecedences(lem);
-    // Compute the lambda-nonterminals and the first-sets for every
-    // nonterminal
-    try FindFirstSets(lem);
-    if (p_check1) {
-        var rp: ?*Rule = lem.rule;
-        while (rp) |rule| : (rp = rule.next) {
-            const s1 = rule.lhs;
-            dprint("lhs: {s} ({d})", .{ s1.name, s1.index });
-            if (s1.lambda) {
-                dprint(" LAMBDA ", .{});
+    if (opt.rpflag) {
+        try Reprint(lem);
+    } else {
+        SetSize(lem.nterminal + 1);
+        // Find the precedence for every production rule (that has one)
+        FindRulePrecedences(lem);
+        // Compute the lambda-nonterminals and the first-sets for every
+        // nonterminal
+        try FindFirstSets(lem);
+        if (p_check1) {
+            var rp: ?*Rule = lem.rule;
+            while (rp) |rule| : (rp = rule.next) {
+                const s1 = rule.lhs;
+                dprint("lhs: {s} ({d})", .{ s1.name, s1.index });
+                if (s1.lambda) {
+                    dprint(" LAMBDA ", .{});
+                }
+                for (s1.firstset) |b| {
+                    if (b) {
+                        dprint("+", .{});
+                    } else {
+                        dprint(".", .{});
+                    }
+                }
+                dprint("\n", .{});
+                for (rule.rhs, 0..) |s2, i| {
+                    dprint("  {d}:{s} ({d})\n", .{ i, s2.name, s2.index });
+                }
             }
-            for (s1.firstset) |b| {
-                if (b) {
-                    dprint("+", .{});
+        }
+        dbgassert(lem.nstate == 0);
+        // Compute all LR(0) states.  Also record follow-set propagation
+        // links so that the follow-set can be computed later
+        try FindStates(lem);
+        lem.sorted = State_arrayof();
+        dbgassert(lem.sorted.len == lem.nstate);
+        if (p_check1) {
+            for (lem.sorted, 0..) |stp, i| {
+                dprint("State {d} #{d}: ", .{ i, stp.statenum });
+                if (stp.bp) |bp| {
+                    dprint("{s}", .{bp.rp.lhs.name});
                 } else {
-                    dprint(".", .{});
+                    dprint("(null)", .{});
+                }
+                dprint("\n", .{});
+            }
+        }
+        // /* Tie up loose ends on the propagation links */
+        try FindLinks(lem);
+        if (p_check1) {
+            for (lem.sorted) |stp| {
+                var maybe_cfp: ?*Config = stp.cfp;
+                while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
+                    dprint("cfp: {s}:{d} fplp count: ", .{ cfp.rp.lhs.name, cfp.rp.index });
+                    var plp_count: usize = 0;
+                    var maybe_plp: ?*PLink = cfp.fplp;
+                    while (maybe_plp) |plp| : (maybe_plp = plp.next) {
+                        plp_count += 1;
+                    }
+                    dprint("{d}\n", .{plp_count});
                 }
             }
-            dprint("\n", .{});
-            for (rule.rhs, 0..) |s2, i| {
-                dprint("  {d}:{s} ({d})\n", .{ i, s2.name, s2.index });
-            }
         }
-    }
-    dbgassert(lem.nstate == 0);
-    // Compute all LR(0) states.  Also record follow-set propagation
-    // links so that the follow-set can be computed later
-    try FindStates(lem);
-    lem.sorted = State_arrayof();
-    dbgassert(lem.sorted.len == lem.nstate);
-    if (p_check1) {
-        for (lem.sorted, 0..) |stp, i| {
-            dprint("State {d} #{d}: ", .{ i, stp.statenum });
-            if (stp.bp) |bp| {
-                dprint("{s}", .{bp.rp.lhs.name});
-            } else {
-                dprint("(null)", .{});
-            }
-            dprint("\n", .{});
-        }
-    }
-    // /* Tie up loose ends on the propagation links */
-    try FindLinks(lem);
-    if (p_check1) {
-        for (lem.sorted) |stp| {
-            var maybe_cfp: ?*Config = stp.cfp;
-            while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
-                dprint("cfp: {s}:{d} fplp count: ", .{ cfp.rp.lhs.name, cfp.rp.index });
-                var plp_count: usize = 0;
-                var maybe_plp: ?*PLink = cfp.fplp;
-                while (maybe_plp) |plp| : (maybe_plp = plp.next) {
-                    plp_count += 1;
-                }
-                dprint("{d}\n", .{plp_count});
-            }
-        }
-    }
-    // Compute the follow set of every reducible configuration
-    FindFollowSets(lem);
+        // Compute the follow set of every reducible configuration
+        FindFollowSets(lem);
 
-    // Compute the action tables
-    try FindActions(lem);
-    // Compress the action tables
-    if (!opt.no_compress) try CompressTables(lem);
-    if (p_check1) {
-        for (lem.sorted[0..lem.nstate]) |stp| {
-            dprint("State {d}:", .{stp.statenum});
-            var m_ap: ?*Action = stp.ap;
-            while (m_ap) |ap| : (m_ap = ap.next) {
-                dprint(" {s}", .{ap.sp.name});
+        // Compute the action tables
+        try FindActions(lem);
+        // Compress the action tables
+        if (!opt.no_compress) try CompressTables(lem);
+        if (p_check1) {
+            for (lem.sorted[0..lem.nstate]) |stp| {
+                dprint("State {d}:", .{stp.statenum});
+                var m_ap: ?*Action = stp.ap;
+                while (m_ap) |ap| : (m_ap = ap.next) {
+                    dprint(" {s}", .{ap.sp.name});
+                }
+                dprint("\n", .{});
             }
-            dprint("\n", .{});
         }
+        // Reorder and renumber the states so that states with fewer choices
+        // occur at the end.  This is an optimization that helps make the
+        // generated parser tables smaller.
+        if (!opt.no_resort) ResortStates(lem);
+        // Generate a report of the parser generated.  (the "y.output" file)
+        if (!opt.quiet) try ReportOutput(lem);
+        // Generate the source code for the parser.
+        try ReportTable(lem, opt.mhflag, opt.sql_flag);
+        // Produce a header file for use by the scanner.  (This step is
+        // omitted if the "-m" option is used because makeheaders will
+        // generate the file for us.)
+        if (!opt.mhflag) try ReportHeader(lem);
     }
-    // Reorder and renumber the states so that states with fewer choices
-    // occur at the end.  This is an optimization that helps make the
-    // generated parser tables smaller.
-    if (!opt.no_resort) ResortStates(lem);
-    // Generate a report of the parser generated.  (the "y.output" file)
-    if (!opt.quiet) try ReportOutput(lem);
-    // Generate the source code for the parser.
-    try ReportTable(lem, opt.mhflag, opt.sql_flag);
-    {
-        // /* Produce a header file for use by the scanner.  (This step is
-        // ** omitted if the "-m" option is used because makeheaders will
-        // ** generate the file for us.) */
-        // if( !mhflag ) ReportHeader(&lem);
-    }
-    // The finale looks like this:
-    //
     if (opt.statistics) {
         const in = std.io.getStdIn().writer();
         try in.writeAll("Parser statistics:\n");
@@ -5483,19 +5560,12 @@ pub fn main() !void {
         try stats_line(in, "lookahead table entries", lem.nlookaheadtab);
         try stats_line(in, "total table size (bytes)", lem.tablesize);
     }
-    // if( lem.nconflict > 0 ){
-    //   fprintf(stderr,"%d parsing conflicts.\n",lem.nconflict);
-    // }
-    //
-    // /* return 0 on success, 1 on failure. */
-    // exitcode = ((lem.errorcnt > 0) || (lem.nconflict > 0)) ? 1 : 0;
-    // exit(exitcode);
-    // return (exitcode);
-    //
-    // Which is adequately straightforward imho.
-    //
+    if (lem.nconflict > 0) {
+        dprint("{d} parsing conflicts.\n", .{lem.nconflict});
+    }
+    // return 0 on success, 1 on failure.
+    if (lem.errorcnt > 0 or lem.nconflict > 0) exit(1);
     std.process.cleanExit();
-    // std.process.exit(0);
 }
 
 //| [1809] MergeSort
@@ -5543,11 +5613,10 @@ fn mergeSortFn(
                 @field(ep.?, next) = null;
                 var i: usize = 0;
                 while (i < LISTSIZE - 1 and set[i] != null) : (i += 1) {
-                    ep = merge(ep, set[i]);
+                    ep = merge(set[i], ep);
                     set[i] = null;
                 }
-                if (i == LISTSIZE) i -= 1;
-                set[i] = ep;
+                set[i] = merge(set[i], ep);
             }
 
             ep = null;
@@ -5830,9 +5899,9 @@ fn Symbol_lessThanFn(_: void, a: *Symbol, b: *Symbol) bool {
 
 //| [1300] configlist.c
 //|
-//| This is one of the places where the Lemon generator uses global state.
-//| No sin in that, not in an application, but we're going to package it up
-//| into:
+//| This is one of the places where the Lemon generator uses 'static' global
+//| state.  No sin in that, not in an application, but we're going to package it
+//| up into:
 
 pub const ConfigLists = struct {
     allocator: Allocator,
@@ -6008,7 +6077,7 @@ fn Configlist_closure(lemp: *Lemon) !void {
                     if (p_check1) {
                         dprint("{s}, ", .{xsp.name});
                     }
-                    // TODO: refactor this: slice in for loop above,
+                    // TODO: refactor this:
                     // switch statement here:
                     if (xsp.type == .terminal) {
                         _ = SetAdd(newcfp.fws, xsp.index);

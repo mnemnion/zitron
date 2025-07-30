@@ -4,7 +4,7 @@ shopt -s nullglob
 
 OUTDIR=./samples
 
-FLAGS="-S -m"
+FLAGS="-S -s -p "
 
 zig build install || exit 1
 
@@ -24,7 +24,7 @@ for src in "$OUTDIR"/*.y; do
 
 
   # Run Zig.
-  zig-out/bin/lemon "$FLAGS" "$src" > "$zig_dump" 2>&1
+ kcov  --include-pattern="$(pwd)" --exclude-line='errdefer,unreachable,expect(false)' zig-out/cov/ zig-out/bin/lemon "$FLAGS" "$src" > "$zig_dump" 2>&1
 
   # Run C.
   lemonc "$FLAGS" "$src" > "$ref_dump" 2>&1
@@ -42,3 +42,4 @@ for src in "$OUTDIR"/*.y; do
   diff -q "$ref_sql" "$zig_sql"
 
 done
+
