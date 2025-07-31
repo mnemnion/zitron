@@ -1630,21 +1630,21 @@ fn print_stack_union(
     }
     // zig fmt: off
     const t_name = if (lemp.tokentype.len > 0) lemp.tokentype else "void*";
-    try out.print("#define {s}TOKENTYPE {s}\n", .{ name, t_name }); lineno += 1;
+    try out.print("const {s}TOKENTYPE = {s};\n", .{ name, t_name }); lineno += 1;
     if (mhflag) {
         try out.writeAll("#endif\n"); lineno += 1;
     }
-    try out.writeAll("typedef union {\n"); lineno += 1;
-    try out.writeAll("  int yyinit;\n"); lineno += 1;
-    try out.print("  {s}TOKENTYPE yy0;\n", .{name}); lineno += 1;
+    try out.writeAll("pub const YYMINORTYPE = union(enum) {\n"); lineno += 1;
+    try out.writeAll("    yyinit: usize,\n"); lineno += 1;
+    try out.print("    yy0: {s}TOKENTYPE,\n", .{name}); lineno += 1;
     t_print: for (types, 0..) |variant, i| {
         if (variant.len == 0) continue :t_print;
-        try out.print("  {s} yy{d};\n", .{ variant, i + 1 }); lineno += 1;
+        try out.print("    yy{d}: {s},\n", .{ i + 1, variant }); lineno += 1;
     }
     if (lemp.errsym) |errsym| if (errsym.useCnt > 0) {
-        try out.print("  int yy{d};\n", .{errsym.dtnum}); lineno += 1;
+        try out.print("    yy{d}: usize,\n", .{errsym.dtnum}); lineno += 1;
     };
-    try out.writeAll("} YYMINORTYPE;\n");
+    try out.writeAll("};\n");
     // zig fmt: on
     lineno += 1;
     plineno.* = lineno;
@@ -2013,21 +2013,21 @@ fn reportTableImpl(
     {
         // Finish rendering the constants now that the action table has
         // been computed
-        try out.print("#define YYNSTATE             {d}\n", .{lemp.nxstate}); lineno += 1;
-        try out.print("#define YYNRULE              {d}\n", .{lemp.nrule}); lineno += 1;
-        try out.print("#define YYNRULE_WITH_ACTION  {d}\n", .{lemp.nruleWithAction}); lineno += 1;
-        try out.print("#define YYNTOKEN             {d}\n", .{lemp.nterminal}); lineno += 1;
-        try out.print("#define YY_MAX_SHIFT         {d}\n", .{lemp.nxstate - 1}); lineno += 1;
+        try out.print("const YYNSTATE =             {d};\n", .{lemp.nxstate}); lineno += 1;
+        try out.print("const YYNRULE =              {d};\n", .{lemp.nrule}); lineno += 1;
+        try out.print("const YYNRULE_WITH_ACTION =  {d};\n", .{lemp.nruleWithAction}); lineno += 1;
+        try out.print("const YYNTOKEN =             {d};\n", .{lemp.nterminal}); lineno += 1;
+        try out.print("const YY_MAX_SHIFT =         {d};\n", .{lemp.nxstate - 1}); lineno += 1;
         var i = lemp.minShiftReduce;
-        try out.print("#define YY_MIN_SHIFTREDUCE   {d}\n", .{i}); lineno += 1;
+        try out.print("const YY_MIN_SHIFTREDUCE =   {d};\n", .{i}); lineno += 1;
         i += lemp.nrule;
-        try out.print("#define YY_MAX_SHIFTREDUCE   {d}\n", .{i - 1}); lineno += 1;
-        try out.print("#define YY_ERROR_ACTION      {d}\n", .{lemp.errAction}); lineno += 1;
-        try out.print("#define YY_ACCEPT_ACTION     {d}\n", .{lemp.accAction}); lineno += 1;
-        try out.print("#define YY_NO_ACTION         {d}\n", .{lemp.noAction}); lineno += 1;
-        try out.print("#define YY_MIN_REDUCE        {d}\n", .{lemp.minReduce}); lineno += 1;
+        try out.print("const YY_MAX_SHIFTREDUCE =   {d};\n", .{i - 1}); lineno += 1;
+        try out.print("const YY_ERROR_ACTION =      {d};\n", .{lemp.errAction}); lineno += 1;
+        try out.print("const YY_ACCEPT_ACTION =     {d};\n", .{lemp.accAction}); lineno += 1;
+        try out.print("const YY_NO_ACTION =         {d};\n", .{lemp.noAction}); lineno += 1;
+        try out.print("const YY_MIN_REDUCE =        {d};\n", .{lemp.minReduce}); lineno += 1;
         i = lemp.minReduce + lemp.nrule;
-        try out.print("#define YY_MAX_REDUCE        {d}\n", .{i - 1}); lineno += 1;
+        try out.print("const YY_MAX_REDUCE =        {d};\n", .{i - 1}); lineno += 1;
     }
     // zig fmt: on
     {
@@ -2043,9 +2043,9 @@ fn reportTableImpl(
         }
         if (lemp.tokendest.len > 0) min = 0;
         if (lemp.vardest.len > 0) max = lemp.nsymbol - 1;
-        try out.print("#define YY_MIN_DSTRCTR       {d}\n", .{min});
+        try out.print("const YY_MIN_DSTRCTR =       {d};\n", .{min});
         lineno += 1;
-        try out.print("#define YY_MAX_DSTRCTR       {d}\n", .{max});
+        try out.print("const YY_MAX_DSTRCTR =       {d};\n", .{max});
         lineno += 1;
         try tplt_xfer(lemp.name, &in, out, &lineno);
     }
@@ -2066,16 +2066,18 @@ fn reportTableImpl(
         lemp.nactiontab = pActtab.actionSize();
         const n = lemp.nactiontab;
         lemp.tablesize += n * szActionType;
-        try out.print("#define YY_ACTTAB_COUNT ({d})\n", .{n});
+        try out.print("const YY_ACTTAB_COUNT = {d};\n", .{n});
         lineno += 1;
-        try out.writeAll("static const YYACTIONTYPE yy_action[] = {\n");
+        try out.writeAll("// zig fmt: off\n");
+        lineno += 1;
+        try out.writeAll("const yy_action: [YY_ACTTAB_COUNT]YYACTIONTYPE  = .{\n");
         lineno += 1;
         var i: usize = 0;
         var j: usize = 0;
+        var j_row: usize = 0;
         while (i < n) : (i += 1) {
             var action = pActtab.yyaction(i);
             if (action < 0) action = @intCast(lemp.noAction);
-            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
             // This bit of brain-damage is to prevent a width-specified
             // positive signed value from getting a spurious `+`.  Whyyyy
             if (action >= 0) {
@@ -2084,8 +2086,9 @@ fn reportTableImpl(
                 try out.print(" {d: >4},", .{action});
             }
             if (j == 9 or i == n - 1) {
-                try out.writeByte('\n');
+                try out.print(" // {d: >5}\n", .{j_row});
                 lineno += 1;
+                j_row = i + 1;
                 j = 0;
             } else {
                 j += 1;
