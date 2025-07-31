@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) void {
 
     const lemon_template = b.option(
         []const u8,
-        "template",
+        "l_template",
         "A build-relative file path to a lemon template",
     ) orelse "template/lempar.c";
 
@@ -22,35 +22,61 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(lemon_exe);
 
-    const run_cmd = b.addRunArtifact(lemon_exe);
+    const lemon_run_cmd = b.addRunArtifact(lemon_exe);
 
-    run_cmd.step.dependOn(b.getInstallStep());
+    lemon_run_cmd.step.dependOn(b.getInstallStep());
 
     if (b.args) |args| {
-        run_cmd.addArgs(args);
+        lemon_run_cmd.addArgs(args);
     }
 
+    const zitron_template = b.option(
+        []const u8,
+        "template",
+        "A build-relative file path to a zitron template",
+    ) orelse "template/ztmpl.zig";
+
+    const zitron_exe = b.addExecutable(.{
+        .name = "zitron",
+        .root_source_file = b.path("src/zitron.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    zitron_exe.root_module.addAnonymousImport("z_template", .{ .root_source_file = b.path(zitron_template) });
+
+    b.installArtifact(zitron_exe);
+
+    const zitron_run_cmd = b.addRunArtifact(zitron_exe);
+
+    zitron_run_cmd.step.dependOn(b.getInstallStep());
+
+    if (b.args) |args| {
+        zitron_run_cmd.addArgs(args);
+    }
     const test_filters = b.option(
         []const []const u8,
         "test-filter",
         "Skip tests that do not match any filter",
     ) orelse &[0][]const u8{};
 
-    const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/lemon.zig"),
+    const zitron_unit_tests = b.addTest(.{
+        .root_source_file = b.path("src/zitron.zig"),
         .target = target,
         .optimize = optimize,
         .filters = test_filters,
     });
 
-    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+    const run_zitron_unit_tests = b.addRunArtifact(zitron_unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
 
-    test_step.dependOn(&run_exe_unit_tests.step);
+    test_step.dependOn(&run_zitron_unit_tests.step);
 
-    const run_step = b.step("run", "Run lemon");
-    run_step.dependOn(&run_cmd.step);
+    const zitron_run_step = b.step("run", "Run zitron");
+    zitron_run_step.dependOn(&zitron_run_cmd.step);
+
+    const lemon_run_step = b.step("lemon", "Run lemon");
+    lemon_run_step.dependOn(&lemon_run_cmd.step);
 
     const run_kcov = b.addSystemCommand(&.{
         "kcov",
@@ -59,7 +85,7 @@ pub fn build(b: *std.Build) void {
     });
     run_kcov.addPrefixedDirectoryArg("--include-pattern=", b.path("."));
     const coverage_output = run_kcov.addOutputDirectoryArg(".");
-    run_kcov.addArtifactArg(exe_unit_tests);
+    run_kcov.addArtifactArg(zitron_unit_tests);
 
     run_kcov.enableTestRunnerMode();
 

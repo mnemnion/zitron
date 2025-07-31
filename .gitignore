@@ -7,5 +7,6 @@ samples/*.h
 samples/*.out
 samples/*.tmp
 samples/*.dump
+samples/*.zig
 samples/*.trimmed
 samples/*.sql
