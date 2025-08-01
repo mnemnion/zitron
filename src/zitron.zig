@@ -729,7 +729,7 @@ fn Plink_delete(plp_delete: ?*PLink) void {
 /// name comes from malloc() and must be freed by the calling
 /// function.  Quote outname for line directives, and assign the
 /// filenames to the correct fields of `lemp`.
-fn assign_outname(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
+fn assign_outname(lemp: *Zitron, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
     if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
     if (escape) {
         if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
@@ -738,7 +738,7 @@ fn assign_outname(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8, esc
     if (escape) lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
 }
 
-fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM![]const u8 {
+fn file_makename(lemp: *Zitron, suffix: []const u8, output_dir: ?[]const u8) OOM![]const u8 {
     var buf = ArrayList(u8){};
     errdefer buf.deinit(lemp.allocator);
 
@@ -764,7 +764,7 @@ fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM!
 /// Open a file with a name based on the name of the input file,
 /// but with a different (specified) suffix, and return a pointer
 /// to the stream.
-fn file_open(lemp: *Lemon, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
+fn file_open(lemp: *Zitron, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
     try assign_outname(lemp, suffix, null, escape);
     const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
         lemp.errorcnt += 1;
@@ -814,7 +814,7 @@ fn rule_print(writer: anytype, rp: *Rule) !void {
 
 /// Duplicate the input file without comments and without actions
 /// on rules
-fn Reprint(lemp: *Lemon) !void {
+fn Reprint(lemp: *Zitron) !void {
     const std_write = std.io.getStdIn().writer();
     var buffer = std.io.bufferedWriter(std_write);
     var out = buffer.writer();
@@ -976,7 +976,7 @@ fn PrintAction(
 }
 
 /// Generate the "*.out" log file
-fn ReportOutput(lemp: *Lemon) !void {
+fn ReportOutput(lemp: *Zitron) !void {
     const m_fh = try file_open(lemp, ".out", false, .{});
     if (m_fh) |fh| {
         defer fh.close();
@@ -991,7 +991,7 @@ fn ReportOutput(lemp: *Lemon) !void {
 }
 
 /// Write the report to the provided writer.
-fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
+fn reportOutputImpl(lemp: *Zitron, writer: anytype) !void {
     for (0..lemp.nxstate) |i| {
         const stp = lemp.sorted[i];
         try writer.print("State {d}:\n", .{stp.statenum});
@@ -1155,7 +1155,7 @@ fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
 
 /// Retrieve the template.  First item of the tuple is `true` if the
 /// second must be freed.
-fn tplt_open(lemp: *Lemon) !struct { bool, [:0]const u8 } {
+fn tplt_open(lemp: *Zitron) !struct { bool, [:0]const u8 } {
     // TODO: We embed the template, so: in 'classic mode', we first check for
     // the existence of lempar.c, and if we have it, we use it.  If not, we
     // return the embedded version.
@@ -1176,7 +1176,7 @@ fn tplt_linedir(out: anytype, lineno: usize, quoted_filename: []const u8) !void 
 }
 
 /// Print a string to the file and keep the linenumber up to date.
-fn tplt_print(out: anytype, lemp: *Lemon, str: []const u8, lineno: *usize) !void {
+fn tplt_print(out: anytype, lemp: *Zitron, str: []const u8, lineno: *usize) !void {
     if (str.len == 0) return;
     const line_count = mem.count(u8, str, "\n");
     lineno.* += line_count;
@@ -1195,7 +1195,7 @@ fn tplt_print(out: anytype, lemp: *Lemon, str: []const u8, lineno: *usize) !void
 // The following routine emits code for the destructor for the
 // symbol sp
 //
-fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize) !void {
+fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize) !void {
     const cp = cp: {
         if (sp.type == .terminal) {
             if (lemp.tokendest.len == 0) return;
@@ -1239,7 +1239,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Lemon, lineno: *usize)
 
 /// Return TRUE (non-zero) if the given symbol has a destructor.
 ///
-fn has_destructor(sp: *Symbol, lemp: *Lemon) bool {
+fn has_destructor(sp: *Symbol, lemp: *Zitron) bool {
     if (sp.type == .terminal) {
         return lemp.tokendest.len > 0;
     } else {
@@ -1252,7 +1252,7 @@ fn has_destructor(sp: *Symbol, lemp: *Lemon) bool {
 ///
 /// Return 1 if the expanded code requires that "yylhsminor" local variable
 /// to be defined.
-fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
+fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
     var rc = false; // True if yylhsminor is used
     var dontUseRhs0 = false; // If true, use of left-most RHS label is illegal
     var lhsused = false; // True if the LHS element has been used
@@ -1474,7 +1474,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
 // Generate code which executes when the rule "rp" is reduced.  Write
 // the code to "out".  Make sure lineno stays up-to-date.
 //
-fn emit_code(out: anytype, rp: *Rule, lemp: *Lemon, lineno: *usize) !void {
+fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
     //
     // Setup code prior to the #line directive
     if (rp.codePrefix.len > 0) {
@@ -1535,7 +1535,7 @@ fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
 }
 
 /// Print the Token enum
-fn print_token_enum(zyt: *Lemon, out: anytype, plineno: *usize) !void {
+fn print_token_enum(zyt: *Zitron, out: anytype, plineno: *usize) !void {
     const t_name = if (zyt.tokentype.len > 0) zyt.token_enum else "TokenKind";
     try out.print("pub const {s} = enum {{\n", .{t_name});
     plineno.* += 1;
@@ -1556,7 +1556,7 @@ fn print_stack_union(
     /// The output stream
     out: anytype,
     /// The main info structure for this parser
-    lemp: *Lemon,
+    lemp: *Zitron,
     /// Pointer to the line number
     plineno: *usize,
     /// True if generating makeheaders output
@@ -1732,7 +1732,7 @@ fn writeRuleText(out: anytype, rp: *Rule) !void {
     }
 }
 
-fn ReportSql(lemp: *Lemon, sql: anytype) !void {
+fn ReportSql(lemp: *Zitron, sql: anytype) !void {
     try sql.writeAll("BEGIN;\n" ++
         "CREATE TABLE symbol(\n" ++
         "  id INTEGER PRIMARY KEY,\n" ++
@@ -1800,7 +1800,7 @@ fn ReportSql(lemp: *Lemon, sql: anytype) !void {
 
 /// Generate C code for the parser
 fn ReportTable(
-    lemp: *Lemon,
+    lemp: *Zitron,
     /// Output in makeheaders format if true
     mhflag: bool,
     /// Generate the *.sql file too
@@ -1843,7 +1843,7 @@ fn ReportTable(
 }
 
 fn reportTableImpl(
-    lemp: *Lemon,
+    zyt: *Zitron,
     in_template: [:0]const u8,
     out: anytype,
     mhflag: bool,
@@ -1853,17 +1853,17 @@ fn reportTableImpl(
     try out.print(
         \\//! This file is automatically generated by Zitron from input grammar
         \\//! source file "{s}"
-    , .{lemp.filename});
+    , .{zyt.filename});
     lineno += 1;
-    if (lemp.opt.nDefineUsed == 0) {
+    if (zyt.opt.nDefineUsed == 0) {
         try out.writeAll(".\n//!\n");
         lineno += 2;
     } else {
         try out.writeAll("//! with these options:\n//!\n");
         lineno += 2;
-        for (0..lemp.opt.azDefine.len) |i| {
-            if (!lemp.opt.bDefineUsed[i]) continue;
-            try out.print("//!   -D{s}\n", .{lemp.opt.azDefine[i]});
+        for (0..zyt.opt.azDefine.len) |i| {
+            if (!zyt.opt.bDefineUsed[i]) continue;
+            try out.print("//!   -D{s}\n", .{zyt.opt.azDefine[i]});
             lineno += 1;
         }
         try out.writeAll("//!\n");
@@ -1873,7 +1873,7 @@ fn reportTableImpl(
     // If the first %include directive begins with a top-level doc comment,
     // then skip over the header comment of the template file.
     {
-        var include = lemp.include;
+        var include = zyt.include;
         var i: usize = 0;
         var nl_skip: usize = 0;
         while (i < include.len and isSpace(include[i])) : (i += 1) {
@@ -1885,60 +1885,60 @@ fn reportTableImpl(
         if (include.len > 3 and include[0] == '/' and include[1] == '/' and include[2] == '!') {
             tplt_skip_header(&in, &lineno);
         } else {
-            try tplt_xfer(lemp.name, &in, out, &lineno);
+            try tplt_xfer(zyt.name, &in, out, &lineno);
         }
         // Generate the include code, if any.
-        try tplt_print(out, lemp, include, &lineno);
+        try tplt_print(out, zyt, include, &lineno);
     }
     if (mhflag) {
         // TODO: generate tokens as separate Zig file
-        const incName = try file_makename(lemp, ".h", null);
-        defer lemp.allocator.free(incName);
-        const inc_esc = try esc_filename(lemp.allocator, incName);
-        defer lemp.allocator.free(inc_esc);
+        const incName = try file_makename(zyt, ".h", null);
+        defer zyt.allocator.free(incName);
+        const inc_esc = try esc_filename(zyt.allocator, incName);
+        defer zyt.allocator.free(inc_esc);
         try out.print("#include {s}\n", .{inc_esc});
         lineno += 1;
     }
-    try tplt_xfer(lemp.name, &in, out, &lineno);
+    try tplt_xfer(zyt.name, &in, out, &lineno);
     if (lemon_compat) lineno -= 1; // hehe
     // Generate token enum
-    try print_token_enum(lemp, out, &lineno);
-    try tplt_xfer(lemp.name, &in, out, &lineno);
+    try print_token_enum(zyt, out, &lineno);
+    try tplt_xfer(zyt.name, &in, out, &lineno);
 
     // Generate the defines
 
     var szCodeType: u8 = 0;
     var szActionType: u8 = 0;
-    try out.print("const YYCODETYPE = {s};\n", .{minimum_size_type(0, lemp.nsymbol, &szCodeType)});
+    try out.print("const YYCODETYPE = {s};\n", .{minimum_size_type(0, zyt.nsymbol, &szCodeType)});
     lineno += 1;
-    try out.print("const YYNOCODE = {d};\n", .{lemp.nsymbol});
+    try out.print("const YYNOCODE = {d};\n", .{zyt.nsymbol});
     lineno += 1;
-    try out.print("const YYACTIONTYPE = {s};\n", .{minimum_size_type(0, lemp.maxAction, &szActionType)});
+    try out.print("const YYACTIONTYPE = {s};\n", .{minimum_size_type(0, zyt.maxAction, &szActionType)});
     lineno += 1;
-    if (lemp.wildcard) |wild| {
+    if (zyt.wildcard) |wild| {
         try out.print("const YYWILDCARD = {d};\n", .{wild.index});
         lineno += 1;
     }
-    try print_stack_union(out, lemp, &lineno, mhflag);
+    try print_stack_union(out, zyt, &lineno, mhflag);
     lineno += 1;
-    if (lemp.stacksize.len > 0) {
-        try out.print("const YYSTACKDEPTH = {s};\n", .{lemp.stacksize});
+    if (zyt.stacksize.len > 0) {
+        try out.print("const YYSTACKDEPTH = {s};\n", .{zyt.stacksize});
         lineno += 1;
     } else {
         try out.writeAll("const YYSTACKDEPTH = 100;\n");
         lineno += 1;
     }
     lineno += 1;
-    const name = if (lemp.name.len > 0) lemp.name else "Parse";
-    if (lemp.arg.len > 0) {
-        var arg = mem.trim(u8, lemp.arg, " ");
+    const name = if (zyt.name.len > 0) zyt.name else "Parse";
+    if (zyt.arg.len > 0) {
+        var arg = mem.trim(u8, zyt.arg, " ");
         var i = arg.len - 1;
         while (i >= 1 and (isAlnum(arg[i - 1]) or arg[i - 1] == '_')) : (i -= 1) {}
         arg = arg[i..]; // zig fmt: off
-        try out.print("#define {s}ARG_SDECL {s};\n", .{ name, lemp.arg }); lineno += 1;
-        try out.print("#define {s}ARG_PDECL ,{s}\n", .{ name, lemp.arg }); lineno += 1;
+        try out.print("#define {s}ARG_SDECL {s};\n", .{ name, zyt.arg }); lineno += 1;
+        try out.print("#define {s}ARG_PDECL ,{s}\n", .{ name, zyt.arg }); lineno += 1;
         try out.print("#define {s}ARG_PARAM ,{s}\n", .{ name, arg }); lineno += 1;
-        try out.print("#define {s}ARG_FETCH {s}=yypParser->{s};\n", .{ name, lemp.arg, arg }); lineno += 1;
+        try out.print("#define {s}ARG_FETCH {s}=yypParser->{s};\n", .{ name, zyt.arg, arg }); lineno += 1;
         try out.print("#define {s}ARG_STORE yypParser->{s}={s};\n", .{ name, arg, arg }); lineno += 1;
     } else {
         try out.print("#define {s}ARG_SDECL\n", .{name}); lineno += 1;
@@ -1947,30 +1947,30 @@ fn reportTableImpl(
         try out.print("#define {s}ARG_FETCH\n", .{name}); lineno += 1;
         try out.print("#define {s}ARG_STORE\n", .{name}); lineno += 1;
     }
-    if (lemp.reallocFunc.len > 0) {
-        try out.print("#define YYREALLOC {s}\n", .{lemp.reallocFunc}); lineno += 1;
+    if (zyt.reallocFunc.len > 0) {
+        try out.print("#define YYREALLOC {s}\n", .{zyt.reallocFunc}); lineno += 1;
     } else {
         try out.writeAll("#define YYREALLOC realloc\n"); lineno += 1;
     }
-    if (lemp.freeFunc.len > 0) {
-        try out.print("#define YYFREE {s}\n", .{lemp.freeFunc}); lineno += 1;
+    if (zyt.freeFunc.len > 0) {
+        try out.print("#define YYFREE {s}\n", .{zyt.freeFunc}); lineno += 1;
     } else {
         try out.writeAll("#define YYFREE free\n"); lineno += 1;
     }
-    if (lemp.reallocFunc.len > 0 and lemp.freeFunc.len > 0) {
+    if (zyt.reallocFunc.len > 0 and zyt.freeFunc.len > 0) {
         try out.writeAll("#define YYDYNSTACK 1\n"); lineno += 1;
     } else {
         try out.writeAll("#define YYDYNSTACK 0\n"); lineno += 1;
     }
-    if (lemp.ctx.len > 0) {
-        var ctx = mem.trim(u8, lemp.ctx, " ");
+    if (zyt.ctx.len > 0) {
+        var ctx = mem.trim(u8, zyt.ctx, " ");
         var i = ctx.len - 1;
         while (i >= 1 and (isAlnum(ctx[i - 1]) or ctx[i - 1] == '_')) : (i -= 1) {}
         ctx = ctx[i..];
-        try out.print("#define {s}CTX_SDECL {s};\n", .{ name, lemp.ctx }); lineno += 1;
-        try out.print("#define {s}CTX_PDECL ,{s}\n", .{ name, lemp.ctx }); lineno += 1;
+        try out.print("#define {s}CTX_SDECL {s};\n", .{ name, zyt.ctx }); lineno += 1;
+        try out.print("#define {s}CTX_PDECL ,{s}\n", .{ name, zyt.ctx }); lineno += 1;
         try out.print("#define {s}CTX_PARAM ,{s}\n", .{ name, ctx }); lineno += 1;
-        try out.print("#define {s}CTX_FETCH {s}=yypParser->{s};\n", .{ name, lemp.ctx, ctx }); lineno += 1;
+        try out.print("#define {s}CTX_FETCH {s}=yypParser->{s};\n", .{ name, zyt.ctx, ctx }); lineno += 1;
         try out.print("#define {s}CTX_STORE yypParser->{s}={s};\n", .{ name, ctx, ctx }); lineno += 1;
     } else {
         try out.print("#define {s}CTX_SDECL\n", .{name}); lineno += 1;
@@ -1982,26 +1982,26 @@ fn reportTableImpl(
     if (mhflag) {
         try out.writeAll("#endif\n"); lineno += 1;
     }
-    if (lemp.errsym) |errsym| if (errsym.useCnt > 0) {
+    if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
         try out.print("#define YYERRORSYMBOL {d}\n", .{errsym.index}); lineno += 1;
         try out.print("#define YYERRSYMDT yy{d}\n", .{errsym.dtnum}); lineno += 1;
     };
-    if (lemp.has_fallback) {
+    if (zyt.has_fallback) {
         try out.writeAll("#define YYFALLBACK 1\n"); lineno += 1;
     }
     // zig fmt: on
     // Compute the action table, but do not output it yet.  The action
     // table must be computed before generating the YYNSTATE macro because
     // we need to know how many states can be eliminated.
-    const pActtab = try Compute_actiontable(lemp);
+    const pActtab = try Compute_actiontable(zyt);
     defer pActtab.destroy();
     // Mark rules that are actually used for reduce actions after all
     // optimizations have been applied
     {
-        var m_rp: ?*Rule = lemp.rule;
+        var m_rp: ?*Rule = zyt.rule;
         while (m_rp) |rp| : (m_rp = rp.next) rp.doesReduce = false;
-        for (0..lemp.nxstate) |i| {
-            var m_ap: ?*Action = lemp.sorted[i].ap;
+        for (0..zyt.nxstate) |i| {
+            var m_ap: ?*Action = zyt.sorted[i].ap;
             while (m_ap) |ap| : (m_ap = ap.next) {
                 if (ap.type == .reduce or ap.type == .shiftreduce) {
                     ap.x.rp.?.doesReduce = true;
@@ -2013,20 +2013,20 @@ fn reportTableImpl(
     {
         // Finish rendering the constants now that the action table has
         // been computed
-        try out.print("const YYNSTATE =             {d};\n", .{lemp.nxstate}); lineno += 1;
-        try out.print("const YYNRULE =              {d};\n", .{lemp.nrule}); lineno += 1;
-        try out.print("const YYNRULE_WITH_ACTION =  {d};\n", .{lemp.nruleWithAction}); lineno += 1;
-        try out.print("const YYNTOKEN =             {d};\n", .{lemp.nterminal}); lineno += 1;
-        try out.print("const YY_MAX_SHIFT =         {d};\n", .{lemp.nxstate - 1}); lineno += 1;
-        var i = lemp.minShiftReduce;
+        try out.print("const YYNSTATE =             {d};\n", .{zyt.nxstate}); lineno += 1;
+        try out.print("const YYNRULE =              {d};\n", .{zyt.nrule}); lineno += 1;
+        try out.print("const YYNRULE_WITH_ACTION =  {d};\n", .{zyt.nruleWithAction}); lineno += 1;
+        try out.print("const YYNTOKEN =             {d};\n", .{zyt.nterminal}); lineno += 1;
+        try out.print("const YY_MAX_SHIFT =         {d};\n", .{zyt.nxstate - 1}); lineno += 1;
+        var i = zyt.minShiftReduce;
         try out.print("const YY_MIN_SHIFTREDUCE =   {d};\n", .{i}); lineno += 1;
-        i += lemp.nrule;
+        i += zyt.nrule;
         try out.print("const YY_MAX_SHIFTREDUCE =   {d};\n", .{i - 1}); lineno += 1;
-        try out.print("const YY_ERROR_ACTION =      {d};\n", .{lemp.errAction}); lineno += 1;
-        try out.print("const YY_ACCEPT_ACTION =     {d};\n", .{lemp.accAction}); lineno += 1;
-        try out.print("const YY_NO_ACTION =         {d};\n", .{lemp.noAction}); lineno += 1;
-        try out.print("const YY_MIN_REDUCE =        {d};\n", .{lemp.minReduce}); lineno += 1;
-        i = lemp.minReduce + lemp.nrule;
+        try out.print("const YY_ERROR_ACTION =      {d};\n", .{zyt.errAction}); lineno += 1;
+        try out.print("const YY_ACCEPT_ACTION =     {d};\n", .{zyt.accAction}); lineno += 1;
+        try out.print("const YY_NO_ACTION =         {d};\n", .{zyt.noAction}); lineno += 1;
+        try out.print("const YY_MIN_REDUCE =        {d};\n", .{zyt.minReduce}); lineno += 1;
+        i = zyt.minReduce + zyt.nrule;
         try out.print("const YY_MAX_REDUCE =        {d};\n", .{i - 1}); lineno += 1;
     }
     // zig fmt: on
@@ -2034,20 +2034,20 @@ fn reportTableImpl(
         // Minimum and maximum token values that have a destructor
         var min: usize = 0;
         var max: usize = 0;
-        for (0..lemp.nsymbol) |i| {
-            const sp = lemp.symbols[i];
+        for (0..zyt.nsymbol) |i| {
+            const sp = zyt.symbols[i];
             if (sp.type != .terminal and sp.destructor.len > 0) {
                 if (min == 0 or sp.index < min) min = sp.index;
                 if (sp.index > max) max = sp.index;
             }
         }
-        if (lemp.tokendest.len > 0) min = 0;
-        if (lemp.vardest.len > 0) max = lemp.nsymbol - 1;
+        if (zyt.tokendest.len > 0) min = 0;
+        if (zyt.vardest.len > 0) max = zyt.nsymbol - 1;
         try out.print("const YY_MIN_DSTRCTR =       {d};\n", .{min});
         lineno += 1;
         try out.print("const YY_MAX_DSTRCTR =       {d};\n", .{max});
         lineno += 1;
-        try tplt_xfer(lemp.name, &in, out, &lineno);
+        try tplt_xfer(zyt.name, &in, out, &lineno);
     }
 
     // Now output the action table and its associates:
@@ -2063,9 +2063,9 @@ fn reportTableImpl(
 
     // Output the yy_action table
     {
-        lemp.nactiontab = pActtab.actionSize();
-        const n = lemp.nactiontab;
-        lemp.tablesize += n * szActionType;
+        zyt.nactiontab = pActtab.actionSize();
+        const n = zyt.nactiontab;
+        zyt.tablesize += n * szActionType;
         try out.print("const YY_ACTTAB_COUNT = {d};\n", .{n});
         lineno += 1;
         try out.writeAll("// zig fmt: off\n");
@@ -2077,7 +2077,7 @@ fn reportTableImpl(
         var j_row: usize = 0;
         while (i < n) : (i += 1) {
             var action = pActtab.yyaction(i);
-            if (action < 0) action = @intCast(lemp.noAction);
+            if (action < 0) action = @intCast(zyt.noAction);
             // This bit of brain-damage is to prevent a width-specified
             // positive signed value from getting a spurious `+`.  Whyyyy
             if (action >= 0) {
@@ -2100,22 +2100,23 @@ fn reportTableImpl(
 
     // Output the yy_lookahead table
     {
-        lemp.nlookaheadtab = pActtab.lookaheadSize();
-        const n = lemp.nlookaheadtab;
-        lemp.tablesize += n * szCodeType;
-        try out.writeAll("static const YYCODETYPE yy_lookahead[] = {\n");
+        zyt.nlookaheadtab = pActtab.lookaheadSize();
+        const n = zyt.nlookaheadtab;
+        zyt.tablesize += n * szCodeType;
+        try out.print("const yy_lookahead: [{d}]YYCODETYPE = {{\n", .{n});
         lineno += 1;
         var i: usize = 0;
         var j: usize = 0;
+        var j_row: usize = 0;
         while (i < n) : (i += 1) {
             var la = pActtab.yylookahead(i);
-            if (la < 0) la = @intCast(lemp.nsymbol);
-            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
+            if (la < 0) la = @intCast(zyt.nsymbol);
             try out.print(" {d: >4},", .{uint(la)});
-            if (j == 9) {
-                try out.writeByte('\n');
-                j = 0;
+            if (j == 9 or i == n - 1) {
+                try out.print(" // {d: >5}\n", .{j_row});
                 lineno += 1;
+                j_row = i + 1;
+                j = 0;
             } else {
                 j += 1;
             }
@@ -2124,13 +2125,13 @@ fn reportTableImpl(
         // yy_shift_ofst[]+iToken will always be a valid index into the array,
         // even for the largest possible value of yy_shift_ofst[] and iToken.
 
-        const nLookAhead = lemp.nterminal + lemp.nactiontab;
+        const nLookAhead = zyt.nterminal + zyt.nactiontab;
         while (i < nLookAhead) {
-            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
-            try out.print(" {d: >4},", .{lemp.nterminal});
-            if (j == 9) {
-                try out.writeByte('\n');
+            try out.print(" {d: >4},", .{zyt.nterminal});
+            if (j == 9 or i == nLookAhead - 1) {
+                try out.print(" // {d: >5}\n", .{j_row});
                 j = 0;
+                j_row = i + 1;
                 lineno += 1;
             } else {
                 j += 1;
@@ -2147,36 +2148,37 @@ fn reportTableImpl(
 
     // Output the yy_shift_ofst[] table
     {
-        var n = lemp.nxstate;
-        while (n > 0 and lemp.sorted[n - 1].iTknOfst == NO_OFFSET) : (n -= 1) {}
-        try out.print("#define YY_SHIFT_COUNT    ({d})\n", .{n - 1});
+        var n = zyt.nxstate;
+        while (n > 0 and zyt.sorted[n - 1].iTknOfst == NO_OFFSET) : (n -= 1) {}
+        try out.print("const YY_SHIFT_COUNT =    {d};\n", .{n - 1});
         lineno += 1;
-        try out.print("#define YY_SHIFT_MIN      ({d})\n", .{pActtab.mnTknOfst});
+        try out.print("const YY_SHIFT_MIN =      {d};\n", .{pActtab.mnTknOfst});
         lineno += 1;
-        try out.print("#define YY_SHIFT_MAX      ({d})\n", .{pActtab.mxTknOfst});
+        try out.print("const YY_SHIFT_MAX =      {d};\n", .{pActtab.mxTknOfst});
         lineno += 1;
         var sz: u8 = 0;
         try out.print(
-            "static const {s} yy_shift_ofst[] = {{\n",
-            .{minimum_size_type(pActtab.mnTknOfst, lemp.nterminal + lemp.nactiontab, &sz)},
+            "const yy_shift_ofst [{d}]{s} = {{\n",
+            .{ n, minimum_size_type(pActtab.mnTknOfst, zyt.nterminal + zyt.nactiontab, &sz) },
         );
         lineno += 1;
-        lemp.tablesize += n * sz;
+        zyt.tablesize += n * sz;
         var i: usize = 0;
         var j: usize = 0;
+        var j_row: usize = 0;
         while (i < n) : (i += 1) {
-            const stp = lemp.sorted[i];
+            const stp = zyt.sorted[i];
             var ofst = stp.iTknOfst;
-            if (ofst == NO_OFFSET) ofst = @intCast(lemp.nactiontab);
-            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
+            if (ofst == NO_OFFSET) ofst = @intCast(zyt.nactiontab);
             if (ofst >= 0) {
                 try out.print(" {d: >4},", .{uint(ofst)});
             } else {
                 try out.print(" {d: >4},", .{ofst});
             }
             if (j == 9 or i == n - 1) {
-                try out.writeByte('\n');
+                try out.print(" // {d: >5}\n", .{j_row});
                 lineno += 1;
+                j_row = i + 1;
                 j = 0;
             } else {
                 j += 1;
@@ -2188,37 +2190,38 @@ fn reportTableImpl(
 
     // Output the yy_reduce_ofst[] table
     {
-        var n = lemp.nxstate;
-        while (n > 0 and lemp.sorted[n - 1].iNtOfst == NO_OFFSET) : (n -= 1) {}
+        var n = zyt.nxstate;
+        while (n > 0 and zyt.sorted[n - 1].iNtOfst == NO_OFFSET) : (n -= 1) {}
 
-        try out.print("#define YY_REDUCE_COUNT ({d})\n", .{n - 1});
+        try out.print("const YY_REDUCE_COUNT = {d};\n", .{n - 1});
         lineno += 1;
-        try out.print("#define YY_REDUCE_MIN   ({d})\n", .{pActtab.mnNtOfst});
+        try out.print("const YY_REDUCE_MIN =   {d};\n", .{pActtab.mnNtOfst});
         lineno += 1;
-        try out.print("#define YY_REDUCE_MAX   ({d})\n", .{pActtab.mxNtOfst});
+        try out.print("const YY_REDUCE_MAX =   {d};\n", .{pActtab.mxNtOfst});
         lineno += 1;
         var sz: u8 = 0;
         try out.print(
-            "static const {s} yy_reduce_ofst[] = {{\n",
-            .{minimum_size_type(pActtab.mnNtOfst - 1, @intCast(pActtab.mxNtOfst), &sz)},
+            "const yy_reduce_ofst: [{d}]{s}  = {{\n",
+            .{ n, minimum_size_type(pActtab.mnNtOfst - 1, @intCast(pActtab.mxNtOfst), &sz) },
         );
         lineno += 1;
-        lemp.tablesize += n * sz;
+        zyt.tablesize += n * sz;
         var i: usize = 0;
         var j: usize = 0;
+        var j_row: usize = 0;
         while (i < n) : (i += 1) {
-            const stp = lemp.sorted[i];
+            const stp = zyt.sorted[i];
             var ofst = stp.iNtOfst;
             if (ofst == NO_OFFSET) ofst = pActtab.mnNtOfst - 1;
-            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
             if (ofst >= 0) {
                 try out.print(" {d: >4},", .{uint(ofst)});
             } else {
                 try out.print(" {d: >4},", .{ofst});
             }
             if (j == 9 or i == n - 1) {
-                try out.writeByte('\n');
+                try out.print(" // {d: >5}\n", .{j_row});
                 lineno += 1;
+                j_row = i + 1;
                 j = 0;
             } else {
                 j += 1;
@@ -2229,24 +2232,25 @@ fn reportTableImpl(
     }
 
     // Output the default action table
-    try out.writeAll("static const YYACTIONTYPE yy_default[] = {\n");
+    try out.print("const yy_default [{d}]YYACTIONTYPE = {{\n", .{zyt.nxstate});
     lineno += 1;
     {
-        const n = lemp.nxstate;
-        lemp.tablesize += n * szActionType;
+        const n = zyt.nxstate;
+        zyt.tablesize += n * szActionType;
         var i: usize = 0;
         var j: usize = 0;
+        var j_row: usize = 0;
         while (i < n) : (i += 1) {
-            const stp = lemp.sorted[i];
-            if (j == 0) try out.print(" /* {d: >5} */ ", .{i});
+            const stp = zyt.sorted[i];
             if (stp.iDfltReduce < 0) {
-                try out.print(" {d: >4},", .{lemp.errAction});
+                try out.print(" {d: >4},", .{zyt.errAction});
             } else {
-                try out.print(" {d: >4},", .{uint(stp.iDfltReduce) + lemp.minReduce});
+                try out.print(" {d: >4},", .{uint(stp.iDfltReduce) + zyt.minReduce});
             }
             if (j == 9 or i == n - 1) {
-                try out.writeByte('\n');
+                try out.print(" // {d: >5}\n", .{j_row});
                 lineno += 1;
+                j_row = i + 1;
                 j = 0;
             } else {
                 j += 1;
@@ -2254,18 +2258,18 @@ fn reportTableImpl(
         }
         try out.writeAll("};\n");
         lineno += 1;
-        try tplt_xfer(lemp.name, &in, out, &lineno);
+        try tplt_xfer(zyt.name, &in, out, &lineno);
     }
 
     // Generate the table of fallback tokens.
-    if (lemp.has_fallback) {
-        const max = lemp.nterminal;
+    if (zyt.has_fallback) {
+        const max = zyt.nterminal;
         //   /* 2019-08-28:  Generate fallback entries for every token to avoid
         //   ** having to do a range check on the index */
         //   /* while( mx>0 && lemp->symbols[mx]->fallback==0 ){ mx--; } */
-        lemp.tablesize += (max) * szCodeType;
+        zyt.tablesize += (max) * szCodeType;
         for (0..max) |i| {
-            const sp = lemp.symbols[i];
+            const sp = zyt.symbols[i];
             if (sp.fallback) |fallback| {
                 try out.print("  {d: >3},  /* {s: >10} => {s} */\n", .{ fallback.index, sp.name, fallback.name });
             } else {
@@ -2274,22 +2278,22 @@ fn reportTableImpl(
             lineno += 1;
         }
     }
-    try tplt_xfer(lemp.name, &in, out, &lineno);
+    try tplt_xfer(zyt.name, &in, out, &lineno);
 
     // Generate a table containing the symbolic name of every symbol
     {
-        for (0..lemp.nsymbol) |i| {
-            try out.print("  /* {d: >4} */ \"{s}\",\n", .{ i, lemp.symbols[i].name });
+        for (0..zyt.nsymbol) |i| {
+            try out.print("  /* {d: >4} */ \"{s}\",\n", .{ i, zyt.symbols[i].name });
             lineno += 1;
         }
-        try tplt_xfer(lemp.name, &in, out, &lineno);
+        try tplt_xfer(zyt.name, &in, out, &lineno);
     }
     {
         // /* Generate a table containing a text string that describes every
         // ** rule in the rule set of the grammar.  This information is used
         // ** when tracing REDUCE actions.
         var i: usize = 0;
-        var m_rp: ?*Rule = lemp.rule;
+        var m_rp: ?*Rule = zyt.rule;
         while (m_rp) |rp| : (m_rp = rp.next) {
             dbgassert(rp.iRule == i);
             try out.print(" /* {d: >3} */ \"", .{i});
@@ -2298,17 +2302,17 @@ fn reportTableImpl(
             lineno += 1;
             i += 1;
         }
-        try tplt_xfer(lemp.name, &in, out, &lineno);
+        try tplt_xfer(zyt.name, &in, out, &lineno);
     }
 
     // Generate code which executes every time a symbol is popped from
     // the stack while processing errors or while destroying the parser.
     // (In other words, generate the %destructor actions)
     //
-    if (lemp.tokendest.len > 0) {
+    if (zyt.tokendest.len > 0) {
         var once = true;
-        for (0..lemp.nsymbol) |i| {
-            const sp = lemp.symbols[i];
+        for (0..zyt.nsymbol) |i| {
+            const sp = zyt.symbols[i];
             if (sp.type != .terminal) continue;
             if (once) {
                 try out.writeAll("      /* TERMINAL Destructor */\n");
@@ -2319,18 +2323,18 @@ fn reportTableImpl(
             lineno += 1;
         }
         var j: usize = 0;
-        while (j < lemp.nsymbol and lemp.symbols[j].type != .terminal) : (j += 1) {}
-        if (j < lemp.nsymbol) {
-            try emit_destructor_code(out, lemp.symbols[j], lemp, &lineno);
+        while (j < zyt.nsymbol and zyt.symbols[j].type != .terminal) : (j += 1) {}
+        if (j < zyt.nsymbol) {
+            try emit_destructor_code(out, zyt.symbols[j], zyt, &lineno);
             try out.writeAll("      break;\n");
             lineno += 1;
         }
     }
-    if (lemp.vardest.len > 0) {
+    if (zyt.vardest.len > 0) {
         var once = true;
         var dflt_sp: ?*Symbol = null;
-        for (0..lemp.nsymbol) |i| {
-            const sp = lemp.symbols[i];
+        for (0..zyt.nsymbol) |i| {
+            const sp = zyt.symbols[i];
             if (sp.type == .terminal or sp.index == 0 or sp.destructor.len > 0) continue;
             if (once) {
                 try out.writeAll("      /* Default NON-TERMINAL Destructor */\n");
@@ -2342,13 +2346,13 @@ fn reportTableImpl(
             dflt_sp = sp;
         }
         if (dflt_sp) |dflt| {
-            try emit_destructor_code(out, dflt, lemp, &lineno);
+            try emit_destructor_code(out, dflt, zyt, &lineno);
             try out.writeAll("      break;\n");
             lineno += 1;
         }
     }
-    for (0..lemp.nsymbol) |i| {
-        const sp = lemp.symbols[i];
+    for (0..zyt.nsymbol) |i| {
+        const sp = zyt.symbols[i];
         if (sp.type == .terminal or sp.destructor.len == 0) continue;
         if (p_check1) {
             dprint(
@@ -2361,8 +2365,8 @@ fn reportTableImpl(
         lineno += 1;
         // Combine duplicate destructors into a single case
         var j = i + 1;
-        while (j < lemp.nsymbol) : (j += 1) {
-            const sp2 = lemp.symbols[j];
+        while (j < zyt.nsymbol) : (j += 1) {
+            const sp2 = zyt.symbols[j];
             if (sp2.type != .terminal and
                 sp2.dtnum == sp.dtnum and
                 sp2.destructor.len > 0 and mem.eql(u8, sp.destructor, sp2.destructor))
@@ -2372,14 +2376,14 @@ fn reportTableImpl(
                 sp2.destLineno = null; // Avoid emitting this destructor again */
             }
         }
-        try emit_destructor_code(out, sp, lemp, &lineno);
+        try emit_destructor_code(out, sp, zyt, &lineno);
         try out.writeAll("      break;\n");
         lineno += 1;
     }
-    try tplt_xfer(lemp.name, &in, out, &lineno);
+    try tplt_xfer(zyt.name, &in, out, &lineno);
     // Generate code which executes whenever the parser stack overflows
-    try tplt_print(out, lemp, lemp.overflow, &lineno);
-    try tplt_xfer(lemp.name, &in, out, &lineno);
+    try tplt_print(out, zyt, zyt.overflow, &lineno);
+    try tplt_xfer(zyt.name, &in, out, &lineno);
 
     // Generate the tables of rule information.  yyRuleInfoLhs[] and
     // yyRuleInfoNRhs[].
@@ -2387,15 +2391,15 @@ fn reportTableImpl(
     // Note: This code depends on the fact that rules are numbered
     // sequentially beginning with 0.
     {
-        var m_rp: ?*Rule = lemp.rule;
+        var m_rp: ?*Rule = zyt.rule;
         var i: usize = 0; // zig fmt: off
         while (m_rp) |rp| : ({m_rp = rp.next; i += 1; }) {
             try out.print("  {d: >4},  /* ({d}) ", .{ rp.lhs.index, i });
             try rule_print(out, rp);
             try out.writeAll( " */\n" ); lineno += 1;
         }
-        try tplt_xfer(lemp.name, &in, out, &lineno);
-        i = 0; m_rp = lemp.rule;
+        try tplt_xfer(zyt.name, &in, out, &lineno);
+        i = 0; m_rp = zyt.rule;
 
         while (m_rp) |rp| : ({m_rp = rp.next; i += 1; }) {
             if (rp.rhs.len == 0) {
@@ -2407,16 +2411,16 @@ fn reportTableImpl(
             try rule_print(out, rp);
             try out.writeAll(" */\n"); lineno += 1;
         }
-        try tplt_xfer(lemp.name, &in, out, &lineno);
+        try tplt_xfer(zyt.name, &in, out, &lineno);
             // zig fmt: on
     }
 
     // Generate code which execution during each REDUCE action
     {
         var minor_type = false;
-        var m_rp: ?*Rule = lemp.rule;
+        var m_rp: ?*Rule = zyt.rule;
         while (m_rp) |rp| : (m_rp = rp.next) {
-            const did = try translate_code(lemp, rp);
+            const did = try translate_code(zyt, rp);
             minor_type = minor_type or did;
         }
         if (minor_type) {
@@ -2424,7 +2428,7 @@ fn reportTableImpl(
             lineno += 1;
         }
         // First output rules other than the default: rule
-        m_rp = lemp.rule;
+        m_rp = zyt.rule;
         rules: while (m_rp) |rp| : (m_rp = rp.next) {
             if (rp.codeEmitted) continue :rules;
             if (rp.noCode) {
@@ -2453,7 +2457,7 @@ fn reportTableImpl(
                     rp2.codeEmitted = true;
                 }
             }
-            try emit_code(out, rp, lemp, &lineno);
+            try emit_code(out, rp, zyt, &lineno);
             try out.writeAll("        break;\n");
             lineno += 1;
             rp.codeEmitted = true;
@@ -2465,7 +2469,7 @@ fn reportTableImpl(
     try out.writeAll("      default:\n");
     lineno += 1;
     {
-        var m_rp: ?*Rule = lemp.rule;
+        var m_rp: ?*Rule = zyt.rule;
         while (m_rp) |rp| : (m_rp = rp.next) {
             if (rp.codeEmitted) continue;
             dbgassert(rp.noCode);
@@ -2485,48 +2489,45 @@ fn reportTableImpl(
     }
     try out.writeAll("        break;\n");
     lineno += 1;
-    try tplt_xfer(lemp.name, &in, out, &lineno);
+    try tplt_xfer(zyt.name, &in, out, &lineno);
 
     // Generate code which executes if a parse fails
-    try tplt_print(out, lemp, lemp.failure, &lineno);
-    try tplt_xfer(lemp.name, &in, out, &lineno);
+    try tplt_print(out, zyt, zyt.failure, &lineno);
+    try tplt_xfer(zyt.name, &in, out, &lineno);
 
     // Generate code which executes when a syntax error occurs
-    try tplt_print(out, lemp, lemp.@"error", &lineno);
-    try tplt_xfer(lemp.name, &in, out, &lineno);
+    try tplt_print(out, zyt, zyt.@"error", &lineno);
+    try tplt_xfer(zyt.name, &in, out, &lineno);
 
     // Generate code which executes when the parser accepts its input
-    try tplt_print(out, lemp, lemp.accept, &lineno);
-    try tplt_xfer(lemp.name, &in, out, &lineno);
+    try tplt_print(out, zyt, zyt.accept, &lineno);
+    try tplt_xfer(zyt.name, &in, out, &lineno);
 
     // Append any addition code the user desires
-    try tplt_print(out, lemp, lemp.extracode, &lineno);
+    try tplt_print(out, zyt, zyt.extracode, &lineno);
 }
 
 /// Generate a header file for the parser
-fn ReportHeader(lemp: *Lemon) !void {
+fn ReportHeader(zyt: *Zitron) !void {
     // The original opens the file to read and checks if anything
     // has changed, only then does it write.  We're just going to
     // do it.
-    const prefix = lemp.tokenprefix;
-    const m_fh = try file_open(lemp, ".h", false, .{});
+    const prefix = zyt.tokenprefix;
+    const m_fh = try file_open(zyt, ".h", false, .{});
     if (m_fh) |fh| {
         defer fh.close();
         const f_writer = fh.writer();
         var write_buffer = std.io.bufferedWriter(f_writer);
         const out = write_buffer.writer();
-        for (1..lemp.nterminal) |i| {
-            try out.print("#define {s}{s: <30} {d:>3}\n", .{ prefix, lemp.symbols[i].name, i });
+        for (1..zyt.nterminal) |i| {
+            try out.print("#define {s}{s: <30} {d:>3}\n", .{ prefix, zyt.symbols[i].name, i });
         }
         try write_buffer.flush();
     }
 }
 
-/// The state vector for the entire parser generator is recorded as
-/// follows.  (LEMON uses no global variables and makes little use of
-/// static variables.  Fields in the following structure can be thought
-/// of as being global variables in the program.)
-const Lemon = struct {
+/// The God Object handling state for the parser generator.
+const Zitron = struct {
     /// Allocator
     allocator: Allocator,
     /// Command-line options
@@ -2643,7 +2644,7 @@ const Lemon = struct {
     // writing code like this to point at valid data as soon as we
     // meaningfully can.
 
-    pub const empty: Lemon = .{
+    pub const empty: Zitron = .{
         .allocator = undefined,
         .opt = .{},
         .sorted = &.{},
@@ -2698,8 +2699,8 @@ const Lemon = struct {
         .argv = &.{},
     };
 
-    pub fn create(allocator: Allocator) !*Lemon {
-        const gp = try allocator.create(Lemon);
+    pub fn create(allocator: Allocator) !*Zitron {
+        const gp = try allocator.create(Zitron);
         errdefer allocator.destroy(gp);
         gp.* = .empty;
         gp.allocator = allocator;
@@ -2746,7 +2747,7 @@ const Lemon = struct {
         return gp;
     }
 
-    pub fn destroy(gp: *Lemon, allocator: Allocator) void {
+    pub fn destroy(gp: *Zitron, allocator: Allocator) void {
         var m_rp: ?*Rule = gp.rule;
         var rp_next = m_rp;
         while (m_rp) |rp| : (m_rp = rp_next) {
@@ -3057,7 +3058,7 @@ const ActTable = struct {
 /// symbol the first RHS symbol with a defined precedence.  If there
 /// are not RHS symbols with a defined precedence, the precedence
 /// symbol field is left blank.
-fn FindRulePrecedences(lem: *Lemon) void {
+fn FindRulePrecedences(lem: *Zitron) void {
     // TODO: yacc uses the rightmost symbol apparently.  Do we want
     // that to be an option?  I think the precedence disambiguator is
     // enough..
@@ -3088,7 +3089,7 @@ fn FindRulePrecedences(lem: *Lemon) void {
 /// Then go back and compute the first sets of every nonterminal.
 /// The first set is the set of all terminal symbols which can begin
 /// a string generated by that nonterminal.
-fn FindFirstSets(lemp: *Lemon) !void {
+fn FindFirstSets(lemp: *Zitron) !void {
     for (lemp.symbols) |sym| {
         dbgassert(sym.lambda == false);
     }
@@ -3151,7 +3152,7 @@ fn FindFirstSets(lemp: *Lemon) !void {
 // are added to between some states so that the LR(1) follow sets
 // can be computed later.
 //
-fn FindStates(lemp: *Lemon) !void {
+fn FindStates(lemp: *Zitron) !void {
     const sp: *Symbol = sp: {
         if (lemp.start.len > 0) {
             const maybe_sp = Symbol_find(lemp.start);
@@ -3228,7 +3229,7 @@ threadlocal var state_count: usize = 0;
 // [967]
 // Return a pointer to a state which is described by the configuration
 // list which has been built from calls to Configlist_add.
-fn getstate(lemp: *Lemon) Allocator.Error!*State {
+fn getstate(lemp: *Zitron) Allocator.Error!*State {
     // Extract the sorted basis of the new state.  The basis was constructed
     // by prior calls to "Configlist_addbasis()".
     Configlist_sortbasis();
@@ -3312,7 +3313,7 @@ fn same_symbol(a: *const Symbol, b: *const Symbol) bool {
     return true;
 }
 
-fn buildshifts(lemp: *Lemon, stp: *State) !void {
+fn buildshifts(lemp: *Zitron, stp: *State) !void {
     var maybe_cfp: ?*Config = stp.cfp; // For looping thru the config closure of "stp"
     // Initialize with a conveniently available symbol, this is never used:
     // (So we don't do it)
@@ -3379,7 +3380,7 @@ fn buildshifts(lemp: *Lemon, stp: *State) !void {
 ///
 /// Construct the propagation links
 ///
-fn FindLinks(lemp: *Lemon) !void {
+fn FindLinks(lemp: *Zitron) !void {
     // Housekeeping detail:
     // Add to every propagate link a pointer back to the state to
     // which the link is attached.
@@ -3418,7 +3419,7 @@ fn FindLinks(lemp: *Lemon) !void {
 ///
 /// A followset is the set of all symbols which can come immediately
 /// after a configuration.
-fn FindFollowSets(lemp: *Lemon) void {
+fn FindFollowSets(lemp: *Zitron) void {
     for (lemp.sorted) |stp| {
         var maybe_cfp: ?*Config = stp.cfp;
         while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
@@ -3461,7 +3462,7 @@ fn FindFollowSets(lemp: *Lemon) void {
 
 // Compute the reduce actions, and resolve conflicts.
 //
-fn FindActions(lemp: *Lemon) !void {
+fn FindActions(lemp: *Zitron) !void {
     // Add all of the reduce actions
     // A reduce action is added for each element of the followset of
     // a configuration which has its dot at the extreme right.
@@ -3658,7 +3659,7 @@ pub const PState = struct {
     /// Start index of current token
     tokenstart: usize,
     /// Global state vector
-    gp: *Lemon,
+    gp: *Zitron,
     /// The state of the parser
     state: E_State,
     /// The fallback token
@@ -3720,14 +3721,14 @@ pub const PState = struct {
         .lastrule = null,
     };
 
-    pub fn create(allocator: Allocator, gp: *Lemon) !*PState {
+    pub fn create(allocator: Allocator, gp: *Zitron) !*PState {
         var psp = try allocator.create(PState);
         errdefer allocator.destroy(psp);
         try psp.setup(gp);
         return psp;
     }
 
-    pub fn setup(psp: *PState, gp: *Lemon) !void {
+    pub fn setup(psp: *PState, gp: *Zitron) !void {
         psp.* = .empty;
         psp.allocator = gp.allocator;
         psp.gp = gp;
@@ -4750,7 +4751,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
 /// In this version, we take the most frequent REDUCE action and make
 /// it the default.  Except, there is no default if the wildcard token
 /// is a possible look-ahead.
-fn CompressTables(lemp: *Lemon) !void {
+fn CompressTables(lemp: *Zitron) !void {
     states: for (lemp.sorted) |stp| {
         var nbest: usize = 0;
         var rbest: ?*Rule = null;
@@ -4891,7 +4892,7 @@ const NO_OFFSET = -2147483647;
 // Renumber and resort states so that states with fewer choices
 // occur at the end.  Except, keep state 0 as the first state.
 //
-fn ResortStates(lemp: *Lemon) void {
+fn ResortStates(lemp: *Zitron) void {
     for (lemp.sorted) |stp| {
         if (p_check1) {
             dprint("state before resort: {d}\n", .{stp.statenum});
@@ -4933,7 +4934,7 @@ fn ResortStates(lemp: *Lemon) void {
 // Given an action, compute the integer value for that action
 // which is to be put in the action table of the generated machine.
 // Return negative if no action should be generated.
-fn compute_action(lemp: *Lemon, ap: *Action) ?u32 {
+fn compute_action(lemp: *Zitron, ap: *Action) ?u32 {
     return act: switch (ap.type) {
         .shift => break :act ap.x.stp.statenum,
         .shiftreduce => {
@@ -4958,7 +4959,7 @@ fn compute_action(lemp: *Lemon, ap: *Action) ?u32 {
 /// Compute the action table, but do not output it yet.  The action
 /// table must be computed before generating the YYNSTATE macro because
 /// we need to know how many states can be eliminated.
-fn Compute_actiontable(lemp: *Lemon) !*ActTable {
+fn Compute_actiontable(lemp: *Zitron) !*ActTable {
     const ax = try lemp.allocator.alloc(AxSet, lemp.nxstate * 2);
     defer lemp.allocator.free(ax);
     @memset(ax, .empty);
@@ -5375,7 +5376,7 @@ pub fn main() !void {
     const filename: []const u8 = OptArg(args, 0);
     var lem = lemon: {
         errdefer opt.deinit(allocator);
-        break :lemon try Lemon.create(allocator);
+        break :lemon try Zitron.create(allocator);
     };
     defer lem.destroy(allocator);
     lem.opt = opt;
@@ -5664,7 +5665,7 @@ fn mergeSortFn(
     }.msort;
 }
 
-fn sequenceRules(lem: *Lemon) void {
+fn sequenceRules(lem: *Zitron) void {
     // Assign sequential rule numbers.  Start with 0.  Put rules that have no
     // reduce action C-code associated with them last, so that the switch()
     // statement that selects reduction actions will have a smaller jump table.
@@ -6031,7 +6032,7 @@ fn Configcmp(a: *Config, b: *Config) bool {
 }
 
 /// Compute the closure of the configuration list
-fn Configlist_closure(lemp: *Lemon) !void {
+fn Configlist_closure(lemp: *Zitron) !void {
     var this_cfp: ?*Config = cf_ls.current;
     var scan_count: usize = 0;
     scan: while (this_cfp) |cfp| : (this_cfp = cfp.next) {
