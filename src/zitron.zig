@@ -2282,8 +2282,14 @@ fn reportTableImpl(
 
     // Generate a table containing the symbolic name of every symbol
     {
+        var maxsym: usize = 0;
         for (0..zyt.nsymbol) |i| {
-            try out.print("  /* {d: >4} */ \"{s}\",\n", .{ i, zyt.symbols[i].name });
+            maxsym = @max(maxsym, zyt.symbols[i].name.len);
+        }
+        for (0..zyt.nsymbol) |i| {
+            try out.print("   \"{s}\",  ", .{zyt.symbols[i].name});
+            try out.writeByteNTimes(' ', maxsym - zyt.symbols[i].name.len);
+            try out.print("// {d: >4}\n", .{i});
             lineno += 1;
         }
         try tplt_xfer(zyt.name, &in, out, &lineno);
@@ -2293,12 +2299,13 @@ fn reportTableImpl(
         // ** rule in the rule set of the grammar.  This information is used
         // ** when tracing REDUCE actions.
         var i: usize = 0;
+        // TODO: Clean up the comment numbering here, as above
         var m_rp: ?*Rule = zyt.rule;
         while (m_rp) |rp| : (m_rp = rp.next) {
             dbgassert(rp.iRule == i);
-            try out.print(" /* {d: >3} */ \"", .{i});
+            try out.writeAll("    \"");
             try writeRuleText(out, rp);
-            try out.writeAll("\",\n");
+            try out.print("\", // {d: >3} \n", .{i});
             lineno += 1;
             i += 1;
         }

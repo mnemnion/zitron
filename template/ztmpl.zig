@@ -190,3 +190,17 @@ pub const yyParser = struct {
     yystack: [*]yyStackEntry,
     yystk0: []yyStackEntry,
 };
+
+// TODO: Add ParseTrace
+
+
+// For tracing shifts, the names of all terminals and nonterminals
+// are required.  The following table supplies these names.
+pub const yyTokenName = [_][:0]const u8{
+%%
+};
+// For tracing reduce actions, the names of all rules are required.
+//
+pub const yyRuleName = [_][:0]const u8{
+%%
+};
