@@ -2271,9 +2271,9 @@ fn reportTableImpl(
         for (0..max) |i| {
             const sp = zyt.symbols[i];
             if (sp.fallback) |fallback| {
-                try out.print("  {d: >3},  /* {s: >10} => {s} */\n", .{ fallback.index, sp.name, fallback.name });
+                try out.print("  {d: >3},  // {s: >10} => {s} \n", .{ fallback.index, sp.name, fallback.name });
             } else {
-                try out.print("    0,  /* {s: >10} => nothing */\n", .{sp.name});
+                try out.print("    0,  // {s: >10} => nothing \n", .{sp.name});
             }
             lineno += 1;
         }

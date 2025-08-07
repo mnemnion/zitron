@@ -131,3 +131,62 @@
 // *********** Begin parsing tables **********************************************/
 %%
 // /********** End of lemon-generated parsing tables *****************************/
+//
+// The next table maps tokens (terminal symbols) into fallback tokens.
+// If a construct like the following:
+//
+//      %fallback ID X Y Z.
+//
+// appears in the grammar, then ID becomes a fallback token for X, Y,
+// and Z.  Whenever one of the tokens X, Y, or Z is input to the parser
+// but it does not parse, the type of the token is changed to ID and
+// the parse is retried before an error is thrown.
+//
+// This feature can be used, for example, to cause some keywords in a language
+// to revert to identifiers if they keyword does not apply in the context where
+// it appears.
+//
+const yyFallback = [_]YYCODETYPE{
+%%
+};
+//
+/// The following structure represents a single element of the
+/// parser's stack.  Information stored includes:
+///
+///   +  The state number for the parser at this level of the stack.
+///
+///   +  The value of the token stored at this level of the stack.
+///      (In other words, the "major" token.)
+///
+///   +  The semantic value stored at this level of the stack.  This is
+///      the information used by the action routines in the grammar.
+///      It is sometimes called the "minor" token.
+///
+/// After the "shift" half of a SHIFTREDUCE action, the stateno field
+/// actually contains the reduce action for the second half of the
+/// SHIFTREDUCE.
+const yyStackEntry = struct {
+    /// The state-number, or reduce action in SHIFTREDUCE.
+    stateno: YYACTIONTYPE,
+    /// The major token value.  This is the code number for the token at this stack level.
+    major: YYCODETYPE,
+    /// The user-supplied minor token value.  This is the value of the token.
+    minor: YYMINORTYPE,
+};
+//
+/// The state of the parser is completely contained in an instance of
+/// the following structure.
+pub const yyParser = struct {
+    /// Pointer to top element of the stack
+    yytos: [*]yyStackEntry,
+    //
+    // TODO: reckon with `yyhym`
+    //
+    /// Shifts left before out of the error
+    yyerrcnt: usize,
+    🍋ARG_SDECL
+    🍋CTX_SDECL
+    yystackEnd: [*]yyStackEntry,
+    yystack: [*]yyStackEntry,
+    yystk0: []yyStackEntry,
+};
