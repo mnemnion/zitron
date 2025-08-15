@@ -1934,53 +1934,116 @@ fn reportTableImpl(
         var arg = mem.trim(u8, zyt.arg, " ");
         var i = arg.len - 1;
         while (i >= 1 and (isAlnum(arg[i - 1]) or arg[i - 1] == '_')) : (i -= 1) {}
-        arg = arg[i..]; // zig fmt: off
-        try out.print("#define {s}ARG_SDECL {s};\n", .{ name, zyt.arg }); lineno += 1;
-        try out.print("#define {s}ARG_PDECL ,{s}\n", .{ name, zyt.arg }); lineno += 1;
-        try out.print("#define {s}ARG_PARAM ,{s}\n", .{ name, arg }); lineno += 1;
-        try out.print("#define {s}ARG_FETCH {s}=yypParser->{s};\n", .{ name, zyt.arg, arg }); lineno += 1;
-        try out.print("#define {s}ARG_STORE yypParser->{s}={s};\n", .{ name, arg, arg }); lineno += 1;
-    } else {
-        try out.print("#define {s}ARG_SDECL\n", .{name}); lineno += 1;
-        try out.print("#define {s}ARG_PDECL\n", .{name}); lineno += 1;
-        try out.print("#define {s}ARG_PARAM\n", .{name}); lineno += 1;
-        try out.print("#define {s}ARG_FETCH\n", .{name}); lineno += 1;
-        try out.print("#define {s}ARG_STORE\n", .{name}); lineno += 1;
-    }
-    if (zyt.reallocFunc.len > 0) {
-        try out.print("#define YYREALLOC {s}\n", .{zyt.reallocFunc}); lineno += 1;
-    } else {
-        try out.writeAll("#define YYREALLOC realloc\n"); lineno += 1;
-    }
-    if (zyt.freeFunc.len > 0) {
-        try out.print("#define YYFREE {s}\n", .{zyt.freeFunc}); lineno += 1;
-    } else {
-        try out.writeAll("#define YYFREE free\n"); lineno += 1;
-    }
-    if (zyt.reallocFunc.len > 0 and zyt.freeFunc.len > 0) {
-        try out.writeAll("#define YYDYNSTACK 1\n"); lineno += 1;
-    } else {
-        try out.writeAll("#define YYDYNSTACK 0\n"); lineno += 1;
-    }
+        arg = arg[i..];
+        const allocator = zyt.allocator;
+        {
+            const arg_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.arg});
+            errdefer allocator.free(arg_sdecl);
+            try zyt.defines.put(allocator, "🍋ARG_SDECL", arg_sdecl);
+        }
+        {
+            const arg_pdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.arg});
+            errdefer allocator.free(arg_pdecl);
+            try zyt.defines.put(allocator, "🍋ARG_PDECL", arg_pdecl);
+        }
+        {
+            const arg_param = try std.fmt.allocPrint(allocator, ", {s}", .{arg});
+            errdefer allocator.free(arg_param);
+            try zyt.defines.put(allocator, "🍋ARG_PARAM", arg_param);
+        }
+        {
+            const arg_fetch = try std.fmt.allocPrint(
+                allocator,
+                "var {s} = yypParser.{s}; _ = &{s};",
+                .{ arg, arg, arg },
+            );
+            errdefer allocator.free(arg_fetch);
+            try zyt.defines.put(allocator, "🍋ARG_FETCH", arg_fetch);
+        }
+        {
+            const arg_store = try std.fmt.allocPrint(
+                allocator,
+                "yypParser.{s} = {s};",
+                .{ arg, arg },
+            );
+            errdefer allocator.free(arg_store);
+            try zyt.defines.put(allocator, "🍋ARG_STORE", arg_store);
+        }
+    } else { // TODO: probably just delete this?
+        //
+        // try out.print("#define {s}ARG_SDECL\n", .{name});
+        // lineno += 1;
+        // try out.print("#define {s}ARG_PDECL\n", .{name});
+        // lineno += 1;
+        // try out.print("#define {s}ARG_PARAM\n", .{name});
+        // lineno += 1;
+        // try out.print("#define {s}ARG_FETCH\n", .{name});
+        // lineno += 1;
+        // try out.print("#define {s}ARG_STORE\n", .{name});
+        // lineno += 1;
+    } // zig fmt: off
+    // TODO: There will be equivalents of this, I think.
+    //
+    // if (zyt.reallocFunc.len > 0) {
+    //     try out.print("#define YYREALLOC {s}\n", .{zyt.reallocFunc}); lineno += 1;
+    // } else {
+    //     try out.writeAll("#define YYREALLOC realloc\n"); lineno += 1;
+    // }
+    // if (zyt.freeFunc.len > 0) {
+    //     try out.print("#define YYFREE {s}\n", .{zyt.freeFunc}); lineno += 1;
+    // } else {
+    //     try out.writeAll("#define YYFREE free\n"); lineno += 1;
+    // }
+    // if (zyt.reallocFunc.len > 0 and zyt.freeFunc.len > 0) {
+    //     try out.writeAll("#define YYDYNSTACK 1\n"); lineno += 1;
+    // } else {
+    //     try out.writeAll("#define YYDYNSTACK 0\n"); lineno += 1;
+    // }
     if (zyt.ctx.len > 0) {
         var ctx = mem.trim(u8, zyt.ctx, " ");
         var i = ctx.len - 1;
         while (i >= 1 and (isAlnum(ctx[i - 1]) or ctx[i - 1] == '_')) : (i -= 1) {}
         ctx = ctx[i..];
-        try out.print("#define {s}CTX_SDECL {s};\n", .{ name, zyt.ctx }); lineno += 1;
-        try out.print("#define {s}CTX_PDECL ,{s}\n", .{ name, zyt.ctx }); lineno += 1;
-        try out.print("#define {s}CTX_PARAM ,{s}\n", .{ name, ctx }); lineno += 1;
-        try out.print("#define {s}CTX_FETCH {s}=yypParser->{s};\n", .{ name, zyt.ctx, ctx }); lineno += 1;
-        try out.print("#define {s}CTX_STORE yypParser->{s}={s};\n", .{ name, ctx, ctx }); lineno += 1;
+        const allocator = zyt.allocator;
+    {
+            const ctx_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.ctx});
+            errdefer allocator.free(ctx_sdecl);
+            try zyt.defines.put(allocator, "🍋CTX_SDECL", ctx_sdecl);
+        }
+        {
+            const ctx_pdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.ctx});
+            errdefer allocator.free(ctx_pdecl);
+            try zyt.defines.put(allocator, "🍋CTX_PDECL", ctx_pdecl);
+        }
+        {
+            const ctx_param = try std.fmt.allocPrint(allocator, ", {s}", .{ctx});
+            errdefer allocator.free(ctx_param);
+            try zyt.defines.put(allocator, "🍋CTX_PARAM", ctx_param);
+        }
+        {
+            const ctx_fetch = try std.fmt.allocPrint(
+                allocator,
+                "var {s} = yypParser.{s}; _ = &{s};",
+                .{ ctx, ctx, ctx },
+            );
+            errdefer allocator.free(ctx_fetch);
+            try zyt.defines.put(allocator, "🍋CTX_FETCH", ctx_fetch);
+        }
+        {
+            const ctx_store = try std.fmt.allocPrint(
+                allocator,
+                "yypParser.{s} = {s};",
+                .{ ctx, ctx },
+            );
+            errdefer allocator.free(ctx_store);
+            try zyt.defines.put(allocator, "🍋CTX_STORE", ctx_store);
+        }
     } else {
-        try out.print("#define {s}CTX_SDECL\n", .{name}); lineno += 1;
-        try out.print("#define {s}CTX_PDECL\n", .{name}); lineno += 1;
-        try out.print("#define {s}CTX_PARAM\n", .{name}); lineno += 1;
-        try out.print("#define {s}CTX_FETCH\n", .{name}); lineno += 1;
-        try out.print("#define {s}CTX_STORE\n", .{name}); lineno += 1;
-    }
-    if (mhflag) {
-        try out.writeAll("#endif\n"); lineno += 1;
+        // try out.print("#define {s}CTX_SDECL\n", .{name}); lineno += 1;
+        // try out.print("#define {s}CTX_PDECL\n", .{name}); lineno += 1;
+        // try out.print("#define {s}CTX_PARAM\n", .{name}); lineno += 1;
+        // try out.print("#define {s}CTX_FETCH\n", .{name}); lineno += 1;
+        // try out.print("#define {s}CTX_STORE\n", .{name}); lineno += 1;
     }
     if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
         try out.print("#define YYERRORSYMBOL {d}\n", .{errsym.index}); lineno += 1;
@@ -2322,11 +2385,11 @@ fn reportTableImpl(
             const sp = zyt.symbols[i];
             if (sp.type != .terminal) continue;
             if (once) {
-                try out.writeAll("      /* TERMINAL Destructor */\n");
+                try out.writeAll("      // TERMINAL Destructor\n");
                 lineno += 1;
                 once = false;
             }
-            try out.print("    case {d}: /* {s} */\n", .{ sp.index, sp.name });
+            try out.print("    case {d}: // {s}\n", .{ sp.index, sp.name });
             lineno += 1;
         }
         var j: usize = 0;
@@ -2545,6 +2608,8 @@ const Zitron = struct {
     rule: *Rule,
     /// First rule
     startRule: *Rule,
+    /// Defines map
+    defines: std.StringHashMapUnmanaged([]const u8),
     /// Number of states
     nstate: u32,
     /// nstate with tail degenerate states removed
@@ -2657,6 +2722,7 @@ const Zitron = struct {
         .sorted = &.{},
         .rule = undefined,
         .startRule = undefined,
+        .defines = .empty,
         .nstate = 0,
         .nxstate = 0,
         .nrule = 0,
@@ -2760,6 +2826,10 @@ const Zitron = struct {
         while (m_rp) |rp| : (m_rp = rp_next) {
             rp_next = rp.next;
             rp.destroy(allocator);
+        }
+        var d_iter = gp.defines.valueIterator();
+        while (d_iter.next()) |v| {
+            allocator.free(v.*);
         }
         // allocator.free(gp.symbols);
         // allocator.free(gp.sorted);
