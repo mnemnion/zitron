@@ -1796,6 +1796,35 @@ fn ReportSql(lemp: *Zitron, sql: anytype) !void {
     try sql.writeAll("COMMIT;\n");
 }
 
+/// Perform 'macroexpansion' of the emoji-marked identifiers in the template.
+fn macroReplace(zyt: *Zitron, in: [:0]const u8) ![:0]const u8 {
+    var mark: usize = 0;
+    var in_array: ArrayList(u8) = .empty;
+    defer in_array.deinit(zyt.allocator);
+    var in_write = in_array.writer(zyt.allocator);
+    while (std.mem.indexOfPos(u8, in, mark, "🍋")) |fruit| {
+        try in_write.writeAll(in[mark..fruit]);
+        var post_fruit = fruit + 4;
+        while (('A' <= in[post_fruit] and in[post_fruit] <= 'Z') or
+            ('a' <= in[post_fruit] and in[post_fruit] <= 'z') or
+            in[post_fruit] == '_') : (post_fruit += 1)
+        {}
+        const macro = in[fruit..post_fruit];
+        // std.debug.print("Fruit: '{s}'\n", .{macro});
+        const mac_replace = zyt.defines.get(macro);
+        if (mac_replace) |replacement| {
+            // std.debug.print("Replaced: '{s}'\n", .{replacement});
+            try in_write.writeAll(replacement);
+        } else {
+            // std.debug.print("Nothing!\n", .{});
+        }
+        mark = post_fruit;
+    }
+    try in_write.writeAll(in[mark .. in.len + 1]);
+    const in_out = try in_array.toOwnedSliceSentinel(zyt.allocator, 0);
+    return in_out;
+}
+
 //| [4287]
 
 /// Generate C code for the parser
@@ -1828,9 +1857,6 @@ fn ReportTable(
     }
     const m_out_fh = try file_open(lemp, ".zig", true, .{});
     if (m_out_fh) |fh| {
-        if (sqlflag and lemon_compat) {
-            try assign_outname(lemp, ".sql", null, true);
-        }
         defer fh.close();
         const f_writer = fh.writer();
         var write_buffer = std.io.bufferedWriter(f_writer);
@@ -1848,8 +1874,127 @@ fn reportTableImpl(
     out: anytype,
     mhflag: bool,
 ) !void {
-    var in = in_template;
+    // defer zyt.allocator.free(in);
+    // var in = in_template;
     var lineno: usize = 1;
+    if (zyt.arg.len > 0) {
+        var arg = mem.trim(u8, zyt.arg, " ");
+        var i = arg.len - 1;
+        while (i >= 1 and (isAlnum(arg[i - 1]) or arg[i - 1] == '_')) : (i -= 1) {}
+        arg = arg[i..];
+        const allocator = zyt.allocator;
+        {
+            const arg_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.arg});
+            errdefer allocator.free(arg_sdecl);
+            try zyt.defines.put(allocator, "🍋ARG_SDECL", arg_sdecl);
+        }
+        {
+            const arg_pdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.arg});
+            errdefer allocator.free(arg_pdecl);
+            try zyt.defines.put(allocator, "🍋ARG_PDECL", arg_pdecl);
+        }
+        {
+            const arg_param = try std.fmt.allocPrint(allocator, ", {s}", .{arg});
+            errdefer allocator.free(arg_param);
+            try zyt.defines.put(allocator, "🍋ARG_PARAM", arg_param);
+        }
+        {
+            const arg_fetch = try std.fmt.allocPrint(
+                allocator,
+                "var {s} = yypParser.{s}; _ = &{s};",
+                .{ arg, arg, arg },
+            );
+            errdefer allocator.free(arg_fetch);
+            try zyt.defines.put(allocator, "🍋ARG_FETCH", arg_fetch);
+        }
+        {
+            const arg_store = try std.fmt.allocPrint(
+                allocator,
+                "yypParser.{s} = {s};",
+                .{ arg, arg },
+            );
+            errdefer allocator.free(arg_store);
+            try zyt.defines.put(allocator, "🍋ARG_STORE", arg_store);
+        }
+    } else { // TODO: probably just delete this?
+        //
+        // try out.print("#define {s}ARG_SDECL\n", .{name});
+        // lineno += 1;
+        // try out.print("#define {s}ARG_PDECL\n", .{name});
+        // lineno += 1;
+        // try out.print("#define {s}ARG_PARAM\n", .{name});
+        // lineno += 1;
+        // try out.print("#define {s}ARG_FETCH\n", .{name});
+        // lineno += 1;
+        // try out.print("#define {s}ARG_STORE\n", .{name});
+        // lineno += 1;
+    } // zig fmt: off
+    // TODO: There will be equivalents of this, I think.
+    //
+    // if (zyt.reallocFunc.len > 0) {
+    //     try out.print("#define YYREALLOC {s}\n", .{zyt.reallocFunc}); lineno += 1;
+    // } else {
+    //     try out.writeAll("#define YYREALLOC realloc\n"); lineno += 1;
+    // }
+    // if (zyt.freeFunc.len > 0) {
+    //     try out.print("#define YYFREE {s}\n", .{zyt.freeFunc}); lineno += 1;
+    // } else {
+    //     try out.writeAll("#define YYFREE free\n"); lineno += 1;
+    // }
+    // if (zyt.reallocFunc.len > 0 and zyt.freeFunc.len > 0) {
+    //     try out.writeAll("#define YYDYNSTACK 1\n"); lineno += 1;
+    // } else {
+    //     try out.writeAll("#define YYDYNSTACK 0\n"); lineno += 1;
+    // }
+    if (zyt.ctx.len > 0) {
+        var ctx = mem.trim(u8, zyt.ctx, " ");
+        var i = ctx.len - 1;
+        while (i >= 1 and (isAlnum(ctx[i - 1]) or ctx[i - 1] == '_')) : (i -= 1) {}
+        ctx = ctx[i..];
+        const allocator = zyt.allocator;
+        {
+            const ctx_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.ctx});
+            errdefer allocator.free(ctx_sdecl);
+            try zyt.defines.put(allocator, "🍋CTX_SDECL", ctx_sdecl);
+        }
+        {
+            const ctx_pdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.ctx});
+            errdefer allocator.free(ctx_pdecl);
+            try zyt.defines.put(allocator, "🍋CTX_PDECL", ctx_pdecl);
+        }
+        {
+            const ctx_param = try std.fmt.allocPrint(allocator, ", {s}", .{ctx});
+            errdefer allocator.free(ctx_param);
+            try zyt.defines.put(allocator, "🍋CTX_PARAM", ctx_param);
+        }
+        {
+            const ctx_fetch = try std.fmt.allocPrint(
+                allocator,
+                "var {s} = yypParser.{s}; _ = &{s};",
+                .{ ctx, ctx, ctx },
+            );
+            errdefer allocator.free(ctx_fetch);
+            try zyt.defines.put(allocator, "🍋CTX_FETCH", ctx_fetch);
+        }
+        {
+            const ctx_store = try std.fmt.allocPrint(
+                allocator,
+                "yypParser.{s} = {s};",
+                .{ ctx, ctx },
+            );
+            errdefer allocator.free(ctx_store);
+            try zyt.defines.put(allocator, "🍋CTX_STORE", ctx_store);
+        }
+    } else {
+        // try out.print("#define {s}CTX_SDECL\n", .{name}); lineno += 1;
+        // try out.print("#define {s}CTX_PDECL\n", .{name}); lineno += 1;
+        // try out.print("#define {s}CTX_PARAM\n", .{name}); lineno += 1;
+        // try out.print("#define {s}CTX_FETCH\n", .{name}); lineno += 1;
+        // try out.print("#define {s}CTX_STORE\n", .{name}); lineno += 1;
+    }
+    var in = try macroReplace(zyt, in_template);
+    // TODO: run a replace and define the return value as 'in' here, renaming
+    // the original in accordingly. defer free!
     try out.print(
         \\//! This file is automatically generated by Zitron from input grammar
         \\//! source file "{s}"
@@ -1929,122 +2074,6 @@ fn reportTableImpl(
         lineno += 1;
     }
     lineno += 1;
-    const name = if (zyt.name.len > 0) zyt.name else "Parse";
-    if (zyt.arg.len > 0) {
-        var arg = mem.trim(u8, zyt.arg, " ");
-        var i = arg.len - 1;
-        while (i >= 1 and (isAlnum(arg[i - 1]) or arg[i - 1] == '_')) : (i -= 1) {}
-        arg = arg[i..];
-        const allocator = zyt.allocator;
-        {
-            const arg_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.arg});
-            errdefer allocator.free(arg_sdecl);
-            try zyt.defines.put(allocator, "🍋ARG_SDECL", arg_sdecl);
-        }
-        {
-            const arg_pdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.arg});
-            errdefer allocator.free(arg_pdecl);
-            try zyt.defines.put(allocator, "🍋ARG_PDECL", arg_pdecl);
-        }
-        {
-            const arg_param = try std.fmt.allocPrint(allocator, ", {s}", .{arg});
-            errdefer allocator.free(arg_param);
-            try zyt.defines.put(allocator, "🍋ARG_PARAM", arg_param);
-        }
-        {
-            const arg_fetch = try std.fmt.allocPrint(
-                allocator,
-                "var {s} = yypParser.{s}; _ = &{s};",
-                .{ arg, arg, arg },
-            );
-            errdefer allocator.free(arg_fetch);
-            try zyt.defines.put(allocator, "🍋ARG_FETCH", arg_fetch);
-        }
-        {
-            const arg_store = try std.fmt.allocPrint(
-                allocator,
-                "yypParser.{s} = {s};",
-                .{ arg, arg },
-            );
-            errdefer allocator.free(arg_store);
-            try zyt.defines.put(allocator, "🍋ARG_STORE", arg_store);
-        }
-    } else { // TODO: probably just delete this?
-        //
-        // try out.print("#define {s}ARG_SDECL\n", .{name});
-        // lineno += 1;
-        // try out.print("#define {s}ARG_PDECL\n", .{name});
-        // lineno += 1;
-        // try out.print("#define {s}ARG_PARAM\n", .{name});
-        // lineno += 1;
-        // try out.print("#define {s}ARG_FETCH\n", .{name});
-        // lineno += 1;
-        // try out.print("#define {s}ARG_STORE\n", .{name});
-        // lineno += 1;
-    } // zig fmt: off
-    // TODO: There will be equivalents of this, I think.
-    //
-    // if (zyt.reallocFunc.len > 0) {
-    //     try out.print("#define YYREALLOC {s}\n", .{zyt.reallocFunc}); lineno += 1;
-    // } else {
-    //     try out.writeAll("#define YYREALLOC realloc\n"); lineno += 1;
-    // }
-    // if (zyt.freeFunc.len > 0) {
-    //     try out.print("#define YYFREE {s}\n", .{zyt.freeFunc}); lineno += 1;
-    // } else {
-    //     try out.writeAll("#define YYFREE free\n"); lineno += 1;
-    // }
-    // if (zyt.reallocFunc.len > 0 and zyt.freeFunc.len > 0) {
-    //     try out.writeAll("#define YYDYNSTACK 1\n"); lineno += 1;
-    // } else {
-    //     try out.writeAll("#define YYDYNSTACK 0\n"); lineno += 1;
-    // }
-    if (zyt.ctx.len > 0) {
-        var ctx = mem.trim(u8, zyt.ctx, " ");
-        var i = ctx.len - 1;
-        while (i >= 1 and (isAlnum(ctx[i - 1]) or ctx[i - 1] == '_')) : (i -= 1) {}
-        ctx = ctx[i..];
-        const allocator = zyt.allocator;
-    {
-            const ctx_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.ctx});
-            errdefer allocator.free(ctx_sdecl);
-            try zyt.defines.put(allocator, "🍋CTX_SDECL", ctx_sdecl);
-        }
-        {
-            const ctx_pdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.ctx});
-            errdefer allocator.free(ctx_pdecl);
-            try zyt.defines.put(allocator, "🍋CTX_PDECL", ctx_pdecl);
-        }
-        {
-            const ctx_param = try std.fmt.allocPrint(allocator, ", {s}", .{ctx});
-            errdefer allocator.free(ctx_param);
-            try zyt.defines.put(allocator, "🍋CTX_PARAM", ctx_param);
-        }
-        {
-            const ctx_fetch = try std.fmt.allocPrint(
-                allocator,
-                "var {s} = yypParser.{s}; _ = &{s};",
-                .{ ctx, ctx, ctx },
-            );
-            errdefer allocator.free(ctx_fetch);
-            try zyt.defines.put(allocator, "🍋CTX_FETCH", ctx_fetch);
-        }
-        {
-            const ctx_store = try std.fmt.allocPrint(
-                allocator,
-                "yypParser.{s} = {s};",
-                .{ ctx, ctx },
-            );
-            errdefer allocator.free(ctx_store);
-            try zyt.defines.put(allocator, "🍋CTX_STORE", ctx_store);
-        }
-    } else {
-        // try out.print("#define {s}CTX_SDECL\n", .{name}); lineno += 1;
-        // try out.print("#define {s}CTX_PDECL\n", .{name}); lineno += 1;
-        // try out.print("#define {s}CTX_PARAM\n", .{name}); lineno += 1;
-        // try out.print("#define {s}CTX_FETCH\n", .{name}); lineno += 1;
-        // try out.print("#define {s}CTX_STORE\n", .{name}); lineno += 1;
-    }
     if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
         try out.print("#define YYERRORSYMBOL {d}\n", .{errsym.index}); lineno += 1;
         try out.print("#define YYERRSYMDT yy{d}\n", .{errsym.dtnum}); lineno += 1;
@@ -2831,6 +2860,7 @@ const Zitron = struct {
         while (d_iter.next()) |v| {
             allocator.free(v.*);
         }
+        gp.defines.deinit(allocator);
         // allocator.free(gp.symbols);
         // allocator.free(gp.sorted);
         allocator.free(gp.name);
