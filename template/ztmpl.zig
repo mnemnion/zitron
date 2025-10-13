@@ -177,18 +177,43 @@ const yyStackEntry = struct {
 /// The state of the parser is completely contained in an instance of
 /// the following structure.
 pub const yyParser = struct {
+    /// Allocator
+    allocator: Allocator,
     /// Pointer to top element of the stack
-    yytos: [*]yyStackEntry,
+    tos: [*]yyStackEntry,
     //
     // TODO: reckon with `yyhym`
     //
     /// Shifts left before out of the error
-    yyerrcnt: usize,
+    errcnt: ?usize,
     🍋ARG_SDECL
     🍋CTX_SDECL
-    yystackEnd: [*]yyStackEntry,
-    yystack: [*]yyStackEntry,
-    yystk0: []yyStackEntry,
+    stackEnd: [*]yyStackEntry,
+    stack: [*]yyStackEntry,
+    stk0: []yyStackEntry,
+
+    // Try to increase the size of the parser stack.  Return the number
+    // of errors.  Return 0 on success.
+    pub fn growStack(p: *yyParser) bool {
+        return false; // TODO: etc.
+    }
+
+    pub fn create(allocator: Allocator 🍋CTX_PDECL) !*yyParser {
+        var p = try allocator.create(yyParser);
+        🍋CTX_STORE
+        p.init(🍋CTX_PARAM);
+        return p;
+    }
+
+    pub fn init(p: *yyParser, allocator: Allocator 🍋CTX_PDECL) void {
+        🍋CTX_STORE
+        p.stack = p.stk0.ptr;
+        p.stackEnd = &p.stack[p.stack.len - 1];
+        p.errcnt = 0; // TODO: Deal with NOERRORRECOVERY
+        p.tos = p.stack;
+        p.stack[0].stateno = 0;
+        p.stack[0].major = 0;
+    }
 };
 
 // TODO: Add ParseTrace
@@ -204,3 +229,4 @@ pub const yyTokenName = [_][:0]const u8{
 pub const yyRuleName = [_][:0]const u8{
 %%
 };
+//

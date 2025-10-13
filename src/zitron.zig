@@ -20,6 +20,7 @@ const ArrayHashMap = std.ArrayHashMapUnmanaged;
 const MemoryPool = std.heap.MemoryPool;
 const ArrayList = std.ArrayListUnmanaged;
 const StringArrayHashMap = std.StringArrayHashMapUnmanaged;
+const AllocatingWriter = std.Io.Writer.Allocating;
 const File = std.fs.File;
 
 const OOM = Allocator.Error;
@@ -815,9 +816,9 @@ fn rule_print(writer: anytype, rp: *Rule) !void {
 /// Duplicate the input file without comments and without actions
 /// on rules
 fn Reprint(lemp: *Zitron) !void {
-    const std_write = std.io.getStdIn().writer();
-    var buffer = std.io.bufferedWriter(std_write);
-    var out = buffer.writer();
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const out = &stdout_writer.interface;
     try out.print("// Reprint of input file {s}.\n// Symbols:\n", .{lemp.quoted_filename});
     var maxlen: usize = 10;
     for (lemp.symbols[0..lemp.nsymbol]) |sp| {
@@ -836,7 +837,7 @@ fn Reprint(lemp: *Zitron) !void {
             try out.print(" {d: >3} ", .{j});
             try out.print("{s}", .{ptsym});
             if (ptsym.len < maxlen) {
-                try out.writeByteNTimes(' ', maxlen - ptsym.len);
+                try out.splatByteAll(' ', maxlen - ptsym.len);
             }
             try out.writeByte('\n');
         }
@@ -849,7 +850,7 @@ fn Reprint(lemp: *Zitron) !void {
         if (comptime print_code) if (rp.code) try out.print("\n    {s}", .{rp.code});
         try out.writeByte('\n');
     }
-    try buffer.flush();
+    try out.flush();
 }
 
 /// Print a single rule.
@@ -980,11 +981,11 @@ fn ReportOutput(lemp: *Zitron) !void {
     const m_fh = try file_open(lemp, ".out", false, .{});
     if (m_fh) |fh| {
         defer fh.close();
-        const f_writer = fh.writer();
-        var write_buffer = std.io.bufferedWriter(f_writer);
-        const b_writer = write_buffer.writer();
-        try reportOutputImpl(lemp, b_writer);
-        try write_buffer.flush();
+        var out_buffer: [4096]u8 = undefined;
+        var f_writer = fh.writer(&out_buffer);
+        const out = &f_writer.interface;
+        try reportOutputImpl(lemp, out);
+        try out.flush();
     } else {
         return; // No file handle
     }
@@ -1002,7 +1003,7 @@ fn reportOutputImpl(lemp: *Zitron, writer: anytype) !void {
                 const dot_s = try std.fmt.bufPrint(&buf, "({d})", .{cfp.rp.iRule});
                 try writer.print("    {s:>5} ", .{dot_s});
             } else {
-                try writer.writeByteNTimes(' ', 10);
+                try writer.splatByteAll(' ', 10);
             }
             try ConfigPrint(writer, cfp);
             try writer.writeByte('\n');
@@ -1799,9 +1800,9 @@ fn ReportSql(lemp: *Zitron, sql: anytype) !void {
 /// Perform 'macroexpansion' of the emoji-marked identifiers in the template.
 fn macroReplace(zyt: *Zitron, in: [:0]const u8) ![:0]const u8 {
     var mark: usize = 0;
-    var in_array: ArrayList(u8) = .empty;
-    defer in_array.deinit(zyt.allocator);
-    var in_write = in_array.writer(zyt.allocator);
+    var in_writer = try AllocatingWriter.initCapacity(zyt.allocator, in.len);
+    defer in_writer.deinit();
+    var in_write = &in_writer.writer;
     while (std.mem.indexOfPos(u8, in, mark, "🍋")) |fruit| {
         try in_write.writeAll(in[mark..fruit]);
         var post_fruit = fruit + 4;
@@ -1820,8 +1821,8 @@ fn macroReplace(zyt: *Zitron, in: [:0]const u8) ![:0]const u8 {
         }
         mark = post_fruit;
     }
-    try in_write.writeAll(in[mark .. in.len + 1]);
-    const in_out = try in_array.toOwnedSliceSentinel(zyt.allocator, 0);
+    try in_write.writeAll(in[mark..in.len]);
+    const in_out = try in_writer.toOwnedSliceSentinel(0);
     return in_out;
 }
 
@@ -1848,21 +1849,21 @@ fn ReportTable(
         const m_sql_fh = try file_open(lemp, ".sql", false, .{});
         if (m_sql_fh) |fh| {
             defer fh.close();
-            const f_writer = fh.writer();
-            var write_buffer = std.io.bufferedWriter(f_writer);
-            const b_writer = write_buffer.writer();
-            try ReportSql(lemp, b_writer);
-            try write_buffer.flush();
+            var out_buffer: [4096]u8 = undefined;
+            var f_writer = fh.writer(&out_buffer);
+            const out = &f_writer.interface;
+            try ReportSql(lemp, out);
+            try out.flush();
         } else return; // No file handle
     }
     const m_out_fh = try file_open(lemp, ".zig", true, .{});
     if (m_out_fh) |fh| {
         defer fh.close();
-        const f_writer = fh.writer();
-        var write_buffer = std.io.bufferedWriter(f_writer);
-        const b_writer = write_buffer.writer();
-        try reportTableImpl(lemp, in, b_writer, mhflag);
-        try write_buffer.flush();
+        var out_buffer: [4096]u8 = undefined;
+        var f_writer = fh.writer(&out_buffer);
+        const out = &f_writer.interface;
+        try reportTableImpl(lemp, in, out, mhflag);
+        try out.flush();
     } else {
         return; // No file handle
     }
@@ -1993,8 +1994,12 @@ fn reportTableImpl(
         // try out.print("#define {s}CTX_STORE\n", .{name}); lineno += 1;
     }
     var in = try macroReplace(zyt, in_template);
-    // TODO: run a replace and define the return value as 'in' here, renaming
-    // the original in accordingly. defer free!
+    // We bump 'in' forward (following the C code) so we need to hold on to the
+    // head so we can dispose of it:
+    const in_head = in;
+    defer {
+        zyt.allocator.free(in_head);
+    }
     try out.print(
         \\//! This file is automatically generated by Zitron from input grammar
         \\//! source file "{s}"
@@ -2380,7 +2385,7 @@ fn reportTableImpl(
         }
         for (0..zyt.nsymbol) |i| {
             try out.print("   \"{s}\",  ", .{zyt.symbols[i].name});
-            try out.writeByteNTimes(' ', maxsym - zyt.symbols[i].name.len);
+            try out.splatByteAll(' ', maxsym - zyt.symbols[i].name.len);
             try out.print("// {d: >4}\n", .{i});
             lineno += 1;
         }
@@ -2615,13 +2620,13 @@ fn ReportHeader(zyt: *Zitron) !void {
     const m_fh = try file_open(zyt, ".h", false, .{});
     if (m_fh) |fh| {
         defer fh.close();
-        const f_writer = fh.writer();
-        var write_buffer = std.io.bufferedWriter(f_writer);
-        const out = write_buffer.writer();
+        var out_buffer: [4096]u8 = undefined;
+        var f_writer = fh.writer(&out_buffer);
+        const out = &f_writer.interface;
         for (1..zyt.nterminal) |i| {
             try out.print("#define {s}{s: <30} {d:>3}\n", .{ prefix, zyt.symbols[i].name, i });
         }
-        try write_buffer.flush();
+        try out.flush();
     }
 }
 
@@ -4072,9 +4077,11 @@ fn Parse(psp: *PState) !void {
     // /* Make an initial pass through the file to handle %ifdef and %ifndef */
     preprocess_input(&psp.gp.opt, filebuf);
     if (psp.gp.printPreprocessed) {
-        const stdout = std.io.getStdOut();
-        const std_write = stdout.writer();
-        try std_write.print("{s}\n", .{filebuf});
+        var stdout_buffer: [1024]u8 = undefined;
+        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        const stdout = &stdout_writer.interface;
+        try stdout.print("{s}\n", .{filebuf});
+        try stdout.flush();
         return;
     }
 
@@ -5411,14 +5418,14 @@ fn SetUnion(s1: []bool, s2: []bool) bool {
 /// Print a statistic to the provided Writer.
 fn stats_line(in: anytype, zLabel: []const u8, iValue: usize) !void {
     try in.print("  {s}", .{zLabel});
-    try in.writeByteNTimes('.', 35 - zLabel.len);
+    try in.splatByteAll('.', 35 - zLabel.len);
     try in.print(" {d: >5}\n", .{iValue});
 }
 
 pub fn main() !void {
     var gpa = gpa: {
         if (is_debug) {
-            const dbgpa: std.heap.DebugAllocator(.{}) = .init;
+            const dbgpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 10 }) = .init;
             break :gpa dbgpa;
         } else {
             break :gpa std.heap.smp_allocator;
@@ -5472,7 +5479,11 @@ pub fn main() !void {
         try OptInit(&opt, args, allocator);
     }
     if (opt.version) {
-        std.io.getStdOut().writer().writeAll("Lemon.zig version 0.1\n") catch {};
+        var stdout_buffer: [128]u8 = undefined;
+        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        const stdout = &stdout_writer.interface;
+        stdout.writeAll("Zitron version 0.1\n") catch {};
+        stdout.flush() catch {};
         exit(0);
     }
     if (OptNArgs(args) != 1) {
@@ -5640,7 +5651,9 @@ pub fn main() !void {
         if (!opt.mhflag) try ReportHeader(lem);
     }
     if (opt.statistics) {
-        const in = std.io.getStdIn().writer();
+        var stdin_buffer: [1024]u8 = undefined;
+        var stdin_writer = std.fs.File.stdin().writer(&stdin_buffer);
+        const in = &stdin_writer.interface;
         try in.writeAll("Parser statistics:\n");
         try stats_line(in, "terminal symbols", lem.nterminal);
         try stats_line(in, "non-terminal symbols", lem.nsymbol - lem.nterminal);
@@ -5651,6 +5664,7 @@ pub fn main() !void {
         try stats_line(in, "action table entries", lem.nactiontab);
         try stats_line(in, "lookahead table entries", lem.nlookaheadtab);
         try stats_line(in, "total table size (bytes)", lem.tablesize);
+        try in.flush();
     }
     if (lem.nconflict > 0) {
         dprint("{d} parsing conflicts.\n", .{lem.nconflict});

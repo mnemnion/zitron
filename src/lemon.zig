@@ -825,9 +825,9 @@ fn rule_print(writer: anytype, rp: *Rule) !void {
 /// Duplicate the input file without comments and without actions
 /// on rules
 fn Reprint(lemp: *Lemon) !void {
-    const std_write = std.io.getStdIn().writer();
-    var buffer = std.io.bufferedWriter(std_write);
-    var out = buffer.writer();
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const out = &stdout_writer.interface;
     try out.print("// Reprint of input file {s}.\n// Symbols:\n", .{lemp.quoted_filename});
     var maxlen: usize = 10;
     for (lemp.symbols[0..lemp.nsymbol]) |sp| {
@@ -846,7 +846,7 @@ fn Reprint(lemp: *Lemon) !void {
             try out.print(" {d: >3} ", .{j});
             try out.print("{s}", .{ptsym});
             if (ptsym.len < maxlen) {
-                try out.writeByteNTimes(' ', maxlen - ptsym.len);
+                try out.splatByteAll(' ', maxlen - ptsym.len);
             }
             try out.writeByte('\n');
         }
@@ -859,7 +859,7 @@ fn Reprint(lemp: *Lemon) !void {
         if (comptime print_code) if (rp.code) try out.print("\n    {s}", .{rp.code});
         try out.writeByte('\n');
     }
-    try buffer.flush();
+    try out.flush();
 }
 
 /// Print a single rule.
@@ -990,11 +990,11 @@ fn ReportOutput(lemp: *Lemon) !void {
     const m_fh = try file_open(lemp, ".out", false, .{});
     if (m_fh) |fh| {
         defer fh.close();
-        const f_writer = fh.writer();
-        var write_buffer = std.io.bufferedWriter(f_writer);
-        const b_writer = write_buffer.writer();
-        try reportOutputImpl(lemp, b_writer);
-        try write_buffer.flush();
+        var out_buffer: [4096]u8 = undefined;
+        var f_writer = fh.writer(&out_buffer);
+        const out = &f_writer.interface;
+        try reportOutputImpl(lemp, out);
+        try out.flush();
     } else {
         return; // No file handle
     }
@@ -1012,7 +1012,7 @@ fn reportOutputImpl(lemp: *Lemon, writer: anytype) !void {
                 const dot_s = try std.fmt.bufPrint(&buf, "({d})", .{cfp.rp.iRule});
                 try writer.print("    {s:>5} ", .{dot_s});
             } else {
-                try writer.writeByteNTimes(' ', 10);
+                try writer.splatByteAll(' ', 10);
             }
             try ConfigPrint(writer, cfp);
             try writer.writeByte('\n');
@@ -1825,24 +1825,21 @@ fn ReportTable(
         const m_sql_fh = try file_open(lemp, ".sql", false, .{});
         if (m_sql_fh) |fh| {
             defer fh.close();
-            const f_writer = fh.writer();
-            var write_buffer = std.io.bufferedWriter(f_writer);
-            const b_writer = write_buffer.writer();
-            try ReportSql(lemp, b_writer);
-            try write_buffer.flush();
+            var out_buffer: [4096]u8 = undefined;
+            var f_writer = fh.writer(&out_buffer);
+            const out = &f_writer.interface;
+            try ReportSql(lemp, out);
+            try out.flush();
         } else return; // No file handle
     }
-    const m_out_fh = try file_open(lemp, ".c", true, .{});
+    const m_out_fh = try file_open(lemp, ".zig", true, .{});
     if (m_out_fh) |fh| {
-        if (sqlflag and lemon_compat) {
-            try assign_outname(lemp, ".sql", null, true);
-        }
         defer fh.close();
-        const f_writer = fh.writer();
-        var write_buffer = std.io.bufferedWriter(f_writer);
-        const b_writer = write_buffer.writer();
-        try reportTableImpl(lemp, in, b_writer, mhflag);
-        try write_buffer.flush();
+        var out_buffer: [4096]u8 = undefined;
+        var f_writer = fh.writer(&out_buffer);
+        const out = &f_writer.interface;
+        try reportTableImpl(lemp, in, out, mhflag);
+        try out.flush();
     } else {
         return; // No file handle
     }
@@ -2533,13 +2530,13 @@ fn ReportHeader(lemp: *Lemon) !void {
     const m_fh = try file_open(lemp, ".h", false, .{});
     if (m_fh) |fh| {
         defer fh.close();
-        const f_writer = fh.writer();
-        var write_buffer = std.io.bufferedWriter(f_writer);
-        const out = write_buffer.writer();
+        var out_buffer: [4096]u8 = undefined;
+        var f_writer = fh.writer(&out_buffer);
+        const out = &f_writer.interface;
         for (1..lemp.nterminal) |i| {
             try out.print("#define {s}{s: <30} {d:>3}\n", .{ prefix, lemp.symbols[i].name, i });
         }
-        try write_buffer.flush();
+        try out.flush();
     }
 }
 
@@ -3980,9 +3977,11 @@ fn Parse(psp: *PState) !void {
     // /* Make an initial pass through the file to handle %ifdef and %ifndef */
     preprocess_input(&psp.gp.opt, filebuf);
     if (psp.gp.printPreprocessed) {
-        const stdout = std.io.getStdOut();
-        const std_write = stdout.writer();
-        try std_write.print("{s}\n", .{filebuf});
+        var stdout_buffer: [1024]u8 = undefined;
+        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        const stdout = &stdout_writer.interface;
+        try stdout.print("{s}\n", .{filebuf});
+        try stdout.flush();
         return;
     }
 
@@ -4803,10 +4802,13 @@ fn CompressTables(lemp: *Lemon) !void {
 
         if (p_check1) {
             m_ap = stp.ap;
-            const stderr = std.io.getStdErr().writer();
+            var stderr_buffer: [1024]u8 = undefined;
+            var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
+            const stderr = &stderr_writer.interface;
             while (m_ap) |ap| : (m_ap = ap.next) {
                 _ = try PrintAction(stderr, ap, 0, lemp.opt.show_precedence_conflict);
             }
+            try stderr.flush();
             m_ap = stp.ap;
         }
         // Combine matching REDUCE actions into a single default.
@@ -5319,7 +5321,7 @@ fn SetUnion(s1: []bool, s2: []bool) bool {
 /// Print a statistic to the provided Writer.
 fn stats_line(in: anytype, zLabel: []const u8, iValue: usize) !void {
     try in.print("  {s}", .{zLabel});
-    try in.writeByteNTimes('.', 35 - zLabel.len);
+    try in.splatByteAll('.', 35 - zLabel.len);
     try in.print(" {d: >5}\n", .{iValue});
 }
 
@@ -5380,7 +5382,11 @@ pub fn main() !void {
         try OptInit(&opt, args, allocator);
     }
     if (opt.version) {
-        std.io.getStdOut().writer().writeAll("Lemon.zig version 0.1\n") catch {};
+        var stdout_buffer: [128]u8 = undefined;
+        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        const stdout = &stdout_writer.interface;
+        stdout.writeAll("Lemon.zig version 0.1\n") catch {};
+        stdout.flush() catch {};
         exit(0);
     }
     if (OptNArgs(args) != 1) {
@@ -5548,7 +5554,9 @@ pub fn main() !void {
         if (!opt.mhflag) try ReportHeader(lem);
     }
     if (opt.statistics) {
-        const in = std.io.getStdIn().writer();
+        var stdin_buffer: [1024]u8 = undefined;
+        var stdin_writer = std.fs.File.stdin().writer(&stdin_buffer);
+        const in = &stdin_writer.interface;
         try in.writeAll("Parser statistics:\n");
         try stats_line(in, "terminal symbols", lem.nterminal);
         try stats_line(in, "non-terminal symbols", lem.nsymbol - lem.nterminal);
@@ -5559,6 +5567,7 @@ pub fn main() !void {
         try stats_line(in, "action table entries", lem.nactiontab);
         try stats_line(in, "lookahead table entries", lem.nlookaheadtab);
         try stats_line(in, "total table size (bytes)", lem.tablesize);
+        try in.flush();
     }
     if (lem.nconflict > 0) {
         dprint("{d} parsing conflicts.\n", .{lem.nconflict});

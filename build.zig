@@ -14,9 +14,11 @@ pub fn build(b: *std.Build) void {
 
     const lemon_exe = b.addExecutable(.{
         .name = "lemon",
-        .root_source_file = b.path("src/lemon.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/lemon.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     lemon_exe.root_module.addAnonymousImport("lempar", .{ .root_source_file = b.path(lemon_template) });
 
@@ -36,12 +38,17 @@ pub fn build(b: *std.Build) void {
         "A build-relative file path to a zitron template",
     ) orelse "template/ztmpl.zig";
 
-    const zitron_exe = b.addExecutable(.{
-        .name = "zitron",
+    const zitron_mod = b.createModule(.{
         .root_source_file = b.path("src/zitron.zig"),
         .target = target,
         .optimize = optimize,
     });
+
+    const zitron_exe = b.addExecutable(.{
+        .name = "zitron",
+        .root_module = zitron_mod,
+    });
+
     zitron_exe.root_module.addAnonymousImport("z_template", .{ .root_source_file = b.path(zitron_template) });
 
     b.installArtifact(zitron_exe);
@@ -60,9 +67,7 @@ pub fn build(b: *std.Build) void {
     ) orelse &[0][]const u8{};
 
     const zitron_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/zitron.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = zitron_mod,
         .filters = test_filters,
     });
 
