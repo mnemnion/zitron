@@ -188,15 +188,9 @@ pub const yyParser = struct {
     errcnt: ?usize,
     🍋ARG_SDECL
     🍋CTX_SDECL
-    stackEnd: [*]yyStackEntry,
+    stack_end: [*]yyStackEntry,
     stack: [*]yyStackEntry,
     stk0: []yyStackEntry,
-
-    // Try to increase the size of the parser stack.  Return the number
-    // of errors.  Return 0 on success.
-    pub fn growStack(p: *yyParser) bool {
-        return false; // TODO: etc.
-    }
 
     pub fn create(allocator: Allocator 🍋CTX_PDECL) !*yyParser {
         var p = try allocator.create(yyParser);
@@ -205,15 +199,17 @@ pub const yyParser = struct {
         return p;
     }
 
-    pub fn init(p: *yyParser, allocator: Allocator 🍋CTX_PDECL) void {
+    pub fn init(p: *yyParser 🍋CTX_PDECL) void {
         🍋CTX_STORE
         p.stack = p.stk0.ptr;
-        p.stackEnd = &p.stack[p.stack.len - 1];
-        p.errcnt = 0; // TODO: Deal with NOERRORRECOVERY
+        p.stack_end = &p.stack[p.stack.len - 1];
+        p.errcnt = null; // TODO: Deal with NOERRORRECOVERY
         p.tos = p.stack;
         p.stack[0].stateno = 0;
         p.stack[0].major = 0;
     }
+
+    pub fn growStack = yyGrowStack;
 };
 
 // TODO: Add ParseTrace
@@ -229,4 +225,171 @@ pub const yyTokenName = [_][:0]const u8{
 pub const yyRuleName = [_][:0]const u8{
 %%
 };
+
+
+/// Try to increase the size of the parser stack.  Return the number
+/// of errors.  Return 0 on success.
+fn yyGrowStack(p: *yyParser) !void {
+    // TODO: yyGrowableStack config, always return error
+    const new_size = p.stk0.len * 2 + 100;
+    const idx = (@intFromPtr(p.tos) - @intFromPtr(p.stack));
+    const p_new = try p.allocator.realloc(p.stk0, new_size);
+    p.stack = p_new.ptr;
+    p.stk0 = p_new;
+    p.tos = &p_new[idx];
+    p.stack_end = &p_new[new_size - 1];
+}
+
+
+/// The following function deletes the "minor type" or semantic value
+/// associated with a symbol.  The symbol can be either a terminal
+/// or nonterminal. "yymajor" is the symbol code, and "yypminor" is
+/// a pointer to the value to be deleted.  The code used to do the
+/// deletions is derived from the %destructor and/or %token_destructor
+/// directives of the input grammar.
+///
+fn yy_destructor(
+  yypParser: *yyParser,    // The parser */
+  yymajor: YYCODETYPE,     // Type code for object to destroy */
+  yypminor: *YYMINORTYPE,   // The object to be destroyed */
+) !void {
+    🍋ARG_FETCH
+    🍋CTX_FETCH
+    switch( yymajor ){
+        // Here is inserted the actions which take place when a
+        // terminal or non-terminal is destroyed.  This can happen
+        // when the symbol is popped from the stack during a
+        // reduce or during error processing or when a parser is
+        // being destroyed before it is finished parsing.
+        //
+        // Note: during a reduce, the only symbols destroyed are those
+        // which appear on the RHS of the rule, but which are *not* used
+        // inside the C code.
+        //
+//******** Begin destructor definitions ***************************************/
+%%
+//******** End destructor definitions *****************************************/
+        else =>  break,   // If no destructor action specified: do nothing */
+    }
+}
+
+const assert = std.debug.assert;
+
+///
+/// Pop the parser's stack once.
+///
+/// If there is a destructor routine associated with the token which
+/// is popped from the stack, then call it.
+fn yy_pop_parser_stack(pParser: * yyParser) !void {
+    assert(pParser.tos > pParser.stack);
+    pParser.tos -= 1;
+    // #ifndef NDEBUG
+    //   if( yyTraceFILE ){
+    //     fprintf(yyTraceFILE,"%sPopping %s\n",
+    //       yyTracePrompt,
+    //       yyTokenName[yytos->major]);
+    //   }
+    // #endif
+    yy_destructor(pParser, pParser.tos.major, &pParser.tos.minor);
+}
+
+
+// TODO: deal with this stuff
+//
+// /*
+// ** Clear all secondary memory allocations from the parser
+// */
+// void ParseFinalize(void *p){
+//   yyParser *pParser = (yyParser*)p;
+//
+//   /* In-lined version of calling yy_pop_parser_stack() for each
+//   ** element left in the stack */
+//   yyStackEntry *yytos = pParser->yytos;
+//   while( yytos>pParser->yystack ){
+// #ifndef NDEBUG
+//     if( yyTraceFILE ){
+//       fprintf(yyTraceFILE,"%sPopping %s\n",
+//         yyTracePrompt,
+//         yyTokenName[yytos->major]);
+//     }
+// #endif
+//     if( yytos->major>=YY_MIN_DSTRCTR ){
+//       yy_destructor(pParser, yytos->major, &yytos->minor);
+//     }
+//     yytos--;
+//   }
+//
+// #if YYGROWABLESTACK
+//   if( pParser->yystack!=pParser->yystk0 ) YYFREE(pParser->yystack);
+// #endif
+// }
+//
+// #ifndef Parse_ENGINEALWAYSONSTACK
+// /*
+// ** Deallocate and destroy a parser.  Destructors are called for
+// ** all stack elements before shutting the parser down.
+// **
+// ** If the YYPARSEFREENEVERNULL macro exists (for example because it
+// ** is defined in a %include section of the input grammar) then it is
+// ** assumed that the input pointer is never NULL.
+// */
+// void ParseFree(
+//   void *p,                    /* The parser to be deleted */
+//   void (*freeProc)(void*)     /* Function used to reclaim memory */
+// ){
+// #ifndef YYPARSEFREENEVERNULL
+//   if( p==0 ) return;
+// #endif
+//   ParseFinalize(p);
+//   (*freeProc)(p);
+// }
+// #endif /* Parse_ENGINEALWAYSONSTACK */
+//
+// /*
+// ** Return the peak depth of the stack for a parser.
+// */
+// #ifdef YYTRACKMAXSTACKDEPTH
+// int ParseStackPeak(void *p){
+//   yyParser *pParser = (yyParser*)p;
+//   return pParser->yyhwm;
+// }
+// #endif
+//
+// /* This array of booleans keeps track of the parser statement
+// ** coverage.  The element yycoverage[X][Y] is set when the parser
+// ** is in state X and has a lookahead token Y.  In a well-tested
+// ** systems, every element of this matrix should end up being set.
+// */
+// #if defined(YYCOVERAGE)
+// static unsigned char yycoverage[YYNSTATE][YYNTOKEN];
+// #endif
+//
+// /*
+// ** Write into out a description of every state/lookahead combination that
+// **
+// **   (1)  has not been used by the parser, and
+// **   (2)  is not a syntax error.
+// **
+// ** Return the number of missed state/lookahead combinations.
+// */
+// #if defined(YYCOVERAGE)
+// int ParseCoverage(FILE *out){
+//   int stateno, iLookAhead, i;
+//   int nMissed = 0;
+//   for(stateno=0; stateno<YYNSTATE; stateno++){
+//     i = yy_shift_ofst[stateno];
+//     for(iLookAhead=0; iLookAhead<YYNTOKEN; iLookAhead++){
+//       if( yy_lookahead[i+iLookAhead]!=iLookAhead ) continue;
+//       if( yycoverage[stateno][iLookAhead]==0 ) nMissed++;
+//       if( out ){
+//         fprintf(out,"State %d lookahead %s %s\n", stateno,
+//                 yyTokenName[iLookAhead],
+//                 yycoverage[stateno][iLookAhead] ? "ok" : "missed");
+//       }
+//     }
+//   }
+//   return nMissed;
+// }
+// #endif
+//
 //

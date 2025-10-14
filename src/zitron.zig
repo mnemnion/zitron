@@ -1200,11 +1200,11 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
     const cp = cp: {
         if (sp.type == .terminal) {
             if (lemp.tokendest.len == 0) return;
-            try out.writeAll("{\n");
+            try out.writeAll(" => {\n");
             lineno.* += 1;
             break :cp lemp.tokendest;
         } else if (sp.destructor.len > 0) {
-            try out.writeAll("{\n");
+            try out.writeAll(" => {\n");
             lineno.* += 1;
             if (!lemp.nolinenosflag) {
                 lineno.* += 1;
@@ -1212,7 +1212,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
             }
             break :cp sp.destructor;
         } else if (lemp.vardest.len > 0) {
-            try out.writeAll("{\n");
+            try out.writeAll(" => {\n");
             lineno.* += 1;
             break :cp lemp.vardest;
         } else {
@@ -1233,7 +1233,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
         lineno.* += 1;
         try tplt_linedir(out, lineno.*, lemp.quoted_outname);
     }
-    try out.writeAll("}\n");
+    try out.writeAll("},\n");
     lineno.* += 1;
     return;
 }
@@ -1902,7 +1902,7 @@ fn reportTableImpl(
         {
             const arg_fetch = try std.fmt.allocPrint(
                 allocator,
-                "var {s} = yypParser.{s}; _ = &{s};",
+                "var {s} = yypParser.{s}; _ = .{{&{s}}};",
                 .{ arg, arg, arg },
             );
             errdefer allocator.free(arg_fetch);
@@ -1971,7 +1971,7 @@ fn reportTableImpl(
         {
             const ctx_fetch = try std.fmt.allocPrint(
                 allocator,
-                "var {s} = yypParser.{s}; _ = &{s};",
+                "var {s} = p.{s}; _ = .{{&{s}}};",
                 .{ ctx, ctx, ctx },
             );
             errdefer allocator.free(ctx_fetch);
@@ -1980,7 +1980,7 @@ fn reportTableImpl(
         {
             const ctx_store = try std.fmt.allocPrint(
                 allocator,
-                "yypParser.{s} = {s};",
+                "p.{s} = {s};",
                 .{ ctx, ctx },
             );
             errdefer allocator.free(ctx_store);
@@ -2080,12 +2080,17 @@ fn reportTableImpl(
     }
     lineno += 1;
     if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
-        try out.print("#define YYERRORSYMBOL {d}\n", .{errsym.index}); lineno += 1;
-        try out.print("#define YYERRSYMDT yy{d}\n", .{errsym.dtnum}); lineno += 1;
+        try out.print("const YYERRORSYMBOL = {d};\n", .{errsym.index}); lineno += 1;
+        try out.print("const YYERRSYMDT = @FieldType(YYMINORTYPE, \"yy{d}\");\n", .{errsym.dtnum}); lineno += 1;
     };
+    try out.writeAll("const YYFALLBACK = ");
     if (zyt.has_fallback) {
-        try out.writeAll("#define YYFALLBACK 1\n"); lineno += 1;
+        try out.writeAll("true");
+    } else {
+        try out.writeAll("false");
     }
+    try out.writeAll(";\n");
+     lineno += 1;
     // zig fmt: on
     // Compute the action table, but do not output it yet.  The action
     // table must be computed before generating the YYNSTATE macro because
@@ -2423,15 +2428,13 @@ fn reportTableImpl(
                 lineno += 1;
                 once = false;
             }
-            try out.print("    case {d}: // {s}\n", .{ sp.index, sp.name });
+            try out.print("    {d}, // {s}\n", .{ sp.index, sp.name });
             lineno += 1;
         }
         var j: usize = 0;
         while (j < zyt.nsymbol and zyt.symbols[j].type != .terminal) : (j += 1) {}
         if (j < zyt.nsymbol) {
             try emit_destructor_code(out, zyt.symbols[j], zyt, &lineno);
-            try out.writeAll("      break;\n");
-            lineno += 1;
         }
     }
     if (zyt.vardest.len > 0) {
@@ -2441,18 +2444,16 @@ fn reportTableImpl(
             const sp = zyt.symbols[i];
             if (sp.type == .terminal or sp.index == 0 or sp.destructor.len > 0) continue;
             if (once) {
-                try out.writeAll("      /* Default NON-TERMINAL Destructor */\n");
+                try out.writeAll("      // Default NON-TERMINAL Destructor */\n");
                 lineno += 1;
                 once = false;
             }
-            try out.print("    case {d}: /* {s} */\n", .{ sp.index, sp.name });
+            try out.print("    {d}, // {s} \n", .{ sp.index, sp.name });
             lineno += 1;
             dflt_sp = sp;
         }
         if (dflt_sp) |dflt| {
             try emit_destructor_code(out, dflt, zyt, &lineno);
-            try out.writeAll("      break;\n");
-            lineno += 1;
         }
     }
     for (0..zyt.nsymbol) |i| {
@@ -2465,7 +2466,7 @@ fn reportTableImpl(
             );
         }
         if (sp.destLineno == null) continue; //  Already emitted
-        try out.print("    case {d}: /* {s} */\n", .{ sp.index, sp.name });
+        try out.print("        {d}, // {s} \n", .{ sp.index, sp.name });
         lineno += 1;
         // Combine duplicate destructors into a single case
         var j = i + 1;
@@ -2475,14 +2476,12 @@ fn reportTableImpl(
                 sp2.dtnum == sp.dtnum and
                 sp2.destructor.len > 0 and mem.eql(u8, sp.destructor, sp2.destructor))
             {
-                try out.print("    case {d}: /* {s} */\n", .{ sp2.index, sp2.name });
+                try out.print("        {d}, // {s} \n", .{ sp2.index, sp2.name });
                 lineno += 1;
                 sp2.destLineno = null; // Avoid emitting this destructor again */
             }
         }
         try emit_destructor_code(out, sp, zyt, &lineno);
-        try out.writeAll("      break;\n");
-        lineno += 1;
     }
     try tplt_xfer(zyt.name, &in, out, &lineno);
     // Generate code which executes whenever the parser stack overflows
@@ -2498,9 +2497,9 @@ fn reportTableImpl(
         var m_rp: ?*Rule = zyt.rule;
         var i: usize = 0; // zig fmt: off
         while (m_rp) |rp| : ({m_rp = rp.next; i += 1; }) {
-            try out.print("  {d: >4},  /* ({d}) ", .{ rp.lhs.index, i });
+            try out.print("  {d: >4},  // ({d}) ", .{ rp.lhs.index, i });
             try rule_print(out, rp);
-            try out.writeAll( " */\n" ); lineno += 1;
+            try out.writeAll( "\n" ); lineno += 1;
         }
         try tplt_xfer(zyt.name, &in, out, &lineno);
         i = 0; m_rp = zyt.rule;
