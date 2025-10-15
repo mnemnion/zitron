@@ -1475,7 +1475,7 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
 // Generate code which executes when the rule "rp" is reduced.  Write
 // the code to "out".  Make sure lineno stays up-to-date.
 //
-fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
+fn emit_code(out: anytype, rule_nums: []u32, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
     //
     // Setup code prior to the #line directive
     if (rp.codePrefix.len > 0) {
@@ -1488,9 +1488,13 @@ fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
             lineno.* += 1;
             try tplt_linedir(out, rp.line, lemp.quoted_filename);
         }
-        try out.print("{{{s}", .{rp.code});
+        try out.writeAll(" => {\n");
+        for (rule_nums) |i_rule| {
+            try out.print("          yytestcase(yyruleno=={d});\n", .{i_rule});
+        }
+        try out.print("{s}", .{rp.code});
         lineno.* += mem.count(u8, rp.code, "\n") + 1;
-        try out.writeAll("}\n");
+        try out.writeAll("},\n");
         if (!lemp.nolinenosflag) {
             lineno.* += 1;
             try tplt_linedir(out, lineno.*, lemp.quoted_outname);
@@ -2529,7 +2533,7 @@ fn reportTableImpl(
             minor_type = minor_type or did;
         }
         if (minor_type) {
-            try out.writeAll("        YYMINORTYPE yylhsminor;\n");
+            try out.writeAll("        var yylhsminor: YYMINORTYPE = undefined; _ = .{&yylhsminor};\n");
             lineno += 1;
         }
         // First output rules other than the default: rule
@@ -2540,14 +2544,14 @@ fn reportTableImpl(
                 // No C code actions, so this will be part of the "default:" rule
                 continue :rules;
             }
-            try out.print("      case {d}: /* ", .{rp.iRule});
+            try out.print("      {d}, // ", .{rp.iRule});
             try writeRuleText(out, rp);
-            try out.writeAll(" */\n");
+            try out.writeAll("\n");
             lineno += 1;
             var m_rp2: ?*Rule = rp.next; // Other rules with the same action
+            var rules: ArrayList(u32) = .empty;
+            defer rules.deinit(zyt.allocator);
             while (m_rp2) |rp2| : (m_rp2 = rp2.next) {
-                // TODO: these are all interned so we can just use
-                // pointer comparison
                 if (rp.code.ptr == rp2.code.ptr and
                     rp.codePrefix.ptr == rp2.codePrefix.ptr and
                     rp.codeSuffix.ptr == rp2.codeSuffix.ptr)
@@ -2555,15 +2559,17 @@ fn reportTableImpl(
                     if (p_check1) {
                         dprint("case: merging rp2 {d} with rp {d}\n", .{ rp2.iRule, rp.iRule });
                     }
-                    try out.print("      case {d}: /* ", .{rp2.iRule});
+                    try out.print("      {d}, // ", .{rp2.iRule});
                     try writeRuleText(out, rp2);
-                    try out.print(" */ yytestcase(yyruleno=={d});\n", .{rp2.iRule});
+                    // TODO: no fall-through so how do we do this?
+                    // Answer: push the iRules onto an ArrayList, pass the slice to
+                    // emit_code, add the test cases there.
+                    try rules.append(zyt.allocator, rp2.iRule);
                     lineno += 1;
                     rp2.codeEmitted = true;
                 }
             }
-            try emit_code(out, rp, zyt, &lineno);
-            try out.writeAll("        break;\n");
+            try emit_code(out, rules.items, rp, zyt, &lineno);
             lineno += 1;
             rp.codeEmitted = true;
         }
@@ -2571,28 +2577,33 @@ fn reportTableImpl(
     // Finally, output the default: rule.  We choose as the default: all
     // empty actions.
 
-    try out.writeAll("      default:\n");
+    try out.writeAll("      else => {\n");
     lineno += 1;
     {
         var m_rp: ?*Rule = zyt.rule;
         while (m_rp) |rp| : (m_rp = rp.next) {
             if (rp.codeEmitted) continue;
             dbgassert(rp.noCode);
-            try out.print("      /* ({d}) ", .{rp.iRule});
-            try writeRuleText(out, rp);
+            // try out.print("      // ({d}) ", .{rp.iRule});
             if (rp.neverReduce) {
-                try out.print(" (NEVER REDUCES) */ assert(yyruleno!={d});\n", .{rp.iRule});
+                try out.print("         assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
+                try writeRuleText(out, rp);
+                try out.writeAll(" (NEVER REDUCES)\n");
                 lineno += 1;
             } else if (rp.doesReduce) {
-                try out.print(" */ yytestcase(yyruleno=={d});\n", .{rp.iRule});
+                try out.print("         yytestcase(yyruleno == {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
+                try writeRuleText(out, rp);
+                try out.writeByte('\n');
                 lineno += 1;
             } else {
-                try out.print(" (OPTIMIZED OUT) */ assert(yyruleno!={d});\n", .{rp.iRule});
+                try out.print("         assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
+                try writeRuleText(out, rp);
+                try out.writeAll(" (OPTIMIZED OUT) \n");
                 lineno += 1;
             }
         }
     }
-    try out.writeAll("        break;\n");
+    try out.writeAll("        },\n");
     lineno += 1;
     try tplt_xfer(zyt.name, &in, out, &lineno);
 

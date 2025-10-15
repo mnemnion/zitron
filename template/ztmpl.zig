@@ -573,3 +573,126 @@ const yyRuleInfoLhs: []YYCODETYPE = &.{
 const yyRuleInfoNRhs: []i8 = &.{
 %%
 };
+
+/// Perform a reduce action and the shift that must immediately
+/// follow the reduce.
+///
+/// The yyLookahead and yyLookaheadToken parameters provide reduce actions
+/// access to the lookahead token (if any).  The yyLookahead will be YYNOCODE
+/// if the lookahead token has already been consumed.  As this procedure is
+/// only called from one place, optimizing compilers will in-line it, which
+/// means that the extra parameters have no performance impact.
+fn yy_reduce(
+    /// The parser
+    yypParser: *yyParser,
+    /// Number of the rule by which to reduce
+    yyruleno: usize,
+    /// Lookahead token, or YYNOCODE if none
+    yyLookahead: YYCODETYPE,
+    /// Value of the lookahead token */
+    yyLookaheadToken: ParseTOKENTYPE,
+    🍋CTX_PDECL                   // %extra_context */
+) YYACTIONTYPE {
+    🍋ARG_FETCH
+    _ = .{yyruleno, yyLookahead, yyLookaheadToken};
+    var yymsp = yypParser->yytos;
+
+    switch( yyruleno ){
+    // Beginning here are the reduction cases.  A typical example
+    // follows:
+    //   0,
+    //  #line <lineno> <grammarfile>
+    //     => { ... },           // User supplied code
+    //  #line <lineno> <thisfile>
+    //
+//********* Begin reduce actions **********************************************/
+%%
+//********* End reduce actions ************************************************/
+    }
+    assert(yyruleno < yyRuleInfoLhs.len);
+    const yygoto = yyRuleInfoLhs[yyruleno];
+    const yysize = yyRuleInfoNRhs[yyruleno];
+    const yyact = yy_find_reduce_action(yymsp[yysize].stateno, yygoto);
+
+    // There are no SHIFTREDUCE actions on nonterminals because the table
+    // generator has simplified them to pure REDUCE actions.
+    assert(!(yyact > YY_MAX_SHIFT and yyact <= YY_MAX_SHIFTREDUCE));
+
+    // It is not possible for a REDUCE to be followed by an error
+    assert(yyact != YY_ERROR_ACTION);
+
+    yymsp += yysize+1;
+    yypParser.yytos = yymsp;
+    yymsp.stateno = yyct;
+    yymsp.major = yygoto;
+    yyTraceShift(yypParser, yyact, "... then shift");
+    return yyact;
+}
+
+// TODO: this should be able to throw yeah?
+/// The following code executes when the parse fails
+fn yy_parse_failed(
+    /// The parser
+    yypParser: *yyParser,
+) void {
+    🍋ARG_FETCH
+    🍋CTX_FETCH
+    // #ifndef NDEBUG
+    //   if( yyTraceFILE ){
+    //     fprintf(yyTraceFILE,"%sFail!\n",yyTracePrompt);
+    //   }
+    // #endif
+    while (yypParser.tos > yypParser.stack)
+        yy_pop_parser_stack(yypParser);
+    // Here code is inserted which will be executed whenever the
+    // parser fails.
+//*********** Begin %parse_failure code ***************************************/
+%%
+//*********** End %parse_failure code *****************************************/
+    🍋ARG_STORE // Suppress warning about unused %extra_argument variable
+    🍋CTX_STORE
+}
+
+/// The following code executes when a syntax error first occurs.
+fn yy_syntax_error(
+    /// The parser */
+    yypParser: *yyParser,
+    /// The major type of the error token */
+    yymajor: int,
+    /// The minor type of the error token */
+    yyminor: ParseTOKENTYPE,
+) void {
+    🍋ARG_FETCH
+    🍋CTX_FETCH
+    const TOKEN = yyminor;
+//*********** Begin %syntax_error code ****************************************/
+%%
+//*********** End %syntax_error code ******************************************/
+  🍋ARG_STORE // Suppress warning about unused %extra_argument variable */
+  🍋CTX_STORE
+}
+
+/// The following is executed when the parser accepts
+fn yy_accept(
+    /// The parser
+    yyParser: *yypParser,
+) void {
+    🍋ARG_FETCH
+    🍋CTX_FETCH
+    // #ifndef NDEBUG
+    //   if( yyTraceFILE ){
+    //     fprintf(yyTraceFILE,"%sAccept!\n",yyTracePrompt);
+    //   }
+    // #endif
+    if (comptime YYNOERRORRECOVERY) {
+        yypParser->errcnt = null;
+    }
+    assert(yypParser.tos == yypParser.stack);
+  // Here code is inserted which will be executed whenever the
+  // parser accepts.
+//********** Begin %parse_accept code *****************************************/
+%%
+//********** End %parse_accept code *******************************************/
+    🍋ARG_STORE // Suppress warning about unused %extra_argument variable */
+    🍋CTX_STORE
+}
