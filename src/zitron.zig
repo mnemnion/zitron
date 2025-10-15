@@ -2066,9 +2066,11 @@ fn reportTableImpl(
     try out.print("const YYACTIONTYPE = {s};\n", .{minimum_size_type(0, zyt.maxAction, &szActionType)});
     lineno += 1;
     if (zyt.wildcard) |wild| {
-        try out.print("const YYWILDCARD = {d};\n", .{wild.index});
-        lineno += 1;
+        try out.print("const YY_HASWILDCARD = true;\nconst YYWILDCARD = {d};\n", .{wild.index});
+    } else {
+        try out.writeAll("const YY_HASWILDCARD = false;\nconst YYWILDCARD: void = {};\n");
     }
+    lineno += 2;
     try print_stack_union(out, zyt, &lineno, mhflag);
     lineno += 1;
     if (zyt.stacksize.len > 0) {
@@ -2510,9 +2512,9 @@ fn reportTableImpl(
             } else {
                 try out.print("  {d: >3},", .{-sint(rp.rhs.len)});
             }
-            try out.print("  /* ({d}) ", .{i});
+            try out.print("  // ({d}) ", .{i});
             try rule_print(out, rp);
-            try out.writeAll(" */\n"); lineno += 1;
+            try out.writeAll("\n"); lineno += 1;
         }
         try tplt_xfer(zyt.name, &in, out, &lineno);
             // zig fmt: on

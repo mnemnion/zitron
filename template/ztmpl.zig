@@ -280,7 +280,7 @@ const assert = std.debug.assert;
 ///
 /// If there is a destructor routine associated with the token which
 /// is popped from the stack, then call it.
-fn yy_pop_parser_stack(pParser: * yyParser) !void {
+fn yy_pop_parser_stack(pParser: * yyParser) void {
     assert(pParser.tos > pParser.stack);
     pParser.tos -= 1;
     // #ifndef NDEBUG
@@ -392,4 +392,184 @@ fn yy_pop_parser_stack(pParser: * yyParser) !void {
 // }
 // #endif
 //
-//
+
+/// Find the appropriate action for a parser given the terminal
+/// look-ahead token iLookAhead.
+fn yy_find_shift_action(
+    /// The look-ahead token
+    iLookAhead: YYCODETYPE,
+    /// Current state number
+    stateno: YYACTIONTYPE,
+) YYACTIONTYPE {
+    if (stateno > YY_MAX_SHIFT) return stateno;
+    assert(stateno <= YY_SHIFT_COUNT);
+    if (comptime YYCOVERAGE) {
+        yycoverage[stateno][iLookAhead] = 1;
+    }
+    var iLook = iLookAhead;
+    while (true) {
+        var i = yy_shift_ofst[stateno];
+        assert(i >= 0);
+        assert(i <= YY_ACTTAB_COUNT);
+        assert(i+YYNTOKEN <= YY_NLOOKAHEAD);
+        assert(iLook != YYNOCODE);
+        assert(iLook < YYNTOKEN);
+        i += iLook;
+        assert(i < YY_NLOOKAHEAD);
+        if(yy_lookahead[i] != iLook) {
+            if (comptime YYFALLBACK) {
+                assert(iLook M yyFallback.len);
+                const iFallback: YYCODETYPE = yyFallback[iLook];
+                if (iFallback != 0) {
+                    // #ifndef NDEBUG
+                    //         if( yyTraceFILE ){
+                    //           fprintf(yyTraceFILE, "%sFALLBACK %s => %s\n",
+                    //              yyTracePrompt, yyTokenName[iLookAhead], yyTokenName[iFallback]);
+                    //         }
+                    // #endif
+                    assert(yyFallback[iFallback] == 0) ; // Fallback loop must terminate */
+                    iLook = iFallback;
+                    continue;
+                }
+            }
+            if (comptime YY_HASWILDCARD) {
+                const j: YYCODETYPE = i - iLook + YYWILDCARD;
+                assert(j < yy_lookahead.len);
+                if (yy_lookahead[j] == YYWILDCARD and iLook > 0) {
+                    // #ifndef NDEBUG
+                    //           if( yyTraceFILE ){
+                    //             fprintf(yyTraceFILE, "%sWILDCARD %s => %s\n",
+                    //                yyTracePrompt, yyTokenName[iLookAhead],
+                    //                yyTokenName[YYWILDCARD]);
+                    //           }
+                    // #endif /* NDEBUG */
+                    return yy_action[j];
+                }
+            }
+            return yy_default[stateno];
+        }else{
+            assert(i < yy_action.len);
+            return yy_action[i];
+        }
+    }
+}
+
+
+/// Find the appropriate action for a parser given the non-terminal
+/// look-ahead token iLookAhead.
+fn yy_find_reduce_action(
+    /// Current state number
+    stateno: YYACTIONTYPE ,
+    /// The look-ahead token
+    iLookAhead: YYCODETYPE ,
+) YYACTIONTYPE {
+    if (comptime YYERRORSYMBOL) {
+        if (stateno > YY_REDUCE_COUNT) {
+          return yy_default[stateno];
+        }
+    } else {
+      assert(stateno <= YY_REDUCE_COUNT);
+    }
+    var i = yy_reduce_ofst[stateno];
+    assert(iLookAhead != YYNOCODE);
+    i += iLookAhead;
+    if (comptime YYERRORSYMBOL)
+        if (i < 0 || i >= YY_ACTTAB_COUNT || yy_lookahead[i] != iLookAhead) {
+            return yy_default[stateno];
+        }
+    } else {
+        assert( i>=0 && i<YY_ACTTAB_COUNT );
+        assert( yy_lookahead[i]==iLookAhead );
+    }
+    return yy_action[i];
+}
+
+/// The following routine is called if the stack overflows.
+fn yyStackOverflow(yypParser: *yyParser) void {
+   🍋ARG_FETCH
+   🍋CTX_FETCH
+    // #ifndef NDEBUG
+    //    if( yyTraceFILE ){
+    //      fprintf(yyTraceFILE,"%sStack Overflow!\n",yyTracePrompt);
+    //    }
+    // #endif
+   while (yypParser.tos > yypParser.stack) yy_pop_parser_stack(yypParser);
+   // Here code is inserted which will execute if the parser
+   // stack every overflows
+//******* Begin %stack_overflow code ******************************************/
+%%
+//******* End %stack_overflow code ********************************************/
+   🍋ARG_STORE // Suppress warning about unused %extra_argument var
+   🍋CTX_STORE
+}
+
+// /*
+// ** Print tracing information for a SHIFT action
+// */
+// #ifndef NDEBUG
+// static void yyTraceShift(yyParser *yypParser, int yyNewState, const char *zTag){
+//   if( yyTraceFILE ){
+//     if( yyNewState<YYNSTATE ){
+//       fprintf(yyTraceFILE,"%s%s '%s', go to state %d\n",
+//          yyTracePrompt, zTag, yyTokenName[yypParser->yytos->major],
+//          yyNewState);
+//     }else{
+//       fprintf(yyTraceFILE,"%s%s '%s', pending reduce %d\n",
+//          yyTracePrompt, zTag, yyTokenName[yypParser->yytos->major],
+//          yyNewState - YY_MIN_REDUCE);
+//     }
+//   }
+// }
+// #else
+// # define yyTraceShift(X,Y,Z)
+// #endif
+
+/// Perform a shift action.
+fn yy_shift(
+    /// The parser to be shifted
+    yypParser: *yyParser,
+    /// The new state to shift in
+    yyNewState: YYACTIONTYPE,
+    /// The major token to shift in
+    yyMajor: YYCODETYPE,
+    /// The minor token to shift in
+    yyMinor: ParseTOKENTYPE,
+) void {
+    yypParser.tos += 1;
+    // #ifdef YYTRACKMAXSTACKDEPTH
+    //     if( (int)(yypParser->yytos - yypParser->yystack)>yypParser->yyhwm ){
+    //     yypParser->yyhwm++;
+    //     assert( yypParser->yyhwm == (int)(yypParser->yytos - yypParser->yystack) );
+    //     }
+    // #endif
+    var yytos = yypParser.tos;
+    var yy_new = yyNewState;
+    if (yytos > yypParser.stack_end) {
+        if (yyGrowStack(yypParser)) {
+          yypParser.tos -= 1;
+          yyStackOverflow(yypParser);
+          return;
+        }
+        yytos = yypParser.tos;
+        assert(yytos <= yypParser.stack_end);
+    }
+    if (yy_new > YY_MAX_SHIFT) {
+        yy_new += YY_MIN_REDUCE - YY_MIN_SHIFTREDUCE;
+    }
+    yytos[0].stateno = yy_new;
+    yytos[0].major = yyMajor;
+    yytos[0].minor.yy0 = yyMinor;
+    yyTraceShift(yypParser, yy_new, "Shift");
+}
+
+/// For rule J, yyRuleInfoLhs[J] contains the symbol on the left-hand side
+/// of that rule */
+const yyRuleInfoLhs: []YYCODETYPE = &.{
+%%
+};
+
+/// For rule J, yyRuleInfoNRhs[J] contains the negative of the number
+/// of symbols on the right-hand side of that rule. */
+const yyRuleInfoNRhs: []i8 = &.{
+%%
+};
