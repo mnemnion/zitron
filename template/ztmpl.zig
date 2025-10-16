@@ -596,6 +596,7 @@ fn yy_reduce(
     🍋ARG_FETCH
     _ = .{yyruleno, yyLookahead, yyLookaheadToken};
     var yymsp = yypParser->yytos;
+    const allocator = yypParser.allocator; _ = .{allocator};
 
     switch( yyruleno ){
     // Beginning here are the reduction cases.  A typical example
@@ -696,3 +697,223 @@ fn yy_accept(
     🍋ARG_STORE // Suppress warning about unused %extra_argument variable */
     🍋CTX_STORE
 }
+
+// TODO: This could return the context when there is one, and
+// `void` otherwise.  That wouldn't be excessively tricksy to
+// code up.
+//
+/// The main parser program.
+/// The first argument is a pointer to a structure obtained from
+/// "ParseAlloc" which describes the current state of the parser.
+/// The second argument is the major token number.  The third is
+/// the minor token.  The fourth optional argument is whatever the
+/// user wants (and specified in the grammar) and is available for
+/// use by the action routines.
+///
+/// - Inputs:
+///
+///   - A pointer to the parser (an opaque structure.)
+///   - The major token number.
+///   - The minor token number.
+///   - An option argument of a grammar-specified type.
+///
+/// - Outputs:
+///
+///   - None.
+///
+pub fn Parse(
+    /// The parser
+    yypParser: *yyParser,
+    /// The major token code number
+    yymajor: int,
+    /// The value for the token
+    yyminor: ParseTOKENTYPE,
+    🍋ARG_PDECL               // Optional %extra_argument parameter
+) !void {
+    var yyminorunion: YYMINORTYPE = undefined;
+    var yyact: YYACTIONTYPE = undefined;   // The parser action.
+    var yyendofinput: bool = false;
+    var yyerrorhit: bool = false;
+    ParseCTX_FETCH
+    ParseARG_STORE
+    assert(yypParser.yytos != 0);
+    if (comptime (!YYERROSYMBOL and !YYNOERRORRECOVERY)) {
+        yyendofinput = (yymajor==0);
+    }
+    var yyact = yypParser.yytos[0].stateno;
+    // #ifndef NDEBUG
+    //   if( yyTraceFILE ){
+    //     if( yyact < YY_MIN_REDUCE ){
+    //       fprintf(yyTraceFILE,"%sInput '%s' in state %d\n",
+    //               yyTracePrompt,yyTokenName[yymajor],yyact);
+    //     }else{
+    //       fprintf(yyTraceFILE,"%sInput '%s' with pending reduce %d\n",
+    //               yyTracePrompt,yyTokenName[yymajor],yyact-YY_MIN_REDUCE);
+    //     }
+    //   }
+    // #endif
+
+    while (true) { // Exit by "break"
+        assert(yypParser.yytos >= yypParser.yystack);
+        assert(yyact == yypParser.yytos[0].stateno);
+        yyact = yy_find_shift_action(yymajor, yyact);
+        if( yyact >= YY_MIN_REDUCE ){
+            const yyruleno = yyact - YY_MIN_REDUCE; // Reduce by this rule
+            // #ifndef NDEBUG
+            //       assert( yyruleno<(int)(sizeof(yyRuleName)/sizeof(yyRuleName[0])) );
+            //       if( yyTraceFILE ){
+            //         int yysize = yyRuleInfoNRhs[yyruleno];
+            //         if( yysize ){
+            //           fprintf(yyTraceFILE, "%sReduce %d [%s]%s, pop back to state %d.\n",
+            //             yyTracePrompt,
+            //             yyruleno, yyRuleName[yyruleno],
+            //             yyruleno<YYNRULE_WITH_ACTION ? "" : " without external action",
+            //             yypParser->yytos[yysize].stateno);
+            //         }else{
+            //           fprintf(yyTraceFILE, "%sReduce %d [%s]%s.\n",
+            //             yyTracePrompt, yyruleno, yyRuleName[yyruleno],
+            //             yyruleno<YYNRULE_WITH_ACTION ? "" : " without external action");
+            //         }
+            //       }
+            // #endif /* NDEBUG */
+
+            // Check that the stack is large enough to grow by a single entry
+            // if the RHS of the rule is empty.  This ensures that there is room
+            // enough on the stack to push the LHS value.
+            if (yyRuleInfoNRhs[yyruleno] == 0) {
+                if ((comptime YYTRACKMAXSTACKDEPTH) and (yypParser.yytos - yypParser.yystack) > yypParser.yyhwm) {
+                    yypParser.yyhwm += 1;
+                    assert(yypParser.yyhwm == yypParser.yytos - yypParser.yystack);
+                }
+                if (yypParser.yytos >= yypParser.yystackEnd) {
+                    if (yyGrowStack(yypParser)) {
+                        yyStackOverflow(yypParser);
+                        break;
+                    }
+                }
+            }
+            yyact = yy_reduce(yypParser, yyruleno, yymajor, yyminor 🍋CTX_PARAM);
+        } else if (yyact <= YY_MAX_SHIFTREDUCE) {
+            yy_shift(yypParser,yyact, yymajor, yyminor);
+            if (comptime !YYNOERRORRECOVERY) {
+                yypParser.yyerrcnt -= 1;
+            }
+            break;
+        } else if (yyact == YY_ACCEPT_ACTION) {
+            yypParser.yytos -= 1;
+            yy_accept(yypParser);
+            return;
+        } else {
+            assert( yyact == YY_ERROR_ACTION );
+            yyminorunion = .{.yy0 = yyminor};
+            // #ifndef NDEBUG
+            //       if( yyTraceFILE ){
+            //         fprintf(yyTraceFILE,"%sSyntax Error!\n",yyTracePrompt);
+            //       }
+            // #endif
+
+            // A syntax error has occurred.
+            // The response to an error depends upon whether or not the
+            // grammar defines an error token "ERROR".
+            //
+            if (comptime YYERRORSYMBOL) {
+                // This is what we do if the grammar does define ERROR:
+                //
+                //  * Call the %syntax_error function.
+                //
+                //  * Begin popping the stack until we enter a state where
+                //    it is legal to shift the error symbol, then shift
+                //    the error symbol.
+                //
+                //  * Set the error count to three.
+                //
+                //  * Begin accepting and shifting new tokens.  No new error
+                //    processing will occur until three tokens have been
+                //    shifted successfully.
+                //
+                //
+                if (yypParser.yyerrcnt < 0) {
+                    yy_syntax_error(yypParser, yymajor, yyminor);
+                }
+                yymx = yypParser.yytos[0].major;
+                if (yymx == YYERRORSYMBOL || yyerrorhit) {
+                    // #ifndef NDEBUG
+                    //         if( yyTraceFILE ){
+                    //           fprintf(yyTraceFILE,"%sDiscard input token %s\n",
+                    //              yyTracePrompt,yyTokenName[yymajor]);
+                    //         }
+                    // #endif
+                    yy_destructor(yypParser, yymajor, &yyminorunion);
+                    yymajor = YYNOCODE;
+                } else {
+                    while (yypParser.tos > yypParser.stack) {
+                        yyact = yy_find_reduce_action(yypParser.tos.stateno, YYERRORSYMBOL);
+                        if (yyact <= YY_MAX_SHIFTREDUCE) break;
+                        yy_pop_parser_stack(yypParser);
+                    }
+                    if (yypParser.tos <= yypParser.stack or yymajor == 0) {
+                        yy_destructor(yypParser, yymajor, &yyminorunion);
+                        yy_parse_failed(yypParser);
+                        if (comptime !YYNOERRORRECOVERY) {
+                            yypParser.yyerrcnt = null;
+                        }
+                        yymajor = YYNOCODE;
+                    } else if (yymx != YYERRORSYMBOL) {
+                        yy_shift(yypParser, yyact, YYERRORSYMBOL, yyminor);
+                    }
+                }
+                yypParser.errcnt = 3;
+                yyerrorhit = true;
+                if (yymajor == YYNOCODE) break;
+                yyact = yypParser.tos[0].stateno;
+            } else if (comptime YYNOERRORRECOVERY) {
+                // If the YYNOERRORRECOVERY macro is defined, then do not attempt to
+                // do any kind of error recovery.  Instead, simply invoke the syntax
+                // error routine and continue going as if nothing had happened.
+                //
+                // Applications can set this macro (for example inside %include) if
+                // they intend to abandon the parse upon the first syntax error seen.
+                //
+                yy_syntax_error(yypParser,yymajor, yyminor);
+                yy_destructor(yypParser,(YYCODETYPE)yymajor,&yyminorunion);
+                break;
+            } else { // YYERRORSYMBOL is not defined, nor YYNOERRORRECOVERY
+                // This is what we do if the grammar does not define ERROR:
+                //
+                //  * Report an error message, and throw away the input token.
+                //
+                //  * If the input token is $, then fail the parse.
+                //
+                // As before, subsequent error messages are suppressed until
+                // three input tokens have been successfully shifted.
+                //
+                if (yypParser.errcnt <= 0) {
+                    yy_syntax_error(yypParser, yymajor, yyminor);
+                }
+                yypParser.errcnt = 3;
+                yy_destructor(yypParser, yymajor, &yyminorunion);
+                if( yyendofinput ){
+                      yy_parse_failed(yypParser);
+                    if (comptime !YYNOERRORRECOVERY) {
+                          yypParser->yyerrcnt = -1;
+                    }
+                }
+                break;
+            }
+        }
+    }
+    // #ifndef NDEBUG
+    //   if( yyTraceFILE ){
+    //     yyStackEntry *i;
+    //     char cDiv = '[';
+    //     fprintf(yyTraceFILE,"%sReturn. Stack=",yyTracePrompt);
+    //     for(i=&yypParser->yystack[1]; i<=yypParser->yytos; i++){
+    //       fprintf(yyTraceFILE,"%c%s", cDiv, yyTokenName[i->major]);
+    //       cDiv = ' ';
+    //     }
+    //     fprintf(yyTraceFILE,"]\n");
+    //   }
+    // #endif
+    return;
+}
+
