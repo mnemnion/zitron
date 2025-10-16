@@ -1251,7 +1251,7 @@ fn has_destructor(sp: *Symbol, lemp: *Zitron) bool {
 /// Write and transform the rp->code string so that symbols are expanded.
 /// Populate the rp->codePrefix and rp->codeSuffix strings, as appropriate.
 ///
-/// Return 1 if the expanded code requires that "yylhsminor" local variable
+/// Return `true` if the expanded code requires that "yylhsminor" local variable
 /// to be defined.
 fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
     var rc = false; // True if yylhsminor is used
@@ -1259,7 +1259,7 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
     var lhsused = false; // True if the LHS element has been used
     var lhsdirect = false; // True if LHS writes directly into stack
     var used: [MAXRHS]bool = undefined; // True for each RHS element which is used
-    var zLhsBuf: [50]u8 = undefined; // Convert the LHS symbol into this string
+    var zLhsBuf: [64]u8 = undefined; // Convert the LHS symbol into this string
     var zSkip: ?usize = null; // Index of skippable special comment
     var zLhs: []const u8 = "";
     if (is_safe) {
@@ -1289,8 +1289,8 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
                 dprint("destructor: {s} {d}\n", .{ rp.lhs.name, rp.iRule });
             }
             try writer.print(
-                "  yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
-                .{ rp.rhs[0].index, 1 - sint(rp.rhs.len) },
+                "            yy_destructor(yypParser,{d},&(yymsp - {d})[1].minor);\n",
+                .{ rp.rhs[0].index, rp.rhs.len },
             );
             alloc.free(rp.codePrefix);
             rp.codePrefix = try Strsafe(string_builder.items);
@@ -1325,22 +1325,26 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
         }
     }
     if (lhsdirect) {
-        zLhs = std.fmt.bufPrint(&zLhsBuf, "yymsp[{d}].minor.yy{d}", .{
-            1 - sint(rp.rhs.len),
+        zLhs = std.fmt.bufPrint(&zLhsBuf, "(yymsp - {d})[1].minor.yy{d}", .{
+            rp.rhs.len,
             rp.lhs.dtnum,
         }) catch unreachable;
     } else {
         rc = true;
-        zLhs = std.fmt.bufPrint(&zLhsBuf, "yylhsminor.yy{d}", .{rp.lhs.dtnum}) catch unreachable;
+        zLhs = std.fmt.bufPrint(
+            &zLhsBuf,
+            "yylhsminor.yy{d}",
+            .{rp.lhs.dtnum},
+        ) catch unreachable;
     }
     string_builder.clearRetainingCapacity();
     {
         // Build the translated code
         var i: usize = 0;
         var start: usize = 0;
-        const cp = rp.code;
+        const cp = std.mem.trim(u8, rp.code, "\t \n");
         var special_start: usize, var special_end: usize = .{ 0, 0 };
-        while (i < rp.code.len) : (i += 1) {
+        while (i < cp.len) : (i += 1) {
             if (i == zSkip) {
                 special_start = i;
                 dbgassert(cp[i] == '/');
@@ -1351,6 +1355,15 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
                 start = i;
                 special_end = i;
                 dontUseRhs0 = true;
+                continue;
+            }
+            if (cp[i] == '\n') {
+                try writer.writeAll(cp[start..i]);
+                if (i == cp.len) break;
+                i += 1;
+                while (i < cp.len and (cp[i] == ' ' or cp[i] == '\t')) : (i += 1) {}
+                try writer.writeByteNTimes(' ', 3 * 4);
+                start = i;
                 continue;
             }
             if ((isAlpha(cp[i]) or cp[i] == '@') and
@@ -1386,8 +1399,8 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
                             // If the argument is of the form @X then substitute
                             // the token number of X, not the value of X
                             try writer.print(
-                                "yymsp[{d}].major",
-                                .{sint(j) - sint(rp.rhs.len) + 1},
+                                "(yymsp - {d})[1].major",
+                                .{rp.rhs.len - j},
                             );
                         } else {
                             const dtnum = if (rhs.type == .multiterminal)
@@ -1395,8 +1408,8 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
                             else
                                 rhs.dtnum;
                             try writer.print(
-                                "yymsp[{d}].minor.yy{d}",
-                                .{ sint(j) - sint(rp.rhs.len) + 1, dtnum },
+                                "(yymsp - {d})[1].minor.yy{d}",
+                                .{ rp.rhs.len - j, dtnum },
                             );
                         }
                         used[j] = true;
@@ -1454,7 +1467,7 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
                 dprint("destructor 2.0: {s} {d}\n", .{ rp.lhs.name, rp.iRule });
             }
             try writer.print(
-                "  yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
+                "yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
                 .{ rp.rhs[i].index, sint(i) - sint(rp.rhs.len) + 1 },
             );
         }
@@ -1463,8 +1476,8 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
     // If unable to write LHS values directly into the stack, write the
     // saved LHS value now.
     if (!lhsdirect) {
-        try writer.print("  yymsp[{d}].minor.yy{d} = ", .{ 1 - sint(rp.rhs.len), rp.lhs.dtnum });
-        try writer.print("{s};\n", .{zLhs});
+        try writer.print("yymsp[{d}].minor.yy{d} = ", .{ 1 - sint(rp.rhs.len), rp.lhs.dtnum });
+        try writer.print("{s};", .{zLhs});
     }
     // Suffix code generation complete
     rp.codeSuffix = try Strsafe(string_builder.items);
@@ -1479,7 +1492,7 @@ fn emit_code(out: anytype, rule_nums: []u32, rp: *Rule, lemp: *Zitron, lineno: *
     //
     // Setup code prior to the #line directive
     if (rp.codePrefix.len > 0) {
-        try out.print("{{{s}", .{rp.codePrefix});
+        try out.print("{{s}", .{rp.codePrefix});
         lineno.* += mem.count(u8, rp.codePrefix, "\n");
     }
     // Generate code to do the reduce action
@@ -1488,13 +1501,14 @@ fn emit_code(out: anytype, rule_nums: []u32, rp: *Rule, lemp: *Zitron, lineno: *
             lineno.* += 1;
             try tplt_linedir(out, rp.line, lemp.quoted_filename);
         }
-        try out.writeAll(" => {\n");
+        try out.writeAll("        => {\n            ");
+        lineno.* += 1;
         for (rule_nums) |i_rule| {
-            try out.print("          yytestcase(yyruleno=={d});\n", .{i_rule});
+            try out.print("yytestcase(yyruleno=={d});\n            ", .{i_rule});
+            lineno.* += 1;
         }
         try out.print("{s}", .{rp.code});
         lineno.* += mem.count(u8, rp.code, "\n") + 1;
-        try out.writeAll("},\n");
         if (!lemp.nolinenosflag) {
             lineno.* += 1;
             try tplt_linedir(out, lineno.*, lemp.quoted_outname);
@@ -1503,13 +1517,15 @@ fn emit_code(out: anytype, rule_nums: []u32, rp: *Rule, lemp: *Zitron, lineno: *
 
     // Generate breakdown code that occurs after the #line directive
     if (rp.codeSuffix.len > 0) {
-        try out.print("{s}", .{rp.codeSuffix});
-        lineno.* += mem.count(u8, rp.codeSuffix, "\n");
+        try out.print("\n            {s}", .{rp.codeSuffix});
+        lineno.* += mem.count(u8, rp.codeSuffix, "\n") + 1;
     }
     if (rp.codePrefix.len > 0) {
         try out.writeAll("}\n");
         lineno.* += 1;
     }
+    try out.writeAll("\n        },\n");
+    lineno.* += 2;
     return;
 }
 
@@ -1639,19 +1655,20 @@ fn print_stack_union(
     if (mhflag) {
         try out.writeAll("#endif\n"); lineno += 1;
     }
-    try out.writeAll("pub const YYMINORTYPE = union(enum) {\n"); lineno += 1;
-    try out.writeAll("    yyinit: usize,\n"); lineno += 1;
-    try out.print("    yy0: {s}TOKENTYPE,\n", .{name}); lineno += 1;
+    try out.writeAll("pub const YYMINORTYPE = minor: {\n"); lineno += 1;
+    try out.writeAll("    @setRuntimeSafety(false);\n"); lineno += 1;
+    try out.writeAll("    break :minor union {\n"); lineno += 1;
+    try out.print("        yy0: {s}TOKENTYPE,\n", .{name}); lineno += 1;
     t_print: for (types, 0..) |variant, i| {
         if (variant.len == 0) continue :t_print;
-        try out.print("    yy{d}: {s},\n", .{ i + 1, variant }); lineno += 1;
+        try out.print("        yy{d}: {s},\n", .{ i + 1, variant }); lineno += 1;
     }
     if (lemp.errsym) |errsym| if (errsym.useCnt > 0) {
-        try out.print("    yy{d}: usize,\n", .{errsym.dtnum}); lineno += 1;
+        try out.print("        yy{d}: usize,\n", .{errsym.dtnum}); lineno += 1;
     };
-    try out.writeAll("};\n");
+    try out.writeAll("    };\n};\n");
     // zig fmt: on
-    lineno += 1;
+    lineno += 2;
     plineno.* = lineno;
 }
 
@@ -2532,10 +2549,6 @@ fn reportTableImpl(
             const did = try translate_code(zyt, rp);
             minor_type = minor_type or did;
         }
-        if (minor_type) {
-            try out.writeAll("        var yylhsminor: YYMINORTYPE = undefined; _ = .{&yylhsminor};\n");
-            lineno += 1;
-        }
         // First output rules other than the default: rule
         m_rp = zyt.rule;
         rules: while (m_rp) |rp| : (m_rp = rp.next) {
@@ -2544,7 +2557,7 @@ fn reportTableImpl(
                 // No C code actions, so this will be part of the "default:" rule
                 continue :rules;
             }
-            try out.print("      {d}, // ", .{rp.iRule});
+            try out.print("        {d}, // ", .{rp.iRule});
             try writeRuleText(out, rp);
             try out.writeAll("\n");
             lineno += 1;
@@ -2559,13 +2572,14 @@ fn reportTableImpl(
                     if (p_check1) {
                         dprint("case: merging rp2 {d} with rp {d}\n", .{ rp2.iRule, rp.iRule });
                     }
-                    try out.print("      {d}, // ", .{rp2.iRule});
+                    try out.print("        {d}, // ", .{rp2.iRule});
                     try writeRuleText(out, rp2);
+                    try out.writeByte('\n');
+                    lineno += 1;
                     // TODO: no fall-through so how do we do this?
                     // Answer: push the iRules onto an ArrayList, pass the slice to
                     // emit_code, add the test cases there.
                     try rules.append(zyt.allocator, rp2.iRule);
-                    lineno += 1;
                     rp2.codeEmitted = true;
                 }
             }

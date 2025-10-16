@@ -597,7 +597,7 @@ fn yy_reduce(
     _ = .{yyruleno, yyLookahead, yyLookaheadToken};
     var yymsp = yypParser->yytos;
     const allocator = yypParser.allocator; _ = .{allocator};
-
+    var yylhsminor: YYMINORTYPE = undefined; _ = .{&yylhsminor};
     switch( yyruleno ){
     // Beginning here are the reduction cases.  A typical example
     // follows:
@@ -915,5 +915,16 @@ pub fn Parse(
     //   }
     // #endif
     return;
+}
+
+/// Return the fallback token corresponding to canonical token iToken, or
+/// 0 if iToken has no fallback.
+fn ParseFallback(iToken: YYTOKENTYPE) YYTOKENTYPE {
+    if (comptime YYFALLBACK) {
+        assert(iToken < yyFallback.len);
+        return yyFallback[iToken];
+    } else {
+        return 0;
+    }
 }
 
