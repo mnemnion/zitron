@@ -1,0 +1,31 @@
+%include {
+//! A Calculator
+
+const Token = struct {
+    span: []const u8,
+    val: ?f64,
+};
+
+}
+
+%token_type Token
+
+%type expr f64
+%type term f64
+%type factor f64
+
+calc ::= expr(A). { std.debug.print("> {d:<.4}\n", .{A}); }
+
+expr(A) ::= expr(B) PLUS term(C). { A = B + C; }
+expr(A) ::= expr(B) MINUS term(C). { A = B - C; }
+expr(A) ::= term(B).  { A = B; }
+
+term(A) ::= term(B) TIMES factor(C). { A = B * C; }
+term(A) ::= term(B) DIVIDE factor(C). { A = B / C; }
+term(A) ::= factor(B). { A = B; }
+
+%type NUMBER {f64}
+
+factor(A) ::= NUMBER(N). { A = N.?.val; }
+factor(A) ::= LPAREN expr(E) RPAREN. { A = E; }
+
