@@ -11,12 +11,17 @@
 //! The following is the concatenation of all %include directives from the
 //! input grammar file:
 //!
+
+
 // ************ Begin %include sections from the grammar ************************
 %%
 // **************** End of %include directives **********************************
-//  This specifies the token enum.  If generated separately this is an import of
-//  that file.
-// ***************** Begin token definitions *************************************
+
+const std = @import("std");
+
+/// This specifies the token enum.  If generated separately this is an import of
+///  that file.
+/// ***************** Begin token definitions ***********************************
 %%
 // **************** End token definitions ***************************************
 // The next sections is a series of constant definitions dictating
@@ -178,11 +183,11 @@ const yyStackEntry = struct {
 /// the following structure.
 pub const yyParser = struct {
     /// Allocator
-    allocator: Allocator,
+    allocator: std.mem.Allocator,
     /// Pointer to top element of the stack
     tos: [*]yyStackEntry,
     //
-    // TODO: reckon with `yyhym`
+    // TODO: reckon with `yyhwm`
     //
     /// Shifts left before out of the error
     errcnt: ?usize,
@@ -192,24 +197,25 @@ pub const yyParser = struct {
     stack: [*]yyStackEntry,
     stk0: []yyStackEntry,
 
-    pub fn create(allocator: Allocator 🍋CTX_PDECL) !*yyParser {
-        var p = try allocator.create(yyParser);
+    pub fn create(allocator: std.mem.Allocator 🍋CTX_PDECL) !*yyParser {
+        var yypParser = try allocator.create(yyParser);
         🍋CTX_STORE
-        p.init(🍋CTX_PARAM);
-        return p;
+        yypParser.init(🍋CTX_PARAM);
+        return yy_p;
     }
 
-    pub fn init(p: *yyParser 🍋CTX_PDECL) void {
+    pub fn init(yypParser: *yyParser 🍋CTX_PDECL) void {
         🍋CTX_STORE
-        p.stack = p.stk0.ptr;
-        p.stack_end = &p.stack[p.stack.len - 1];
-        p.errcnt = null; // TODO: Deal with NOERRORRECOVERY
-        p.tos = p.stack;
-        p.stack[0].stateno = 0;
-        p.stack[0].major = 0;
+        yypParser.stack = yypParser.stk0.ptr;
+        yypParser.stack_end = &yypParser.stack[yypParser.stack.len - 1];
+        yypParser.errcnt = null; // TODO: Deal with NOERRORRECOVERY
+        yypParser.tos = yypParser.stack;
+        yypParser.stack[0].stateno = 0;
+        yypParser.stack[0].major = 0;
     }
 
-    pub fn growStack = yyGrowStack;
+    pub const growStack = yyGrowStack;
+    pub const parse = Parse;
 };
 
 // TODO: Add ParseTrace
@@ -229,15 +235,15 @@ pub const yyRuleName = [_][:0]const u8{
 
 /// Try to increase the size of the parser stack.  Return the number
 /// of errors.  Return 0 on success.
-fn yyGrowStack(p: *yyParser) !void {
+fn yyGrowStack(yy_p: *yyParser) !void {
     // TODO: yyGrowableStack config, always return error
-    const new_size = p.stk0.len * 2 + 100;
-    const idx = (@intFromPtr(p.tos) - @intFromPtr(p.stack));
-    const p_new = try p.allocator.realloc(p.stk0, new_size);
-    p.stack = p_new.ptr;
-    p.stk0 = p_new;
-    p.tos = &p_new[idx];
-    p.stack_end = &p_new[new_size - 1];
+    const new_size = yy_p.stk0.len * 2 + 100;
+    const idx = (@intFromPtr(yy_p.tos) - @intFromPtr(yy_p.stack));
+    const yyp_new = try yy_p.allocator.realloc(yy_p.stk0, new_size);
+    yy_p.stack = yyp_new.ptr;
+    yy_p.stk0 = yyp_new;
+    yy_p.tos = &yyp_new[idx];
+    yy_p.stack_end = &yyp_new[new_size - 1];
 }
 
 
@@ -255,6 +261,8 @@ fn yy_destructor(
 ) !void {
     🍋ARG_FETCH
     🍋CTX_FETCH
+    _ = .{ yyParser, yypminor }; // Unused variable ward
+    const allocator = yypParser.allocator; _ = .{allocator};
     switch( yymajor ){
         // Here is inserted the actions which take place when a
         // terminal or non-terminal is destroyed.  This can happen
@@ -269,11 +277,11 @@ fn yy_destructor(
 //******** Begin destructor definitions ***************************************/
 %%
 //******** End destructor definitions *****************************************/
-        else =>  break,   // If no destructor action specified: do nothing */
+        else =>  {},   // If no destructor action specified: do nothing */
     }
 }
 
-const assert = std.debug.assert;
+const yy_assert = std.debug.assert;
 
 ///
 /// Pop the parser's stack once.
@@ -281,7 +289,7 @@ const assert = std.debug.assert;
 /// If there is a destructor routine associated with the token which
 /// is popped from the stack, then call it.
 fn yy_pop_parser_stack(pParser: * yyParser) void {
-    assert(pParser.tos > pParser.stack);
+    yy_assert(pParser.tos > pParser.stack);
     pParser.tos -= 1;
     // #ifndef NDEBUG
     //   if( yyTraceFILE ){
@@ -402,23 +410,23 @@ fn yy_find_shift_action(
     stateno: YYACTIONTYPE,
 ) YYACTIONTYPE {
     if (stateno > YY_MAX_SHIFT) return stateno;
-    assert(stateno <= YY_SHIFT_COUNT);
+    yy_assert(stateno <= YY_SHIFT_COUNT);
     if (comptime YYCOVERAGE) {
         yycoverage[stateno][iLookAhead] = 1;
     }
     var iLook = iLookAhead;
     while (true) {
         var i = yy_shift_ofst[stateno];
-        assert(i >= 0);
-        assert(i <= YY_ACTTAB_COUNT);
-        assert(i+YYNTOKEN <= YY_NLOOKAHEAD);
-        assert(iLook != YYNOCODE);
-        assert(iLook < YYNTOKEN);
+        yy_assert(i >= 0);
+        yy_assert(i <= YY_ACTTAB_COUNT);
+        yy_assert(i+YYNTOKEN <= YY_NLOOKAHEAD);
+        yy_assert(iLook != YYNOCODE);
+        yy_assert(iLook < YYNTOKEN);
         i += iLook;
-        assert(i < YY_NLOOKAHEAD);
+        yy_assert(i < YY_NLOOKAHEAD);
         if(yy_lookahead[i] != iLook) {
             if (comptime YYFALLBACK) {
-                assert(iLook M yyFallback.len);
+                yy_assert(iLook < yyFallback.len);
                 const iFallback: YYCODETYPE = yyFallback[iLook];
                 if (iFallback != 0) {
                     // #ifndef NDEBUG
@@ -427,14 +435,14 @@ fn yy_find_shift_action(
                     //              yyTracePrompt, yyTokenName[iLookAhead], yyTokenName[iFallback]);
                     //         }
                     // #endif
-                    assert(yyFallback[iFallback] == 0) ; // Fallback loop must terminate */
+                    yy_assert(yyFallback[iFallback] == 0) ; // Fallback loop must terminate */
                     iLook = iFallback;
                     continue;
                 }
             }
             if (comptime YY_HASWILDCARD) {
                 const j: YYCODETYPE = i - iLook + YYWILDCARD;
-                assert(j < yy_lookahead.len);
+                yy_assert(j < yy_lookahead.len);
                 if (yy_lookahead[j] == YYWILDCARD and iLook > 0) {
                     // #ifndef NDEBUG
                     //           if( yyTraceFILE ){
@@ -448,7 +456,7 @@ fn yy_find_shift_action(
             }
             return yy_default[stateno];
         }else{
-            assert(i < yy_action.len);
+            yy_assert(i < yy_action.len);
             return yy_action[i];
         }
     }
@@ -468,18 +476,18 @@ fn yy_find_reduce_action(
           return yy_default[stateno];
         }
     } else {
-      assert(stateno <= YY_REDUCE_COUNT);
+      yy_assert(stateno <= YY_REDUCE_COUNT);
     }
     var i = yy_reduce_ofst[stateno];
-    assert(iLookAhead != YYNOCODE);
+    yy_assert(iLookAhead != YYNOCODE);
     i += iLookAhead;
-    if (comptime YYERRORSYMBOL)
-        if (i < 0 || i >= YY_ACTTAB_COUNT || yy_lookahead[i] != iLookAhead) {
+    if (comptime YYERRORSYMBOL) {
+        if (i < 0 or i >= YY_ACTTAB_COUNT or yy_lookahead[i] != iLookAhead) {
             return yy_default[stateno];
         }
     } else {
-        assert( i>=0 && i<YY_ACTTAB_COUNT );
-        assert( yy_lookahead[i]==iLookAhead );
+        yy_assert( i >= 0 and i < YY_ACTTAB_COUNT );
+        yy_assert( yy_lookahead[i]==iLookAhead );
     }
     return yy_action[i];
 }
@@ -539,19 +547,20 @@ fn yy_shift(
     // #ifdef YYTRACKMAXSTACKDEPTH
     //     if( (int)(yypParser->yytos - yypParser->yystack)>yypParser->yyhwm ){
     //     yypParser->yyhwm++;
-    //     assert( yypParser->yyhwm == (int)(yypParser->yytos - yypParser->yystack) );
+    //     yy_assert( yypParser->yyhwm == (int)(yypParser->yytos - yypParser->yystack) );
     //     }
     // #endif
     var yytos = yypParser.tos;
     var yy_new = yyNewState;
     if (yytos > yypParser.stack_end) {
-        if (yyGrowStack(yypParser)) {
-          yypParser.tos -= 1;
-          yyStackOverflow(yypParser);
-          return;
-        }
+        yyGrowStack(yypParser) catch |err| {
+            _ = err; // TODO: something better?
+            yypParser.tos -= 1;
+            yyStackOverflow(yypParser);
+            return;
+        };
         yytos = yypParser.tos;
-        assert(yytos <= yypParser.stack_end);
+        yy_assert(yytos <= yypParser.stack_end);
     }
     if (yy_new > YY_MAX_SHIFT) {
         yy_new += YY_MIN_REDUCE - YY_MIN_SHIFTREDUCE;
@@ -590,12 +599,12 @@ fn yy_reduce(
     /// Lookahead token, or YYNOCODE if none
     yyLookahead: YYCODETYPE,
     /// Value of the lookahead token */
-    yyLookaheadToken: ParseTOKENTYPE,
+    yyLookaheadToken: ParseTOKENTYPE
     🍋CTX_PDECL                   // %extra_context */
 ) YYACTIONTYPE {
     🍋ARG_FETCH
     _ = .{yyruleno, yyLookahead, yyLookaheadToken};
-    var yymsp = yypParser->yytos;
+    var yymsp = yypParser.yytos;
     const allocator = yypParser.allocator; _ = .{allocator};
     var yylhsminor: YYMINORTYPE = undefined; _ = .{&yylhsminor};
     switch( yyruleno ){
@@ -610,17 +619,17 @@ fn yy_reduce(
 %%
 //********* End reduce actions ************************************************/
     }
-    assert(yyruleno < yyRuleInfoLhs.len);
+    yy_assert(yyruleno < yyRuleInfoLhs.len);
     const yygoto = yyRuleInfoLhs[yyruleno];
     const yysize = yyRuleInfoNRhs[yyruleno];
     const yyact = yy_find_reduce_action(yymsp[yysize].stateno, yygoto);
 
     // There are no SHIFTREDUCE actions on nonterminals because the table
     // generator has simplified them to pure REDUCE actions.
-    assert(!(yyact > YY_MAX_SHIFT and yyact <= YY_MAX_SHIFTREDUCE));
+    yy_assert(!(yyact > YY_MAX_SHIFT and yyact <= YY_MAX_SHIFTREDUCE));
 
     // It is not possible for a REDUCE to be followed by an error
-    assert(yyact != YY_ERROR_ACTION);
+    yy_assert(yyact != YY_ERROR_ACTION);
 
     yymsp += yysize+1;
     yypParser.yytos = yymsp;
@@ -659,13 +668,14 @@ fn yy_syntax_error(
     /// The parser */
     yypParser: *yyParser,
     /// The major type of the error token */
-    yymajor: int,
+    yymajor: YYCODETYPE,
     /// The minor type of the error token */
     yyminor: ParseTOKENTYPE,
 ) void {
     🍋ARG_FETCH
     🍋CTX_FETCH
     const TOKEN = yyminor;
+    _ = .{ TOKEN, yymajor };
 //*********** Begin %syntax_error code ****************************************/
 %%
 //*********** End %syntax_error code ******************************************/
@@ -676,7 +686,7 @@ fn yy_syntax_error(
 /// The following is executed when the parser accepts
 fn yy_accept(
     /// The parser
-    yyParser: *yypParser,
+    yypParser: *yyParser,
 ) void {
     🍋ARG_FETCH
     🍋CTX_FETCH
@@ -686,9 +696,9 @@ fn yy_accept(
     //   }
     // #endif
     if (comptime YYNOERRORRECOVERY) {
-        yypParser->errcnt = null;
+        yypParser.errcnt = null;
     }
-    assert(yypParser.tos == yypParser.stack);
+    yy_assert(yypParser.tos == yypParser.stack);
   // Here code is inserted which will be executed whenever the
   // parser accepts.
 //********** Begin %parse_accept code *****************************************/
@@ -724,20 +734,21 @@ fn yy_accept(
 pub fn Parse(
     /// The parser
     yypParser: *yyParser,
-    /// The major token code number
-    yymajor: int,
+    /// The major token enum
+    yy_token: 🍋TOKEN_ENUM,
     /// The value for the token
-    yyminor: ParseTOKENTYPE,
+    yyminor: ParseTOKENTYPE
     🍋ARG_PDECL               // Optional %extra_argument parameter
 ) !void {
     var yyminorunion: YYMINORTYPE = undefined;
     var yyact: YYACTIONTYPE = undefined;   // The parser action.
     var yyendofinput: bool = false;
     var yyerrorhit: bool = false;
-    ParseCTX_FETCH
-    ParseARG_STORE
-    assert(yypParser.yytos != 0);
-    if (comptime (!YYERROSYMBOL and !YYNOERRORRECOVERY)) {
+    const yymajor: YYCODETYPE = @intFromEnum(yy_token);
+    🍋CTX_FETCH
+    🍋ARG_STORE
+    yy_assert(yypParser.yytos != 0);
+    if (comptime (!YYERRORSYMBOL and !YYNOERRORRECOVERY)) {
         yyendofinput = (yymajor==0);
     }
     var yyact = yypParser.yytos[0].stateno;
@@ -754,13 +765,13 @@ pub fn Parse(
     // #endif
 
     while (true) { // Exit by "break"
-        assert(yypParser.yytos >= yypParser.yystack);
-        assert(yyact == yypParser.yytos[0].stateno);
+        yy_assert(yypParser.yytos >= yypParser.yystack);
+        yy_assert(yyact == yypParser.yytos[0].stateno);
         yyact = yy_find_shift_action(yymajor, yyact);
         if( yyact >= YY_MIN_REDUCE ){
             const yyruleno = yyact - YY_MIN_REDUCE; // Reduce by this rule
             // #ifndef NDEBUG
-            //       assert( yyruleno<(int)(sizeof(yyRuleName)/sizeof(yyRuleName[0])) );
+            //       yy_assert( yyruleno<(int)(sizeof(yyRuleName)/sizeof(yyRuleName[0])) );
             //       if( yyTraceFILE ){
             //         int yysize = yyRuleInfoNRhs[yyruleno];
             //         if( yysize ){
@@ -783,7 +794,7 @@ pub fn Parse(
             if (yyRuleInfoNRhs[yyruleno] == 0) {
                 if ((comptime YYTRACKMAXSTACKDEPTH) and (yypParser.yytos - yypParser.yystack) > yypParser.yyhwm) {
                     yypParser.yyhwm += 1;
-                    assert(yypParser.yyhwm == yypParser.yytos - yypParser.yystack);
+                    yy_assert(yypParser.yyhwm == yypParser.yytos - yypParser.yystack);
                 }
                 if (yypParser.yytos >= yypParser.yystackEnd) {
                     if (yyGrowStack(yypParser)) {
@@ -792,7 +803,7 @@ pub fn Parse(
                     }
                 }
             }
-            yyact = yy_reduce(yypParser, yyruleno, yymajor, yyminor 🍋CTX_PARAM);
+            yyact = yy_reduce(yypParser, yyruleno, yymajor, yyminor, 🍋CTX_PARAM);
         } else if (yyact <= YY_MAX_SHIFTREDUCE) {
             yy_shift(yypParser,yyact, yymajor, yyminor);
             if (comptime !YYNOERRORRECOVERY) {
@@ -804,7 +815,7 @@ pub fn Parse(
             yy_accept(yypParser);
             return;
         } else {
-            assert( yyact == YY_ERROR_ACTION );
+            yy_assert( yyact == YY_ERROR_ACTION );
             yyminorunion = .{.yy0 = yyminor};
             // #ifndef NDEBUG
             //       if( yyTraceFILE ){
@@ -874,8 +885,8 @@ pub fn Parse(
                 // Applications can set this macro (for example inside %include) if
                 // they intend to abandon the parse upon the first syntax error seen.
                 //
-                yy_syntax_error(yypParser,yymajor, yyminor);
-                yy_destructor(yypParser,(YYCODETYPE)yymajor,&yyminorunion);
+                yy_syntax_error(yypParser, yymajor, yyminor);
+                yy_destructor(yypParser, yymajor, &yyminorunion);
                 break;
             } else { // YYERRORSYMBOL is not defined, nor YYNOERRORRECOVERY
                 // This is what we do if the grammar does not define ERROR:
@@ -895,7 +906,7 @@ pub fn Parse(
                 if( yyendofinput ){
                       yy_parse_failed(yypParser);
                     if (comptime !YYNOERRORRECOVERY) {
-                          yypParser->yyerrcnt = -1;
+                          yypParser.yyerrcnt = -1;
                     }
                 }
                 break;
@@ -919,9 +930,9 @@ pub fn Parse(
 
 /// Return the fallback token corresponding to canonical token iToken, or
 /// 0 if iToken has no fallback.
-fn ParseFallback(iToken: YYTOKENTYPE) YYTOKENTYPE {
+fn ParseFallback(iToken: YYCODETYPE) YYCODETYPE {
     if (comptime YYFALLBACK) {
-        assert(iToken < yyFallback.len);
+        yy_assert(iToken < yyFallback.len);
         return yyFallback[iToken];
     } else {
         return 0;

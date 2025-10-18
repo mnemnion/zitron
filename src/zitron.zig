@@ -765,30 +765,34 @@ fn file_makename(lemp: *Zitron, suffix: []const u8, output_dir: ?[]const u8) OOM
 /// Open a file with a name based on the name of the input file,
 /// but with a different (specified) suffix, and return a pointer
 /// to the stream.
-fn file_open(lemp: *Zitron, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
-    try assign_outname(lemp, suffix, null, escape);
-    const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
-        lemp.errorcnt += 1;
+fn file_open(zyt: *Zitron, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
+    try assign_outname(zyt, suffix, null, escape);
+    const fh = open_file(zyt, zyt.outname, mode);
+    return fh;
+}
+
+fn open_file(zyt: *Zitron, name: []const u8, mode: File.CreateFlags) OOM!?File {
+    return std.fs.cwd().createFile(name, mode) catch |err| {
+        zyt.errorcnt += 1;
         switch (err) {
             error.IsDir => {
-                logger.err("file open error: path is a directory '{s}'", .{lemp.outname});
+                logger.err("file open error: path is a directory '{s}'", .{zyt.outname});
                 return null;
             },
             error.FileNotFound => {
-                logger.err("file open error: file not found '{s}'", .{lemp.outname});
+                logger.err("file open error: file not found '{s}'", .{zyt.outname});
                 return null;
             },
             error.AccessDenied => {
-                logger.err("file open error: permission denied '{s}'", .{lemp.outname});
+                logger.err("file open error: permission denied '{s}'", .{zyt.outname});
                 return null;
             },
             else => |e| {
-                logger.err("file open error: unexpected error {s} opening '{s}'", .{ @errorName(e), lemp.outname });
+                logger.err("file open error: unexpected error {s} opening '{s}'", .{ @errorName(e), zyt.outname });
                 return null;
             },
         }
     };
-    return fh;
 }
 
 /// Print the text of a rule
@@ -1492,7 +1496,7 @@ fn emit_code(out: anytype, rule_nums: []u32, rp: *Rule, lemp: *Zitron, lineno: *
     //
     // Setup code prior to the #line directive
     if (rp.codePrefix.len > 0) {
-        try out.print("{{s}", .{rp.codePrefix});
+        try out.print("{{{s}", .{rp.codePrefix});
         lineno.* += mem.count(u8, rp.codePrefix, "\n");
     }
     // Generate code to do the reduce action
@@ -1557,11 +1561,11 @@ fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
 
 /// Print the Token enum
 fn print_token_enum(zyt: *Zitron, out: anytype, plineno: *usize) !void {
-    const t_name = if (zyt.tokentype.len > 0) zyt.token_enum else "TokenKind";
-    try out.print("pub const {s} = enum {{\n", .{t_name});
+    try out.print("pub const {s} = enum(YYCODETYPE) {{\n", .{zyt.defines.get("🍋TOKEN_ENUM").?});
     plineno.* += 1;
+    try out.writeAll("    end_of_input = 0,\n");
     for (zyt.symbols[1..zyt.nterminal]) |t_sym| {
-        try out.print("    {s}{s},\n", .{ zyt.tokenprefix, t_sym.name });
+        try out.print("    {s},\n", .{t_sym.name});
         plineno.* += 1;
     }
     try out.writeAll("};\n");
@@ -1901,9 +1905,14 @@ fn reportTableImpl(
     var lineno: usize = 1;
     if (zyt.arg.len > 0) {
         var arg = mem.trim(u8, zyt.arg, " ");
-        var i = arg.len - 1;
-        while (i >= 1 and (isAlnum(arg[i - 1]) or arg[i - 1] == '_')) : (i -= 1) {}
-        arg = arg[i..];
+        const i = std.mem.indexOfScalar(u8, zyt.arg, ':') orelse 0;
+        if (i == 0) {
+            std.debug.print(
+                "Warning: %extra_argument should look like `arg: Type`, not `{s}`\n",
+                .{zyt.arg},
+            );
+        }
+        arg = arg[0..i];
         const allocator = zyt.allocator;
         {
             const arg_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.arg});
@@ -1911,12 +1920,12 @@ fn reportTableImpl(
             try zyt.defines.put(allocator, "🍋ARG_SDECL", arg_sdecl);
         }
         {
-            const arg_pdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.arg});
+            const arg_pdecl = try std.fmt.allocPrint(allocator, ", {s}", .{zyt.arg});
             errdefer allocator.free(arg_pdecl);
             try zyt.defines.put(allocator, "🍋ARG_PDECL", arg_pdecl);
         }
-        {
-            const arg_param = try std.fmt.allocPrint(allocator, ", {s}", .{arg});
+        { // NOTE: ARG_PARAM is not used in lempar.c, so, Zitron isn't using it either.
+            const arg_param = try std.fmt.allocPrint(allocator, "{s}", .{arg});
             errdefer allocator.free(arg_param);
             try zyt.defines.put(allocator, "🍋ARG_PARAM", arg_param);
         }
@@ -1938,19 +1947,12 @@ fn reportTableImpl(
             errdefer allocator.free(arg_store);
             try zyt.defines.put(allocator, "🍋ARG_STORE", arg_store);
         }
-    } else { // TODO: probably just delete this?
-        //
-        // try out.print("#define {s}ARG_SDECL\n", .{name});
-        // lineno += 1;
-        // try out.print("#define {s}ARG_PDECL\n", .{name});
-        // lineno += 1;
-        // try out.print("#define {s}ARG_PARAM\n", .{name});
-        // lineno += 1;
-        // try out.print("#define {s}ARG_FETCH\n", .{name});
-        // lineno += 1;
-        // try out.print("#define {s}ARG_STORE\n", .{name});
-        // lineno += 1;
-    } // zig fmt: off
+    }
+    if (zyt.token_enum.len > 0) {
+        try zyt.defines.put(zyt.allocator, "🍋TOKEN_ENUM", try zyt.allocator.dupe(u8, zyt.token_enum));
+    } else {
+        try zyt.defines.put(zyt.allocator, "🍋TOKEN_ENUM", try zyt.allocator.dupe(u8, "TokenKind"));
+    }
     // TODO: There will be equivalents of this, I think.
     //
     // if (zyt.reallocFunc.len > 0) {
@@ -1970,9 +1972,14 @@ fn reportTableImpl(
     // }
     if (zyt.ctx.len > 0) {
         var ctx = mem.trim(u8, zyt.ctx, " ");
-        var i = ctx.len - 1;
-        while (i >= 1 and (isAlnum(ctx[i - 1]) or ctx[i - 1] == '_')) : (i -= 1) {}
-        ctx = ctx[i..];
+        const i = std.mem.indexOfScalar(u8, zyt.ctx, ':') orelse 0;
+        if (i == 0) {
+            std.debug.print(
+                "Warning: %extra_context should look like `arg: Type`, not `{s}`\n",
+                .{zyt.ctx},
+            );
+        }
+        ctx = ctx[0..i];
         const allocator = zyt.allocator;
         {
             const ctx_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.ctx});
@@ -1980,19 +1987,19 @@ fn reportTableImpl(
             try zyt.defines.put(allocator, "🍋CTX_SDECL", ctx_sdecl);
         }
         {
-            const ctx_pdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.ctx});
+            const ctx_pdecl = try std.fmt.allocPrint(allocator, ", {s}", .{zyt.ctx});
             errdefer allocator.free(ctx_pdecl);
             try zyt.defines.put(allocator, "🍋CTX_PDECL", ctx_pdecl);
         }
         {
-            const ctx_param = try std.fmt.allocPrint(allocator, ", {s}", .{ctx});
+            const ctx_param = try std.fmt.allocPrint(allocator, "{s}", .{ctx});
             errdefer allocator.free(ctx_param);
             try zyt.defines.put(allocator, "🍋CTX_PARAM", ctx_param);
         }
         {
             const ctx_fetch = try std.fmt.allocPrint(
                 allocator,
-                "var {s} = p.{s}; _ = .{{&{s}}};",
+                "var {s} = yypParser.{s}; _ = .{{&{s}}};",
                 .{ ctx, ctx, ctx },
             );
             errdefer allocator.free(ctx_fetch);
@@ -2001,18 +2008,12 @@ fn reportTableImpl(
         {
             const ctx_store = try std.fmt.allocPrint(
                 allocator,
-                "p.{s} = {s};",
+                "yypParser.{s} = {s};",
                 .{ ctx, ctx },
             );
             errdefer allocator.free(ctx_store);
             try zyt.defines.put(allocator, "🍋CTX_STORE", ctx_store);
         }
-    } else {
-        // try out.print("#define {s}CTX_SDECL\n", .{name}); lineno += 1;
-        // try out.print("#define {s}CTX_PDECL\n", .{name}); lineno += 1;
-        // try out.print("#define {s}CTX_PARAM\n", .{name}); lineno += 1;
-        // try out.print("#define {s}CTX_FETCH\n", .{name}); lineno += 1;
-        // try out.print("#define {s}CTX_STORE\n", .{name}); lineno += 1;
     }
     var in = try macroReplace(zyt, in_template);
     // We bump 'in' forward (following the C code) so we need to hold on to the
@@ -2037,8 +2038,8 @@ fn reportTableImpl(
             try out.print("//!   -D{s}\n", .{zyt.opt.azDefine[i]});
             lineno += 1;
         }
-        try out.writeAll("//!\n");
-        lineno += 1;
+        try out.writeAll("//!\n\n");
+        lineno += 2;
     }
 
     // If the first %include directive begins with a top-level doc comment,
@@ -2061,19 +2062,21 @@ fn reportTableImpl(
         // Generate the include code, if any.
         try tplt_print(out, zyt, include, &lineno);
     }
-    if (mhflag) {
-        // TODO: generate tokens as separate Zig file
-        const incName = try file_makename(zyt, ".h", null);
-        defer zyt.allocator.free(incName);
-        const inc_esc = try esc_filename(zyt.allocator, incName);
-        defer zyt.allocator.free(inc_esc);
-        try out.print("#include {s}\n", .{inc_esc});
-        lineno += 1;
-    }
+    try out.writeAll("// zig fmt: off\n");
+    lineno += 1;
     try tplt_xfer(zyt.name, &in, out, &lineno);
-    if (lemon_compat) lineno -= 1; // hehe
-    // Generate token enum
-    try print_token_enum(zyt, out, &lineno);
+    // TODO: something other than mhflag obviously
+    if (mhflag) {
+        const t_name = zyt.defines.get("🍋TOKEN_ENUM").?;
+        try out.print(
+            "pub const {s} = @import(\"{s}.zig\").{s};\n",
+            .{ t_name, t_name, t_name },
+        );
+        lineno += 1;
+    } else {
+        // Generate token enum
+        try print_token_enum(zyt, out, &lineno);
+    }
     try tplt_xfer(zyt.name, &in, out, &lineno);
 
     // Generate the defines
@@ -2103,8 +2106,10 @@ fn reportTableImpl(
     }
     lineno += 1;
     if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
-        try out.print("const YYERRORSYMBOL = {d};\n", .{errsym.index}); lineno += 1;
-        try out.print("const YYERRSYMDT = @FieldType(YYMINORTYPE, \"yy{d}\");\n", .{errsym.dtnum}); lineno += 1;
+        try out.print("const YYERRORSYMBOL = {d};\n", .{errsym.index});
+        lineno += 1;
+        try out.print("const YYERRSYMDT = @FieldType(YYMINORTYPE, \"yy{d}\");\n", .{errsym.dtnum});
+        lineno += 1;
     };
     try out.writeAll("const YYFALLBACK = ");
     if (zyt.has_fallback) {
@@ -2113,7 +2118,7 @@ fn reportTableImpl(
         try out.writeAll("false");
     }
     try out.writeAll(";\n");
-     lineno += 1;
+    lineno += 1;
     // zig fmt: on
     // Compute the action table, but do not output it yet.  The action
     // table must be computed before generating the YYNSTATE macro because
@@ -2228,7 +2233,7 @@ fn reportTableImpl(
         zyt.nlookaheadtab = pActtab.lookaheadSize();
         const n = zyt.nlookaheadtab;
         zyt.tablesize += n * szCodeType;
-        try out.print("const yy_lookahead: [{d}]YYCODETYPE = {{\n", .{n});
+        try out.print("const yy_lookahead: [{d}]YYCODETYPE = .{{\n", .{n});
         lineno += 1;
         var i: usize = 0;
         var j: usize = 0;
@@ -2283,7 +2288,7 @@ fn reportTableImpl(
         lineno += 1;
         var sz: u8 = 0;
         try out.print(
-            "const yy_shift_ofst [{d}]{s} = {{\n",
+            "const yy_shift_ofst: [{d}]{s} = .{{\n",
             .{ n, minimum_size_type(pActtab.mnTknOfst, zyt.nterminal + zyt.nactiontab, &sz) },
         );
         lineno += 1;
@@ -2326,7 +2331,7 @@ fn reportTableImpl(
         lineno += 1;
         var sz: u8 = 0;
         try out.print(
-            "const yy_reduce_ofst: [{d}]{s}  = {{\n",
+            "const yy_reduce_ofst: [{d}]{s}  = .{{\n",
             .{ n, minimum_size_type(pActtab.mnNtOfst - 1, @intCast(pActtab.mxNtOfst), &sz) },
         );
         lineno += 1;
@@ -2357,7 +2362,7 @@ fn reportTableImpl(
     }
 
     // Output the default action table
-    try out.print("const yy_default [{d}]YYACTIONTYPE = {{\n", .{zyt.nxstate});
+    try out.print("const yy_default: [{d}]YYACTIONTYPE = .{{\n", .{zyt.nxstate});
     lineno += 1;
     {
         const n = zyt.nxstate;
@@ -2633,6 +2638,8 @@ fn reportTableImpl(
     try tplt_print(out, zyt, zyt.accept, &lineno);
     try tplt_xfer(zyt.name, &in, out, &lineno);
 
+    try out.writeAll("// zig fmt: on\n");
+    lineno += 1;
     // Append any addition code the user desires
     try tplt_print(out, zyt, zyt.extracode, &lineno);
 }
@@ -2642,16 +2649,24 @@ fn ReportHeader(zyt: *Zitron) !void {
     // The original opens the file to read and checks if anything
     // has changed, only then does it write.  We're just going to
     // do it.
-    const prefix = zyt.tokenprefix;
-    const m_fh = try file_open(zyt, ".h", false, .{});
+    const dir = if (std.mem.lastIndexOfScalar(u8, zyt.filename, '/')) |i|
+        zyt.filename[0 .. i + 1]
+    else
+        "";
+    const tok_filename = try std.fmt.allocPrint(
+        zyt.allocator,
+        "{s}{s}.zig",
+        .{ dir, zyt.defines.get("🍋TOKEN_ENUM").? },
+    );
+    defer zyt.allocator.free(tok_filename);
+    const m_fh = try open_file(zyt, tok_filename, .{});
     if (m_fh) |fh| {
         defer fh.close();
         var out_buffer: [4096]u8 = undefined;
         var f_writer = fh.writer(&out_buffer);
         const out = &f_writer.interface;
-        for (1..zyt.nterminal) |i| {
-            try out.print("#define {s}{s: <30} {d:>3}\n", .{ prefix, zyt.symbols[i].name, i });
-        }
+        var line_dummy: usize = 0;
+        try print_token_enum(zyt, out, &line_dummy);
         try out.flush();
     }
 }
@@ -2740,8 +2755,6 @@ const Zitron = struct {
     outname: []const u8,
     /// Name of the current output file, escaped and quoted
     quoted_outname: []const u8,
-    /// A prefix added to token names in the .h file
-    tokenprefix: []u8,
     /// Custom name for TokenKind enum type
     token_enum: []u8,
     /// Function to use to allocate stack space
@@ -2818,7 +2831,6 @@ const Zitron = struct {
         .quoted_filename = "",
         .outname = "",
         .quoted_outname = "",
-        .tokenprefix = &.{},
         .tokentype = &.{},
         .reallocFunc = &.{},
         .freeFunc = &.{},
@@ -2869,8 +2881,6 @@ const Zitron = struct {
         errdefer allocator.free(gp.tokendest);
         gp.vardest = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.vardest);
-        gp.tokenprefix = try allocator.alloc(u8, 0);
-        errdefer allocator.free(gp.tokenprefix);
         gp.token_enum = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.token_enum);
         gp.reallocFunc = try allocator.alloc(u8, 0);
@@ -2908,11 +2918,11 @@ const Zitron = struct {
         allocator.free(gp.accept);
         allocator.free(gp.extracode);
         allocator.free(gp.tokendest);
+        allocator.free(gp.token_enum);
         allocator.free(gp.vardest);
         allocator.free(gp.quoted_filename);
         allocator.free(gp.outname);
         allocator.free(gp.quoted_outname);
-        allocator.free(gp.tokenprefix);
         allocator.free(gp.reallocFunc);
         allocator.free(gp.freeFunc);
         allocator.destroy(gp);
@@ -4132,7 +4142,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
         std.debug.print("error count: {d}\n", .{psp.gp.errorcnt});
     };
     state: switch (psp.state) {
-        .initialize => { // TODO: Probably just do this first yeah
+        .initialize => {
             psp.prevrule = null;
             psp.preccounter = 0;
             psp.firstrule, psp.lastrule = .{ null, null };
@@ -4362,8 +4372,17 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
             // This I'm doing with an enum, a StaticStringMap, and a switch.
             const decl = declarations.get(x) orelse {
                 if (isAlpha(x[0])) {
+                    var min_idx: usize = std.math.maxInt(usize);
+                    var min_lev: usize = min_idx;
+                    for (directive_list, 0..) |d_entry, i| {
+                        const lev = levenshtein(psp.gp.allocator, x, d_entry.@"0") catch std.math.maxInt(usize);
+                        if (lev < min_lev) {
+                            min_idx = i;
+                            min_lev = lev;
+                        }
+                    }
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Unknown declaration keyword: \"%{s}\".", .{x});
+                        "Unknown declaration keyword: \"%{s}\".  Did you mean \"%{s}\"?", .{ x, directive_list[min_idx].@"0" });
                 } else {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Illegal declaration keyword: \"%{s}\".", .{x});
@@ -4395,8 +4414,8 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 .default_destructor => {
                     psp.declargslot = &psp.gp.vardest;
                 },
-                .token_prefix => {
-                    psp.declargslot = &psp.gp.tokenprefix;
+                .token_enum => {
+                    psp.declargslot = &psp.gp.token_enum;
                     psp.insertLineMacro = false;
                 },
                 .syntax_error => {
@@ -4715,7 +4734,7 @@ const Declaration = enum {
     code,
     token_destructor,
     default_destructor,
-    token_prefix,
+    token_enum,
     syntax_error,
     parse_accept,
     parse_failure,
@@ -4745,7 +4764,7 @@ const directive_list = [_]struct { []const u8, Declaration }{
     .{ "code", .code },
     .{ "token_destructor", .token_destructor },
     .{ "default_destructor", .default_destructor },
-    .{ "token_prefix", .token_prefix },
+    .{ "token_prefix", .token_enum },
     .{ "syntax_error", .syntax_error },
     .{ "parse_accept", .parse_accept },
     .{ "parse_failure", .parse_failure },
@@ -4883,6 +4902,65 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
         if (p_print) std.debug.print("skip: {any} ", .{skip});
         if (skip) i += 1; // End byte of string and code tokens.
     }
+}
+
+//| Nicer error messages
+
+/// Return the Levenshtein edit distance between two byte slices.
+/// Operates in O(m*n) time and O(min(m,n)) extra space.
+/// Treats inputs as raw bytes (no Unicode grapheme handling).
+pub fn levenshtein(allocator: std.mem.Allocator, a_in: []const u8, b_in: []const u8) !usize {
+    // Fast paths for empties
+    if (a_in.len == 0) return b_in.len;
+    if (b_in.len == 0) return a_in.len;
+
+    // Allocate rows for the shorter string to keep memory small.
+    var a = a_in;
+    var b = b_in;
+    if (a.len > b.len) {
+        // Ensure a is the shorter side
+        const tmp = a;
+        a = b;
+        b = tmp;
+    }
+
+    const cols = a.len + 1;
+
+    var prev = try allocator.alloc(usize, cols);
+    defer allocator.free(prev);
+    var curr = try allocator.alloc(usize, cols);
+    defer allocator.free(curr);
+
+    // Initialize prev row: distance from empty prefix of b to prefixes of a
+    // prev[j] = j
+    for (prev, 0..) |*p, j| p.* = j;
+
+    // DP over rows of b
+    for (b, 0..) |bch, i_idx| {
+        const i = i_idx + 1;
+        curr[0] = i; // distance from first i bytes of b to empty a
+
+        // Fill row
+        var j: usize = 1;
+        while (j < cols) : (j += 1) {
+            const cost: usize = if (a[j - 1] == bch) 0 else 1;
+            const del = prev[j] + 1; // delete from b
+            const ins = curr[j - 1] + 1; // insert into b
+            const sub = prev[j - 1] + cost; // substitute
+            curr[j] = min3(del, ins, sub);
+        }
+
+        // Swap rows
+        const tmp = prev;
+        prev = curr;
+        curr = tmp;
+    }
+
+    return prev[cols - 1];
+}
+
+inline fn min3(a: usize, b: usize, c: usize) usize {
+    return @min(a, @min(b, c));
 }
 
 /// Reduce the size of the action tables, if possible, by making use

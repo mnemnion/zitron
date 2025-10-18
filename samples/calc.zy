@@ -8,6 +8,9 @@ const Token = struct {
 
 }
 
+%extra_argument {w: *WeedWhacker}
+%extra_context {my_alloc: Allocator}
+
 %token_type Token
 
 %type expr f64
