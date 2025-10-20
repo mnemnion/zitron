@@ -1471,8 +1471,8 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
                 dprint("destructor 2.0: {s} {d}\n", .{ rp.lhs.name, rp.iRule });
             }
             try writer.print(
-                "yy_destructor(yypParser,{d},&yymsp[{d}].minor);\n",
-                .{ rp.rhs[i].index, sint(i) - sint(rp.rhs.len) + 1 },
+                "yy_destructor(yypParser,{d},&(yymsp - {d})[1].minor);\n",
+                .{ rp.rhs[i].index, rp.rhs.len - i },
             );
         }
     }
@@ -1480,7 +1480,7 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
     // If unable to write LHS values directly into the stack, write the
     // saved LHS value now.
     if (!lhsdirect) {
-        try writer.print("yymsp[{d}].minor.yy{d} = ", .{ 1 - sint(rp.rhs.len), rp.lhs.dtnum });
+        try writer.print("(yymsp - {d})[1].minor.yy{d} = ", .{ rp.rhs.len, rp.lhs.dtnum });
         try writer.print("{s};", .{zLhs});
     }
     // Suffix code generation complete
@@ -1492,7 +1492,7 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
 // Generate code which executes when the rule "rp" is reduced.  Write
 // the code to "out".  Make sure lineno stays up-to-date.
 //
-fn emit_code(out: anytype, rule_nums: []u32, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
+fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
     //
     // Setup code prior to the #line directive
     if (rp.codePrefix.len > 0) {
@@ -1507,10 +1507,6 @@ fn emit_code(out: anytype, rule_nums: []u32, rp: *Rule, lemp: *Zitron, lineno: *
         }
         try out.writeAll("        => {\n            ");
         lineno.* += 1;
-        for (rule_nums) |i_rule| {
-            try out.print("yytestcase(yyruleno=={d});\n            ", .{i_rule});
-            lineno.* += 1;
-        }
         try out.print("{s}", .{rp.code});
         lineno.* += mem.count(u8, rp.code, "\n") + 1;
         if (!lemp.nolinenosflag) {
@@ -2570,8 +2566,6 @@ fn reportTableImpl(
             try out.writeAll("\n");
             lineno += 1;
             var m_rp2: ?*Rule = rp.next; // Other rules with the same action
-            var rules: ArrayList(u32) = .empty;
-            defer rules.deinit(zyt.allocator);
             while (m_rp2) |rp2| : (m_rp2 = rp2.next) {
                 if (rp.code.ptr == rp2.code.ptr and
                     rp.codePrefix.ptr == rp2.codePrefix.ptr and
@@ -2584,14 +2578,10 @@ fn reportTableImpl(
                     try writeRuleText(out, rp2);
                     try out.writeByte('\n');
                     lineno += 1;
-                    // TODO: no fall-through so how do we do this?
-                    // Answer: push the iRules onto an ArrayList, pass the slice to
-                    // emit_code, add the test cases there.
-                    try rules.append(zyt.allocator, rp2.iRule);
                     rp2.codeEmitted = true;
                 }
             }
-            try emit_code(out, rules.items, rp, zyt, &lineno);
+            try emit_code(out, rp, zyt, &lineno);
             lineno += 1;
             rp.codeEmitted = true;
         }
@@ -2599,7 +2589,7 @@ fn reportTableImpl(
     // Finally, output the default: rule.  We choose as the default: all
     // empty actions.
 
-    try out.writeAll("      else => {\n");
+    try out.writeAll("        else => {\n");
     lineno += 1;
     {
         var m_rp: ?*Rule = zyt.rule;
@@ -2608,17 +2598,16 @@ fn reportTableImpl(
             dbgassert(rp.noCode);
             // try out.print("      // ({d}) ", .{rp.iRule});
             if (rp.neverReduce) {
-                try out.print("         assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
+                try out.print("         yy_assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
                 try writeRuleText(out, rp);
                 try out.writeAll(" (NEVER REDUCES)\n");
                 lineno += 1;
             } else if (rp.doesReduce) {
-                try out.print("         yytestcase(yyruleno == {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
                 try writeRuleText(out, rp);
                 try out.writeByte('\n');
                 lineno += 1;
             } else {
-                try out.print("         assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
+                try out.print("         yy__assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
                 try writeRuleText(out, rp);
                 try out.writeAll(" (OPTIMIZED OUT) \n");
                 lineno += 1;

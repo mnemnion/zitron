@@ -88,8 +88,11 @@ const NDEBUG = builtin.mode == .Debug;
 %%
 // ************* End constants *******************************************
 
-/// Set a value for ZitronNoErrorRecovery to disable error recovery
-const YYNOERRORRECOVERY = !@hasDecl(@This(), "ZitronNoErrorRecovery");
+/// Set a value for zitron_no_error_recovery to disable error recovery.
+const YYNOERRORRECOVERY = !@hasDecl(@This(), "zitron_no_error_recovery");
+
+/// Set a value for zitron_track_max_stack_depth to track the maximum stack depth on the Parser instance.
+const YYTRACKMAXSTACKDEPTH = @hasDecl(@This(), "zitron_track_max_stack_depth");
 
 // Next are the tables used to determine what action to take based on the
 // current state and lookahead token.  These tables are used to implement
@@ -640,7 +643,7 @@ fn yy_reduce(
 
     yymsp += yysize+1;
     yypParser.yytos = yymsp;
-    yymsp.stateno = yyct;
+    yymsp.stateno = yyact;
     yymsp.major = yygoto;
     yyTraceShift(yypParser, yyact, "... then shift");
     return yyact;
@@ -853,8 +856,8 @@ pub fn Parse(
                 if (yypParser.yyerrcnt < 0) {
                     yy_syntax_error(yypParser, yymajor, yyminor);
                 }
-                yymx = yypParser.yytos[0].major;
-                if (yymx == YYERRORSYMBOL || yyerrorhit) {
+                const yymx = yypParser.yytos[0].major;
+                if (yymx == @This().YYERRORSYMBOL or yyerrorhit) {
                     // #ifndef NDEBUG
                     //         if( yyTraceFILE ){
                     //           fprintf(yyTraceFILE,"%sDiscard input token %s\n",
@@ -865,7 +868,7 @@ pub fn Parse(
                     yymajor = YYNOCODE;
                 } else {
                     while (yypParser.tos > yypParser.stack) {
-                        yyact = yy_find_reduce_action(yypParser.tos.stateno, YYERRORSYMBOL);
+                        yyact = yy_find_reduce_action(yypParser.tos.stateno, @This().YYERRORSYMBOL);
                         if (yyact <= YY_MAX_SHIFTREDUCE) break;
                         yy_pop_parser_stack(yypParser);
                     }
@@ -876,8 +879,8 @@ pub fn Parse(
                             yypParser.yyerrcnt = null;
                         }
                         yymajor = YYNOCODE;
-                    } else if (yymx != YYERRORSYMBOL) {
-                        yy_shift(yypParser, yyact, YYERRORSYMBOL, yyminor);
+                    } else if (yymx != @This().YYERRORSYMBOL) {
+                        yy_shift(yypParser, yyact, @This().YYERRORSYMBOL, yyminor);
                     }
                 }
                 yypParser.errcnt = 3;
@@ -933,16 +936,5 @@ pub fn Parse(
     //   }
     // #endif
     return;
-}
-
-/// Return the fallback token corresponding to canonical token iToken, or
-/// 0 if iToken has no fallback.
-fn ParseFallback(yyToken: YYCODETYPE) YYCODETYPE {
-    if (comptime YYFALLBACK) {
-        yy_assert(yyToken < yyFallback.len);
-        return yyFallback[yyToken];
-    } else {
-        return 0;
-    }
 }
 
