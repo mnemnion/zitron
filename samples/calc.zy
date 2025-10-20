@@ -1,15 +1,18 @@
 %include {
 //! A Calculator
 
+/// The Token Type
 const Token = struct {
     span: []const u8,
     val: ?f64,
 };
 
+const WeedWhacker = opaque {};
+
 }
 
 %extra_argument {w: *WeedWhacker}
-%extra_context {my_alloc: Allocator}
+%extra_context {my_alloc: std.mem.Allocator}
 
 %token_type Token
 

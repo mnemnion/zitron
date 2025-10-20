@@ -18,6 +18,9 @@
 // **************** End of %include directives **********************************
 
 const std = @import("std");
+const builtin = @import("builtin");
+
+const NDEBUG = builtin.mode == .Debug;
 
 /// This specifies the token enum.  If generated separately this is an import of
 ///  that file.
@@ -84,6 +87,10 @@ const std = @import("std");
 // ************* Begin constants *****************************************
 %%
 // ************* End constants *******************************************
+
+/// Set a value for ZitronNoErrorRecovery to disable error recovery
+const YYNOERRORRECOVERY = !@hasDecl(@This(), "ZitronNoErrorRecovery");
+
 // Next are the tables used to determine what action to take based on the
 // current state and lookahead token.  These tables are used to implement
 // functions that take a state number and lookahead value and return an
@@ -201,7 +208,7 @@ pub const yyParser = struct {
         var yypParser = try allocator.create(yyParser);
         🍋CTX_STORE
         yypParser.init(🍋CTX_PARAM);
-        return yy_p;
+        return yypParser;
     }
 
     pub fn init(yypParser: *yyParser 🍋CTX_PDECL) void {
@@ -471,7 +478,7 @@ fn yy_find_reduce_action(
     /// The look-ahead token
     iLookAhead: YYCODETYPE ,
 ) YYACTIONTYPE {
-    if (comptime YYERRORSYMBOL) {
+    if (comptime YYHAS_ERRORSYMBOL) {
         if (stateno > YY_REDUCE_COUNT) {
           return yy_default[stateno];
         }
@@ -481,7 +488,7 @@ fn yy_find_reduce_action(
     var i = yy_reduce_ofst[stateno];
     yy_assert(iLookAhead != YYNOCODE);
     i += iLookAhead;
-    if (comptime YYERRORSYMBOL) {
+    if (comptime YYHAS_ERRORSYMBOL) {
         if (i < 0 or i >= YY_ACTTAB_COUNT or yy_lookahead[i] != iLookAhead) {
             return yy_default[stateno];
         }
@@ -748,10 +755,10 @@ pub fn Parse(
     🍋CTX_FETCH
     🍋ARG_STORE
     yy_assert(yypParser.yytos != 0);
-    if (comptime (!YYERRORSYMBOL and !YYNOERRORRECOVERY)) {
+    if (comptime (!YYHAS_ERRORSYMBOL and !YYNOERRORRECOVERY)) {
         yyendofinput = (yymajor==0);
     }
-    var yyact = yypParser.yytos[0].stateno;
+    yyact = yypParser.yytos[0].stateno;
     // #ifndef NDEBUG
     //   if( yyTraceFILE ){
     //     if( yyact < YY_MIN_REDUCE ){
@@ -827,7 +834,7 @@ pub fn Parse(
             // The response to an error depends upon whether or not the
             // grammar defines an error token "ERROR".
             //
-            if (comptime YYERRORSYMBOL) {
+            if (comptime YYHAS_ERRORSYMBOL) {
                 // This is what we do if the grammar does define ERROR:
                 //
                 //  * Call the %syntax_error function.
@@ -930,10 +937,10 @@ pub fn Parse(
 
 /// Return the fallback token corresponding to canonical token iToken, or
 /// 0 if iToken has no fallback.
-fn ParseFallback(iToken: YYCODETYPE) YYCODETYPE {
+fn ParseFallback(yyToken: YYCODETYPE) YYCODETYPE {
     if (comptime YYFALLBACK) {
-        yy_assert(iToken < yyFallback.len);
-        return yyFallback[iToken];
+        yy_assert(yyToken < yyFallback.len);
+        return yyFallback[yyToken];
     } else {
         return 0;
     }

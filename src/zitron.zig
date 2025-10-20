@@ -2106,11 +2106,14 @@ fn reportTableImpl(
     }
     lineno += 1;
     if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
+        try out.writeAll("const YYHAS_ERRORSYMBOL = true;\n");
         try out.print("const YYERRORSYMBOL = {d};\n", .{errsym.index});
         lineno += 1;
         try out.print("const YYERRSYMDT = @FieldType(YYMINORTYPE, \"yy{d}\");\n", .{errsym.dtnum});
         lineno += 1;
-    };
+    } else {} else {
+        try out.writeAll("const YYHAS_ERRORSYMBOL = false;\n");
+    }
     try out.writeAll("const YYFALLBACK = ");
     if (zyt.has_fallback) {
         try out.writeAll("true");
