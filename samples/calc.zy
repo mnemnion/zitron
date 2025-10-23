@@ -11,8 +11,8 @@ pub const Token = struct {
 
     pub fn lit(kind: TokenKind) Token {
         var tok: Token = .empty;
-	tok.kind = kind;
-	return tok;
+        tok.kind = kind;
+        return tok;
     }
 };
 
@@ -20,8 +20,7 @@ const WeedWhacker = opaque {};
 
 }
 
-%extra_argument {w: *WeedWhacker}
-%extra_context {my_alloc: std.mem.Allocator}
+%extra_context {answer: f64}
 
 %token_type Token
 %token_enum_integer u8
@@ -30,7 +29,7 @@ const WeedWhacker = opaque {};
 %type term f64
 %type factor f64
 
-calc ::= expr(A). { std.debug.print("> {d:<.4}\n", .{A}); }
+calc ::= expr(A). { answer = A; }
 
 expr(A) ::= expr(B) PLUS term(C). { A = B + C; }
 expr(A) ::= expr(B) MINUS term(C). { A = B - C; }
@@ -45,3 +44,18 @@ term(A) ::= factor(B). { A = B; }
 factor(A) ::= NUMBER(N). { A = N.?.val; }
 factor(A) ::= LPAREN expr(E) RPAREN. { A = E; }
 
+%code {
+const Tokenizer = @import("calc_tok.zig").Tokenizer;
+
+test "1 + 2" {
+    var parser = try Parser.create(std.testing.allocator, 0.0);
+    defer parser.destroy();
+    var tok = Tokenizer.init("1 + 2");
+    while (try tok.next()) |t| {
+        try parser.parse(t.kind, t);
+    }
+    try parser.finalize();
+    try std.testing.expectApproxEqualAbs(3.0, parser.answer, 0.0001);
+}
+
+}

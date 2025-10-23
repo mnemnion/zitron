@@ -1175,9 +1175,9 @@ fn tplt_open(lemp: *Zitron) !struct { bool, [:0]const u8 } {
     return .{ false, z_template };
 }
 
-/// Print a #line directive line to the output file.
+/// Print a `// #line` comment to the output file.
 fn tplt_linedir(out: anytype, lineno: usize, quoted_filename: []const u8) !void {
-    try out.print("#line {d} {s}\n", .{ lineno, quoted_filename });
+    try out.print("// #line {d} {s}\n", .{ lineno, quoted_filename });
 }
 
 /// Print a string to the file and keep the linenumber up to date.
@@ -1943,6 +1943,11 @@ fn reportTableImpl(
         try zyt.defines.put(zyt.allocator, "🍋TOKEN_ENUM", try zyt.allocator.dupe(u8, zyt.token_enum));
     } else {
         try zyt.defines.put(zyt.allocator, "🍋TOKEN_ENUM", try zyt.allocator.dupe(u8, "TokenKind"));
+    }
+    if (zyt.name.len < 0) {
+        try zyt.defines.put(zyt.allocator, "🍋PARSER_NAME", try zyt.allocator.dupe(u8, zyt.name));
+    } else {
+        try zyt.defines.put(zyt.allocator, "🍋PARSER_NAME", try zyt.allocator.dupe(u8, "Parser"));
     }
     // TODO: There will be equivalents of this, I think.
     //

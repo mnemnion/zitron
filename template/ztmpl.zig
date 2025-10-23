@@ -153,7 +153,7 @@ const YYCOVERAGE = false;
 //
 // *********** Begin parsing tables **********************************************/
 %%
-// /********** End of lemon-generated parsing tables *****************************/
+// /********** End of zitron-generated parsing tables *****************************/
 //
 // The next table maps tokens (terminal symbols) into fallback tokens.
 // If a construct like the following:
@@ -199,7 +199,7 @@ const yyStackEntry = struct {
 //
 /// The state of the parser is completely contained in an instance of
 /// the following structure.
-pub const yyParser = struct {
+pub const 🍋PARSER_NAME = struct {
     /// Allocator
     allocator: std.mem.Allocator,
     /// Pointer to top element of the stack
@@ -215,29 +215,30 @@ pub const yyParser = struct {
     stack: [*]yyStackEntry,
     stk0: []yyStackEntry,
 
-    pub fn create(allocator: std.mem.Allocator 🍋CTX_PDECL) !*yyParser {
-        var yypParser = try allocator.create(yyParser);
+    pub fn create(allocator: std.mem.Allocator 🍋CTX_PDECL) !*🍋PARSER_NAME {
+        var yypParser = try allocator.create(🍋PARSER_NAME);
         🍋CTX_STORE
-        yypParser.init(🍋CTX_PARAM);
+        try yypParser.init(🍋CTX_PARAM);
         return yypParser;
     }
 
-    pub fn destroy(yypParser: *yyParser) void {
+    pub fn destroy(yypParser: *🍋PARSER_NAME) void {
         ParseFinalize(yypParser);
         yypParser.allocator.destroy(yypParser);
     }
 
-    pub fn init(yypParser: *yyParser 🍋CTX_PDECL) void {
+    pub fn init(yypParser: *🍋PARSER_NAME 🍋CTX_PDECL) !void {
         🍋CTX_STORE
+        yypParser.stk0 = try yypParser.allocator.alloc(yyStackEntry, 100);
         yypParser.stack = yypParser.stk0.ptr;
-        yypParser.stack_end = &yypParser.stack[yypParser.stack.len - 1];
+        yypParser.stack_end = yypParser.stack + (yypParser.stk0.len - 1);
         yypParser.errcnt = null; // TODO: Deal with NOERRORRECOVERY
         yypParser.tos = yypParser.stack;
         yypParser.stack[0].stateno = 0;
         yypParser.stack[0].major = 0;
     }
 
-    pub fn finalize(yypParse: *yyParser 🍋CTX_PDECL) !void {
+    pub fn finalize(yypParse: *🍋PARSER_NAME 🍋CTX_PDECL) !void {
         try yypParse.parse(.end_of_input, 🍋CTX_PARAM);
     }
 
@@ -262,15 +263,15 @@ pub const yyRuleName = [_][:0]const u8{
 
 /// Try to increase the size of the parser stack.  Return the number
 /// of errors.  Return 0 on success.
-fn yyGrowStack(yy_p: *yyParser) !void {
+fn yyGrowStack(yy_p: *🍋PARSER_NAME) !void {
     // TODO: yyGrowableStack config, always return error
-    const new_size = yy_p.stk0.len * 2 + 100;
-    const idx = (@intFromPtr(yy_p.tos) - @intFromPtr(yy_p.stack));
-    const yyp_new = try yy_p.allocator.realloc(yy_p.stk0, new_size);
+    const yy_new_size = yy_p.stk0.len * 2 + 100;
+    const yy_idx = (@intFromPtr(yy_p.tos) - @intFromPtr(yy_p.stack));
+    const yyp_new = try yy_p.allocator.realloc(yy_p.stk0, yy_new_size);
     yy_p.stack = yyp_new.ptr;
     yy_p.stk0 = yyp_new;
-    yy_p.tos = &yyp_new[idx];
-    yy_p.stack_end = &yyp_new[new_size - 1];
+    yy_p.tos = yyp_new.ptr + yy_idx;
+    yy_p.stack_end = yyp_new.ptr + (yy_new_size - 1);
 }
 
 
@@ -282,13 +283,13 @@ fn yyGrowStack(yy_p: *yyParser) !void {
 /// directives of the input grammar.
 ///
 fn yy_destructor(
-  yypParser: *yyParser,    // The parser */
+  yypParser: *🍋PARSER_NAME,    // The parser */
   yymajor: YYCODETYPE,     // Type code for object to destroy */
   yypminor: *YYMINORTYPE,   // The object to be destroyed */
-) !void {
+) void {
     🍋ARG_FETCH
     🍋CTX_FETCH
-    _ = .{ yyParser, yypminor }; // Unused variable ward
+    _ = .{ 🍋PARSER_NAME, yypminor }; // Unused variable ward
     const allocator = yypParser.allocator; _ = .{allocator};
     switch( yymajor ){
         // Here is inserted the actions which take place when a
@@ -315,7 +316,7 @@ const yy_assert = std.debug.assert;
 ///
 /// If there is a destructor routine associated with the token which
 /// is popped from the stack, then call it.
-fn yy_pop_parser_stack(pParser: * yyParser) void {
+fn yy_pop_parser_stack(pParser: * 🍋PARSER_NAME) void {
     yy_assert(pParser.tos > pParser.stack);
     pParser.tos -= 1;
     // #ifndef NDEBUG
@@ -334,9 +335,9 @@ fn yy_pop_parser_stack(pParser: * yyParser) void {
 ///
 /// Clear all secondary memory allocations from the parser
 ///
-fn ParseFinalize(yypParser: *yyParser) void {
+fn ParseFinalize(yypParser: *🍋PARSER_NAME) void {
     var yytos = yypParser.tos;
-    while (yytos > yypParser.stack) {
+    while (@intFromPtr(yytos) > @intFromPtr(yypParser.stack)) {
         // #ifndef NDEBUG
         //     if( yyTraceFILE ){
         //       fprintf(yyTraceFILE,"%sPopping %s\n",
@@ -349,8 +350,8 @@ fn ParseFinalize(yypParser: *yyParser) void {
             yytos -= 1;
         }
         if (comptime YYGROWABLESTACK) {
-            if (@intFromPtr(yypParser.yystack) != @intFromPtr(yypParser.yystk0.ptr)) {
-                yypParser.allocator.free(yypParser.yystk0);
+            if (@intFromPtr(yypParser.stack) != @intFromPtr(yypParser.stk0.ptr)) {
+                yypParser.allocator.free(yypParser.stk0);
             }
         }
     }
@@ -383,7 +384,7 @@ fn ParseFinalize(yypParser: *yyParser) void {
 // */
 // #ifdef YYTRACKMAXSTACKDEPTH
 // int ParseStackPeak(void *p){
-//   yyParser *pParser = (yyParser*)p;
+//   🍋PARSER_NAME *pParser = (🍋PARSER_NAME*)p;
 //   return pParser->yyhwm;
 // }
 // #endif
@@ -523,7 +524,8 @@ fn yy_find_reduce_action(
 }
 
 /// The following routine is called if the stack overflows.
-fn yyStackOverflow(yypParser: *yyParser) void {
+fn yyStackOverflow(yypParser: *🍋PARSER_NAME, err: anyerror) void {
+    yy_assert(err != error.YyImpossibleError); // discards are quite difficult...
    🍋ARG_FETCH
    🍋CTX_FETCH
     // #ifndef NDEBUG
@@ -543,13 +545,13 @@ fn yyStackOverflow(yypParser: *yyParser) void {
 
 ///
 /// Print tracing information for a SHIFT action
-fn yyTraceShift(yypParser: *yyParser, yyNewState: usize, zTag: []const u8) !void {
+fn yyTraceShift(yypParser: *🍋PARSER_NAME, yyNewState: usize, zTag: []const u8) !void {
     if (comptime !NDEBUG) {
         _ = .{yypParser, yyNewState, zTag};
     }
 }
 // #ifndef NDEBUG
-// static void yyTraceShift(yyParser *yypParser, int yyNewState, const char *zTag){
+// static void yyTraceShift(🍋PARSER_NAME *yypParser, int yyNewState, const char *zTag){
 //   if( yyTraceFILE ){
 //     if( yyNewState<YYNSTATE ){
 //       fprintf(yyTraceFILE,"%s%s '%s', go to state %d\n",
@@ -569,7 +571,7 @@ fn yyTraceShift(yypParser: *yyParser, yyNewState: usize, zTag: []const u8) !void
 /// Perform a shift action.
 fn yy_shift(
     /// The parser to be shifted
-    yypParser: *yyParser,
+    yypParser: *🍋PARSER_NAME,
     /// The new state to shift in
     yyNewState: YYACTIONTYPE,
     /// The major token to shift in
@@ -607,13 +609,13 @@ fn yy_shift(
 
 /// For rule J, yyRuleInfoLhs[J] contains the symbol on the left-hand side
 /// of that rule */
-const yyRuleInfoLhs: []YYCODETYPE = &.{
+const yyRuleInfoLhs: []const YYCODETYPE = &.{
 %%
 };
 
 /// For rule J, yyRuleInfoNRhs[J] contains the negative of the number
 /// of symbols on the right-hand side of that rule. */
-const yyRuleInfoNRhs: []i8 = &.{
+const yyRuleInfoNRhs: []const i8 = &.{
 %%
 };
 
@@ -627,7 +629,7 @@ const yyRuleInfoNRhs: []i8 = &.{
 /// means that the extra parameters have no performance impact.
 fn yy_reduce(
     /// The parser
-    yypParser: *yyParser,
+    yypParser: *🍋PARSER_NAME,
     /// Number of the rule by which to reduce
     yyruleno: usize,
     /// Lookahead token, or YYNOCODE if none
@@ -639,7 +641,7 @@ fn yy_reduce(
     🍋ARG_FETCH
     🍋CTX_GUARD
     _ = .{yyruleno, yyLookahead, yyLookaheadToken};
-    var yymsp = yypParser.yytos;
+    var yymsp = yypParser.tos;
     const allocator = yypParser.allocator; _ = .{allocator};
     var yylhsminor: YYMINORTYPE = undefined; _ = .{&yylhsminor};
     switch( yyruleno ){
@@ -667,7 +669,7 @@ fn yy_reduce(
     yy_assert(yyact != YY_ERROR_ACTION);
 
     yymsp += yysize+1;
-    yypParser.yytos = yymsp;
+    yypParser.tos = yymsp;
     yymsp.stateno = yyact;
     yymsp.major = yygoto;
     yyTraceShift(yypParser, yyact, "... then shift");
@@ -678,7 +680,7 @@ fn yy_reduce(
 /// The following code executes when the parse fails
 fn yy_parse_failed(
     /// The parser
-    yypParser: *yyParser,
+    yypParser: *🍋PARSER_NAME,
 ) void {
     🍋ARG_FETCH
     🍋CTX_FETCH
@@ -687,7 +689,7 @@ fn yy_parse_failed(
     //     fprintf(yyTraceFILE,"%sFail!\n",yyTracePrompt);
     //   }
     // #endif
-    while (yypParser.tos > yypParser.stack)
+    while (@intFromPtr(yypParser.tos) > @intFromPtr(yypParser.stack))
         yy_pop_parser_stack(yypParser);
     // Here code is inserted which will be executed whenever the
     // parser fails.
@@ -701,7 +703,7 @@ fn yy_parse_failed(
 /// The following code executes when a syntax error first occurs.
 fn yy_syntax_error(
     /// The parser */
-    yypParser: *yyParser,
+    yypParser: *🍋PARSER_NAME,
     /// The major type of the error token */
     yymajor: YYCODETYPE,
     /// The minor type of the error token */
@@ -721,7 +723,7 @@ fn yy_syntax_error(
 /// The following is executed when the parser accepts
 fn yy_accept(
     /// The parser
-    yypParser: *yyParser,
+    yypParser: *🍋PARSER_NAME,
 ) void {
     🍋ARG_FETCH
     🍋CTX_FETCH
@@ -768,7 +770,7 @@ fn yy_accept(
 ///
 pub fn Parse(
     /// The parser
-    yypParser: *yyParser,
+    yypParser: *🍋PARSER_NAME,
     /// The major token enum
     yy_token: 🍋TOKEN_ENUM,
     /// The value for the token
@@ -782,11 +784,10 @@ pub fn Parse(
     const yymajor: YYCODETYPE = @intFromEnum(yy_token);
     🍋CTX_FETCH
     🍋ARG_STORE
-    yy_assert(yypParser.yytos != 0);
     if (comptime (!YYHAS_ERRORSYMBOL and !YYNOERRORRECOVERY)) {
         yyendofinput = (yymajor==0);
     }
-    yyact = yypParser.yytos[0].stateno;
+    yyact = yypParser.tos[0].stateno;
     // #ifndef NDEBUG
     //   if( yyTraceFILE ){
     //     if( yyact < YY_MIN_REDUCE ){
@@ -800,8 +801,8 @@ pub fn Parse(
     // #endif
 
     while (true) { // Exit by "break"
-        yy_assert(yypParser.yytos >= yypParser.yystack);
-        yy_assert(yyact == yypParser.yytos[0].stateno);
+        yy_assert(@intFromPtr(yypParser.tos) >= @intFromPtr(yypParser.stack));
+        yy_assert(yyact == yypParser.tos[0].stateno);
         yyact = yy_find_shift_action(yymajor, yyact);
         if( yyact >= YY_MIN_REDUCE ){
             const yyruleno = yyact - YY_MIN_REDUCE; // Reduce by this rule
@@ -827,26 +828,28 @@ pub fn Parse(
             // if the RHS of the rule is empty.  This ensures that there is room
             // enough on the stack to push the LHS value.
             if (yyRuleInfoNRhs[yyruleno] == 0) {
-                if ((comptime YYTRACKMAXSTACKDEPTH) and (yypParser.yytos - yypParser.yystack) > yypParser.yyhwm) {
-                    yypParser.yyhwm += 1;
-                    yy_assert(yypParser.yyhwm == yypParser.yytos - yypParser.yystack);
-                }
-                if (yypParser.yytos >= yypParser.yystackEnd) {
-                    if (yyGrowStack(yypParser)) {
-                        yyStackOverflow(yypParser);
+                // if ((comptime YYTRACKMAXSTACKDEPTH))
+                // and (yypParser.tos - yypParser.stack) > yypParser.yyhwm)
+                // {
+                //     yypParser.yyhwm += 1;
+                //     yy_assert(yypParser.yyhwm == yypParser.yytos - yypParser.yystack);
+                // }
+                if (@intFromPtr(yypParser.tos) >= @intFromPtr(yypParser.stack_end)) {
+                    if (yyGrowStack(yypParser)) |_| {} else |err| {
+                        yyStackOverflow(yypParser, err);
                         break;
                     }
                 }
             }
             yyact = yy_reduce(yypParser, yyruleno, yymajor, yyminor, 🍋CTX_PARAM);
         } else if (yyact <= YY_MAX_SHIFTREDUCE) {
-            yy_shift(yypParser,yyact, yymajor, yyminor);
+            yy_shift(yypParser, yyact, yymajor, yyminor);
             if (comptime !YYNOERRORRECOVERY) {
                 yypParser.yyerrcnt -= 1;
             }
             break;
         } else if (yyact == YY_ACCEPT_ACTION) {
-            yypParser.yytos -= 1;
+            yypParser.tos -= 1;
             yy_accept(yypParser);
             return;
         } else {
@@ -878,10 +881,10 @@ pub fn Parse(
                 //    shifted successfully.
                 //
                 //
-                if (yypParser.yyerrcnt < 0) {
+                if (yypParser.errcnt < 0) {
                     yy_syntax_error(yypParser, yymajor, yyminor);
                 }
-                const yymx = yypParser.yytos[0].major;
+                const yymx = yypParser.tos[0].major;
                 if (yymx == @This().YYERRORSYMBOL or yyerrorhit) {
                     // #ifndef NDEBUG
                     //         if( yyTraceFILE ){
@@ -893,7 +896,7 @@ pub fn Parse(
                     yymajor = YYNOCODE;
                 } else {
                     while (yypParser.tos > yypParser.stack) {
-                        yyact = yy_find_reduce_action(yypParser.tos.stateno, @This().YYERRORSYMBOL);
+                        yyact = yy_find_reduce_action(yypParser.tos[0].stateno, @This().YYERRORSYMBOL);
                         if (yyact <= YY_MAX_SHIFTREDUCE) break;
                         yy_pop_parser_stack(yypParser);
                     }
@@ -941,7 +944,7 @@ pub fn Parse(
                 if( yyendofinput ){
                       yy_parse_failed(yypParser);
                     if (comptime !YYNOERRORRECOVERY) {
-                          yypParser.yyerrcnt = -1;
+                          yypParser.errcnt = -1;
                     }
                 }
                 break;
