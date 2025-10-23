@@ -88,11 +88,19 @@ const NDEBUG = builtin.mode == .Debug;
 %%
 // ************* End constants *******************************************
 
+const YY_NLOOKAHEAD = yy_lookahead.len;
+
 /// Set a value for zitron_no_error_recovery to disable error recovery.
 const YYNOERRORRECOVERY = !@hasDecl(@This(), "zitron_no_error_recovery");
 
 /// Set a value for zitron_track_max_stack_depth to track the maximum stack depth on the Parser instance.
 const YYTRACKMAXSTACKDEPTH = @hasDecl(@This(), "zitron_track_max_stack_depth");
+
+// TODO: Do we keep this growable stack thing around?
+const YYGROWABLESTACK = true;
+
+// TODO: stub for coverage (no idea how I plan to handle it, but probably want to)
+const YYCOVERAGE = false;
 
 // Next are the tables used to determine what action to take based on the
 // current state and lookahead token.  These tables are used to implement
@@ -214,6 +222,11 @@ pub const yyParser = struct {
         return yypParser;
     }
 
+    pub fn destroy(yypParser: *yyParser) void {
+        ParseFinalize(yypParser);
+        yypParser.allocator.destroy(yypParser);
+    }
+
     pub fn init(yypParser: *yyParser 🍋CTX_PDECL) void {
         🍋CTX_STORE
         yypParser.stack = yypParser.stk0.ptr;
@@ -222,6 +235,10 @@ pub const yyParser = struct {
         yypParser.tos = yypParser.stack;
         yypParser.stack[0].stateno = 0;
         yypParser.stack[0].major = 0;
+    }
+
+    pub fn finalize(yypParse: *yyParser 🍋CTX_PDECL) !void {
+        try yypParse.parse(.end_of_input, 🍋CTX_PARAM);
     }
 
     pub const growStack = yyGrowStack;
@@ -314,33 +331,31 @@ fn yy_pop_parser_stack(pParser: * yyParser) void {
 
 // TODO: deal with this stuff
 //
-// /*
-// ** Clear all secondary memory allocations from the parser
-// */
-// void ParseFinalize(void *p){
-//   yyParser *pParser = (yyParser*)p;
-//
-//   /* In-lined version of calling yy_pop_parser_stack() for each
-//   ** element left in the stack */
-//   yyStackEntry *yytos = pParser->yytos;
-//   while( yytos>pParser->yystack ){
-// #ifndef NDEBUG
-//     if( yyTraceFILE ){
-//       fprintf(yyTraceFILE,"%sPopping %s\n",
-//         yyTracePrompt,
-//         yyTokenName[yytos->major]);
-//     }
-// #endif
-//     if( yytos->major>=YY_MIN_DSTRCTR ){
-//       yy_destructor(pParser, yytos->major, &yytos->minor);
-//     }
-//     yytos--;
-//   }
-//
-// #if YYGROWABLESTACK
-//   if( pParser->yystack!=pParser->yystk0 ) YYFREE(pParser->yystack);
-// #endif
-// }
+///
+/// Clear all secondary memory allocations from the parser
+///
+fn ParseFinalize(yypParser: *yyParser) void {
+    var yytos = yypParser.tos;
+    while (yytos > yypParser.stack) {
+        // #ifndef NDEBUG
+        //     if( yyTraceFILE ){
+        //       fprintf(yyTraceFILE,"%sPopping %s\n",
+        //         yyTracePrompt,
+        //         yyTokenName[yytos->major]);
+        //     }
+        // #endif
+        if (yytos[0].major >= YY_MIN_DSTRCTR) {
+            yy_destructor(yypParser, yytos[0].major, &yytos[0].minor);
+            yytos -= 1;
+        }
+        if (comptime YYGROWABLESTACK) {
+            if (@intFromPtr(yypParser.yystack) != @intFromPtr(yypParser.yystk0.ptr)) {
+                yypParser.allocator.free(yypParser.yystk0);
+            }
+        }
+    }
+}
+
 //
 // #ifndef Parse_ENGINEALWAYSONSTACK
 // /*
@@ -379,7 +394,12 @@ fn yy_pop_parser_stack(pParser: * yyParser) void {
 // ** systems, every element of this matrix should end up being set.
 // */
 // #if defined(YYCOVERAGE)
-// static unsigned char yycoverage[YYNSTATE][YYNTOKEN];
+threadlocal var yycoverage: if (YYCOVERAGE)
+                                [YYNSTATE][YYNTOKEN]u8
+                            else
+                                void = if (YYCOVERAGE)
+                                          .{ .{0} ** YYNTOKEN } ** YYNSTATE
+                                       else {};
 // #endif
 //
 // /*
@@ -521,9 +541,13 @@ fn yyStackOverflow(yypParser: *yyParser) void {
    🍋CTX_STORE
 }
 
-// /*
-// ** Print tracing information for a SHIFT action
-// */
+///
+/// Print tracing information for a SHIFT action
+fn yyTraceShift(yypParser: *yyParser, yyNewState: usize, zTag: []const u8) !void {
+    if (comptime !NDEBUG) {
+        _ = .{yypParser, yyNewState, zTag};
+    }
+}
 // #ifndef NDEBUG
 // static void yyTraceShift(yyParser *yypParser, int yyNewState, const char *zTag){
 //   if( yyTraceFILE ){
@@ -613,6 +637,7 @@ fn yy_reduce(
     🍋CTX_PDECL                   // %extra_context */
 ) YYACTIONTYPE {
     🍋ARG_FETCH
+    🍋CTX_GUARD
     _ = .{yyruleno, yyLookahead, yyLookaheadToken};
     var yymsp = yypParser.yytos;
     const allocator = yypParser.allocator; _ = .{allocator};

@@ -1557,7 +1557,11 @@ fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
 
 /// Print the Token enum
 fn print_token_enum(zyt: *Zitron, out: anytype, plineno: *usize) !void {
-    try out.print("pub const {s} = enum(YYCODETYPE) {{\n", .{zyt.defines.get("🍋TOKEN_ENUM").?});
+    const enum_int = if (zyt.token_enum_integer.len > 0) zyt.token_enum_integer else "u16";
+    try out.print(
+        "pub const {s} = enum({s}) {{\n",
+        .{ zyt.defines.get("🍋TOKEN_ENUM").?, enum_int },
+    );
     plineno.* += 1;
     try out.writeAll("    end_of_input = 0,\n");
     for (zyt.symbols[1..zyt.nterminal]) |t_sym| {
@@ -1580,8 +1584,6 @@ fn print_stack_union(
     lemp: *Zitron,
     /// Pointer to the line number
     plineno: *usize,
-    /// True if generating makeheaders output
-    mhflag: bool,
 ) !void {
     //| NOTE: This creates an ad-hoc hash table, because C.  Alas, I
     //| cannot in this case substitute a Zig data type, because the
@@ -1645,16 +1647,9 @@ fn print_stack_union(
     // Print out the definition of YYTOKENTYPE and YYMINORTYPE
     const name: []const u8 = if (lemp.name.len > 0) lemp.name else "Parse";
     var lineno = plineno.*;
-    if (mhflag) {
-        try out.writeAll("#if INTERFACE\n");
-        lineno += 1;
-    }
     // zig fmt: off
     const t_name = if (lemp.tokentype.len > 0) lemp.tokentype else "void*";
     try out.print("const {s}TOKENTYPE = {s};\n", .{ name, t_name }); lineno += 1;
-    if (mhflag) {
-        try out.writeAll("#endif\n"); lineno += 1;
-    }
     try out.writeAll("pub const YYMINORTYPE = minor: {\n"); lineno += 1;
     try out.writeAll("    @setRuntimeSafety(false);\n"); lineno += 1;
     try out.writeAll("    break :minor union {\n"); lineno += 1;
@@ -2010,6 +2005,12 @@ fn reportTableImpl(
             errdefer allocator.free(ctx_store);
             try zyt.defines.put(allocator, "🍋CTX_STORE", ctx_store);
         }
+
+        {
+            const ctx_guard = try std.fmt.allocPrint(allocator, "_ = .{{&{s}}};", .{ctx});
+            errdefer allocator.free(ctx_guard);
+            try zyt.defines.put(allocator, "🍋CTX_GUARD", ctx_guard);
+        }
     }
     var in = try macroReplace(zyt, in_template);
     // We bump 'in' forward (following the C code) so we need to hold on to the
@@ -2091,7 +2092,7 @@ fn reportTableImpl(
         try out.writeAll("const YY_HASWILDCARD = false;\nconst YYWILDCARD: void = {};\n");
     }
     lineno += 2;
-    try print_stack_union(out, zyt, &lineno, mhflag);
+    try print_stack_union(out, zyt, &lineno);
     lineno += 1;
     if (zyt.stacksize.len > 0) {
         try out.print("const YYSTACKDEPTH = {s};\n", .{zyt.stacksize});
@@ -2749,6 +2750,8 @@ const Zitron = struct {
     quoted_outname: []const u8,
     /// Custom name for TokenKind enum type
     token_enum: []u8,
+    /// Custom backing integer for TokenKind enum type
+    token_enum_integer: []u8,
     /// Function to use to allocate stack space
     reallocFunc: []u8,
     /// Function to use to free stack space
@@ -2808,6 +2811,7 @@ const Zitron = struct {
         .arg = &.{},
         .ctx = &.{},
         .token_enum = &.{},
+        .token_enum_integer = &.{},
         .vartype = &.{},
         .start = &.{},
         .stacksize = &.{},
@@ -2875,6 +2879,8 @@ const Zitron = struct {
         errdefer allocator.free(gp.vardest);
         gp.token_enum = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.token_enum);
+        gp.token_enum_integer = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.token_enum_integer);
         gp.reallocFunc = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.reallocFunc);
         gp.freeFunc = try allocator.alloc(u8, 0);
@@ -2911,6 +2917,7 @@ const Zitron = struct {
         allocator.free(gp.extracode);
         allocator.free(gp.tokendest);
         allocator.free(gp.token_enum);
+        allocator.free(gp.token_enum_integer);
         allocator.free(gp.vardest);
         allocator.free(gp.quoted_filename);
         allocator.free(gp.outname);
@@ -4410,6 +4417,10 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     psp.declargslot = &psp.gp.token_enum;
                     psp.insertLineMacro = false;
                 },
+                .token_enum_integer => {
+                    psp.declargslot = &psp.gp.token_enum_integer;
+                    psp.insertLineMacro = false;
+                },
                 .syntax_error => {
                     psp.declargslot = &psp.gp.@"error";
                 },
@@ -4727,6 +4738,7 @@ const Declaration = enum {
     token_destructor,
     default_destructor,
     token_enum,
+    token_enum_integer,
     syntax_error,
     parse_accept,
     parse_failure,
@@ -4756,7 +4768,8 @@ const directive_list = [_]struct { []const u8, Declaration }{
     .{ "code", .code },
     .{ "token_destructor", .token_destructor },
     .{ "default_destructor", .default_destructor },
-    .{ "token_prefix", .token_enum },
+    .{ "token_enum", .token_enum },
+    .{ "token_enum_integer", .token_enum_integer },
     .{ "syntax_error", .syntax_error },
     .{ "parse_accept", .parse_accept },
     .{ "parse_failure", .parse_failure },
@@ -5744,7 +5757,9 @@ pub fn main() !void {
         // Produce a header file for use by the scanner.  (This step is
         // omitted if the "-m" option is used because makeheaders will
         // generate the file for us.)
-        if (!opt.mhflag) try ReportHeader(lem);
+        // TODO: this is now the "make token its own file flag", act
+        // accordingly
+        if (opt.mhflag) try ReportHeader(lem);
     }
     if (opt.statistics) {
         var stdin_buffer: [1024]u8 = undefined;

@@ -2,9 +2,18 @@
 //! A Calculator
 
 /// The Token Type
-const Token = struct {
+pub const Token = struct {
+    kind: TokenKind,
     span: []const u8,
     val: ?f64,
+
+    pub const empty: Token = .{ .kind = .end_of_input, .span = "", .val = null };
+
+    pub fn lit(kind: TokenKind) Token {
+        var tok: Token = .empty;
+	tok.kind = kind;
+	return tok;
+    }
 };
 
 const WeedWhacker = opaque {};
@@ -15,6 +24,7 @@ const WeedWhacker = opaque {};
 %extra_context {my_alloc: std.mem.Allocator}
 
 %token_type Token
+%token_enum_integer u8
 
 %type expr f64
 %type term f64
