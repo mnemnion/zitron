@@ -376,6 +376,33 @@ It is possible to build and install `zitron` as an ordinary command-line
 program, but we anticipate that it will more commonly be used as a tool
 within a `build.zig` file.
 
+Creating the command line tools is in any case simple: from the `/zitron`
+repo root, run
+
+```sh
+zig build install
+```
+And `./zig-out` will have `zitron` and `lemon` in it.
+
+Using it from your own `build.zig` is a bit more involved.
+
+<tk build.zig.zon and zig fetch etc>
+
+Then in your `build.zig`:
+
+```zig
+    const zitron_dep = b.dependency("zitron", .{
+       .target = target,
+       .host = b.graph.host, // Since it runs on the host
+        // Other options are best provided here
+    });
+
+    const zitron_exe = zitron_dep.artifact(zitron);
+
+    const zitron_run = b.addRunArtifact(zitron_exe);
+
+```
+
 []{#syntax}
 
 ## 4.0 Input File Syntax

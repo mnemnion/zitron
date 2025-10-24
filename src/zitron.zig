@@ -1944,7 +1944,7 @@ fn reportTableImpl(
     } else {
         try zyt.defines.put(zyt.allocator, "🍋TOKEN_ENUM", try zyt.allocator.dupe(u8, "TokenKind"));
     }
-    if (zyt.name.len < 0) {
+    if (zyt.name.len > 0) {
         try zyt.defines.put(zyt.allocator, "🍋PARSER_NAME", try zyt.allocator.dupe(u8, zyt.name));
     } else {
         try zyt.defines.put(zyt.allocator, "🍋PARSER_NAME", try zyt.allocator.dupe(u8, "Parser"));
@@ -2237,8 +2237,9 @@ fn reportTableImpl(
     {
         zyt.nlookaheadtab = pActtab.lookaheadSize();
         const n = zyt.nlookaheadtab;
-        zyt.tablesize += n * szCodeType;
-        try out.print("const yy_lookahead: [{d}]YYCODETYPE = .{{\n", .{n});
+        const nLookAhead = zyt.nterminal + zyt.nactiontab;
+        zyt.tablesize += nLookAhead * szCodeType;
+        try out.print("const yy_lookahead: [{d}]YYCODETYPE = .{{\n", .{nLookAhead});
         lineno += 1;
         var i: usize = 0;
         var j: usize = 0;
@@ -2260,7 +2261,6 @@ fn reportTableImpl(
         // yy_shift_ofst[]+iToken will always be a valid index into the array,
         // even for the largest possible value of yy_shift_ofst[] and iToken.
 
-        const nLookAhead = zyt.nterminal + zyt.nactiontab;
         while (i < nLookAhead) {
             try out.print(" {d: >4},", .{zyt.nterminal});
             if (j == 9 or i == nLookAhead - 1) {

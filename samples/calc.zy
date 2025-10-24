@@ -54,8 +54,8 @@ test "1 + 2" {
     while (try tok.next()) |t| {
         try parser.parse(t.kind, t);
     }
-    try parser.finalize();
-    try std.testing.expectApproxEqualAbs(3.0, parser.answer, 0.0001);
+    try parser.parse(.end_of_input, Token.empty);
+    try std.testing.expectApproxEqAbs(3.0, parser.answer, 0.0001);
 }
 
 }

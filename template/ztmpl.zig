@@ -238,9 +238,10 @@ pub const 🍋PARSER_NAME = struct {
         yypParser.stack[0].major = 0;
     }
 
-    pub fn finalize(yypParse: *🍋PARSER_NAME 🍋CTX_PDECL) !void {
-        try yypParse.parse(.end_of_input, 🍋CTX_PARAM);
-    }
+    // TODO: this needs a dummy Token...
+    // pub fn finalize(yypParse: *🍋PARSER_NAME 🍋ARG_PDECL) !void {
+    //     try yypParse.parse(.end_of_input, 🍋ARG_PARAM);
+    // }
 
     pub const growStack = yyGrowStack;
     pub const parse = Parse;
@@ -317,7 +318,7 @@ const yy_assert = std.debug.assert;
 /// If there is a destructor routine associated with the token which
 /// is popped from the stack, then call it.
 fn yy_pop_parser_stack(pParser: * 🍋PARSER_NAME) void {
-    yy_assert(pParser.tos > pParser.stack);
+    yy_assert(@intFromPtr(pParser.tos) > @intFromPtr(pParser.stack));
     pParser.tos -= 1;
     // #ifndef NDEBUG
     //   if( yyTraceFILE ){
@@ -326,7 +327,7 @@ fn yy_pop_parser_stack(pParser: * 🍋PARSER_NAME) void {
     //       yyTokenName[yytos->major]);
     //   }
     // #endif
-    yy_destructor(pParser, pParser.tos.major, &pParser.tos.minor);
+    yy_destructor(pParser, pParser.tos[0].major, &pParser.tos[0].minor);
 }
 
 
@@ -533,7 +534,7 @@ fn yyStackOverflow(yypParser: *🍋PARSER_NAME, err: anyerror) void {
     //      fprintf(yyTraceFILE,"%sStack Overflow!\n",yyTracePrompt);
     //    }
     // #endif
-   while (yypParser.tos > yypParser.stack) yy_pop_parser_stack(yypParser);
+   while (@intFromPtr(yypParser.tos) > @intFromPtr(yypParser.stack)) yy_pop_parser_stack(yypParser);
    // Here code is inserted which will execute if the parser
    // stack every overflows
 //******* Begin %stack_overflow code ******************************************/
@@ -545,7 +546,7 @@ fn yyStackOverflow(yypParser: *🍋PARSER_NAME, err: anyerror) void {
 
 ///
 /// Print tracing information for a SHIFT action
-fn yyTraceShift(yypParser: *🍋PARSER_NAME, yyNewState: usize, zTag: []const u8) !void {
+fn yyTraceShift(yypParser: *🍋PARSER_NAME, yyNewState: usize, zTag: []const u8) void {
     if (comptime !NDEBUG) {
         _ = .{yypParser, yyNewState, zTag};
     }
@@ -588,15 +589,15 @@ fn yy_shift(
     // #endif
     var yytos = yypParser.tos;
     var yy_new = yyNewState;
-    if (yytos > yypParser.stack_end) {
+    if (@intFromPtr(yytos) > @intFromPtr(yypParser.stack_end)) {
         yyGrowStack(yypParser) catch |err| {
-            _ = err; // TODO: something better?
+            yy_assert(err != error.YyImpossibleError);
             yypParser.tos -= 1;
-            yyStackOverflow(yypParser);
+            yyStackOverflow(yypParser, err);
             return;
         };
         yytos = yypParser.tos;
-        yy_assert(yytos <= yypParser.stack_end);
+        yy_assert(@intFromPtr(yytos) <= @intFromPtr(yypParser.stack_end));
     }
     if (yy_new > YY_MAX_SHIFT) {
         yy_new += YY_MIN_REDUCE - YY_MIN_SHIFTREDUCE;
