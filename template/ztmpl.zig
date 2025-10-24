@@ -218,7 +218,7 @@ pub const 🍋PARSER_NAME = struct {
     pub fn create(allocator: std.mem.Allocator 🍋CTX_PDECL) !*🍋PARSER_NAME {
         var yypParser = try allocator.create(🍋PARSER_NAME);
         🍋CTX_STORE
-        try yypParser.init(🍋CTX_PARAM);
+        try yypParser.init(allocator, 🍋CTX_PARAM);
         return yypParser;
     }
 
@@ -227,8 +227,9 @@ pub const 🍋PARSER_NAME = struct {
         yypParser.allocator.destroy(yypParser);
     }
 
-    pub fn init(yypParser: *🍋PARSER_NAME 🍋CTX_PDECL) !void {
+    pub fn init(yypParser: *🍋PARSER_NAME, allocator: std.mem.Allocator 🍋CTX_PDECL) !void {
         🍋CTX_STORE
+        yypParser.allocator = allocator;
         yypParser.stk0 = try yypParser.allocator.alloc(yyStackEntry, 100);
         yypParser.stack = yypParser.stk0.ptr;
         yypParser.stack_end = yypParser.stack + (yypParser.stk0.len - 1);
@@ -308,6 +309,8 @@ fn yy_destructor(
 //******** End destructor definitions *****************************************/
         else =>  {},   // If no destructor action specified: do nothing */
     }
+    🍋ARG_STORE
+    🍋CTX_STORE
 }
 
 const yy_assert = std.debug.assert;
@@ -350,12 +353,14 @@ fn ParseFinalize(yypParser: *🍋PARSER_NAME) void {
             yy_destructor(yypParser, yytos[0].major, &yytos[0].minor);
             yytos -= 1;
         }
-        if (comptime YYGROWABLESTACK) {
-            if (@intFromPtr(yypParser.stack) != @intFromPtr(yypParser.stk0.ptr)) {
-                yypParser.allocator.free(yypParser.stk0);
-            }
-        }
     }
+    // TODO: I think we remove all this growablestack nonsense,
+    // Zig has allocators for that kind of thing.
+    // if (comptime YYGROWABLESTACK) {
+    //     if (@intFromPtr(yypParser.stack) != @intFromPtr(yypParser.stk0.ptr)) {
+    yypParser.allocator.free(yypParser.stk0);
+    //     }
+    // }
 }
 
 //
@@ -510,18 +515,18 @@ fn yy_find_reduce_action(
     } else {
       yy_assert(stateno <= YY_REDUCE_COUNT);
     }
-    var i = yy_reduce_ofst[stateno];
+    var i: isize = yy_reduce_ofst[stateno];
     yy_assert(iLookAhead != YYNOCODE);
     i += iLookAhead;
     if (comptime YYHAS_ERRORSYMBOL) {
-        if (i < 0 or i >= YY_ACTTAB_COUNT or yy_lookahead[i] != iLookAhead) {
+        if (i < 0 or i >= YY_ACTTAB_COUNT or yy_lookahead[@intCast(i)] != iLookAhead) {
             return yy_default[stateno];
         }
     } else {
         yy_assert( i >= 0 and i < YY_ACTTAB_COUNT );
-        yy_assert( yy_lookahead[i]==iLookAhead );
+        yy_assert( yy_lookahead[@intCast(i)]==iLookAhead );
     }
-    return yy_action[i];
+    return yy_action[@intCast(i)];
 }
 
 /// The following routine is called if the stack overflows.
@@ -614,8 +619,11 @@ const yyRuleInfoLhs: []const YYCODETYPE = &.{
 %%
 };
 
+// TODO: is a 128 symbol RHS arbitrary? I mean it is but, in a bad way?
+// more seems nuts
+
 /// For rule J, yyRuleInfoNRhs[J] contains the negative of the number
-/// of symbols on the right-hand side of that rule. */
+/// of symbols on the right-hand side of that rule.
 const yyRuleInfoNRhs: []const i8 = &.{
 %%
 };
@@ -637,10 +645,9 @@ fn yy_reduce(
     yyLookahead: YYCODETYPE,
     /// Value of the lookahead token */
     yyLookaheadToken: ParseTOKENTYPE
-    🍋CTX_PDECL                   // %extra_context */
 ) YYACTIONTYPE {
     🍋ARG_FETCH
-    🍋CTX_GUARD
+    🍋CTX_FETCH
     _ = .{yyruleno, yyLookahead, yyLookaheadToken};
     var yymsp = yypParser.tos;
     const allocator = yypParser.allocator; _ = .{allocator};
@@ -660,7 +667,7 @@ fn yy_reduce(
     yy_assert(yyruleno < yyRuleInfoLhs.len);
     const yygoto = yyRuleInfoLhs[yyruleno];
     const yysize = yyRuleInfoNRhs[yyruleno];
-    const yyact = yy_find_reduce_action(yymsp[yysize].stateno, yygoto);
+    const yyact = yy_find_reduce_action((yymsp - @abs(yysize))[0].stateno, yygoto);
 
     // There are no SHIFTREDUCE actions on nonterminals because the table
     // generator has simplified them to pure REDUCE actions.
@@ -669,11 +676,13 @@ fn yy_reduce(
     // It is not possible for a REDUCE to be followed by an error
     yy_assert(yyact != YY_ERROR_ACTION);
 
-    yymsp += yysize+1;
+    yymsp = yymsp + 1 - @abs(yysize);
     yypParser.tos = yymsp;
-    yymsp.stateno = yyact;
-    yymsp.major = yygoto;
+    yymsp[0].stateno = yyact;
+    yymsp[0].major = yygoto;
     yyTraceShift(yypParser, yyact, "... then shift");
+    🍋ARG_STORE
+    🍋CTX_STORE
     return yyact;
 }
 
@@ -783,7 +792,6 @@ pub fn Parse(
     var yyendofinput: bool = false;
     var yyerrorhit: bool = false;
     const yymajor: YYCODETYPE = @intFromEnum(yy_token);
-    🍋CTX_FETCH
     🍋ARG_STORE
     if (comptime (!YYHAS_ERRORSYMBOL and !YYNOERRORRECOVERY)) {
         yyendofinput = (yymajor==0);
@@ -842,7 +850,7 @@ pub fn Parse(
                     }
                 }
             }
-            yyact = yy_reduce(yypParser, yyruleno, yymajor, yyminor, 🍋CTX_PARAM);
+            yyact = yy_reduce(yypParser, yyruleno, yymajor, yyminor);
         } else if (yyact <= YY_MAX_SHIFTREDUCE) {
             yy_shift(yypParser, yyact, yymajor, yyminor);
             if (comptime !YYNOERRORRECOVERY) {

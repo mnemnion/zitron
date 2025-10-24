@@ -41,11 +41,59 @@ term(A) ::= factor(B). { A = B; }
 
 %type NUMBER {f64}
 
-factor(A) ::= NUMBER(N). { A = N.?.val; }
+factor(A) ::= NUMBER(N). { A = N.val.?; }
 factor(A) ::= LPAREN expr(E) RPAREN. { A = E; }
 
 %code {
-const Tokenizer = @import("calc_tok.zig").Tokenizer;
+//| Tokenizer for calc.zy
+
+const assert = std.debug.assert;
+
+pub const Tokenizer = struct {
+    span: []const u8,
+    idx: usize,
+
+    pub fn init(span: []const u8) Tokenizer {
+        return .{ .span = span, .idx = 0 };
+    }
+
+    /// Get the next token, or an `error.SyntaxError`, or `null`
+    /// if there are no more tokens available on the span.
+    pub fn next(tok: *Tokenizer) error{SyntaxError}!?Token {
+        if (tok.idx == tok.span.len) return null;
+        var idx = tok.idx;
+        var this: Token = .empty;
+        tokenize: switch (tok.span[idx]) {
+            '+' => this = Token.lit(.PLUS),
+            '-' => this = Token.lit(.MINUS),
+            '*' => this = Token.lit(.TIMES),
+            '/' => this = Token.lit(.DIVIDE),
+            '(' => this = Token.lit(.LPAREN),
+            ')' => this = Token.lit(.RPAREN),
+            ' ', '\t', '\n' => {
+                if (idx + 1 == tok.span.len) {
+                    tok.idx = tok.span.len;
+                    return null;
+                }
+                idx += 1;
+                continue :tokenize tok.span[idx];
+            },
+            '0'...'9' => {
+                this.kind = .NUMBER;
+                const start = idx;
+                idx += 1;
+                // TODO: `.`, scientific notation maybe?
+                while (idx < tok.span.len and '0' <= tok.span[idx] and tok.span[idx] <= '9') : (idx += 1) {}
+                this.val = std.fmt.parseFloat(f64, tok.span[start..idx]) catch return error.SyntaxError;
+                tok.idx = idx;
+                return this;
+            },
+            else => return error.SyntaxError,
+        }
+        tok.idx = idx + 1;
+        return this;
+    }
+};
 
 test "1 + 2" {
     var parser = try Parser.create(std.testing.allocator, 0.0);
