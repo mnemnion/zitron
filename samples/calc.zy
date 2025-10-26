@@ -22,22 +22,41 @@ const WeedWhacker = opaque {};
 
 %extra_context {answer: f64}
 
-%token_type Token
-%token_enum_integer u8
+%token_type "Token"
+// %token_enum_integer u8
+%token_destructor {
+    // buh
+}
 
 %type expr f64
 %type term f64
 %type factor f64
 
+%destructor term "// float, no destructor"
+
 calc ::= expr(A). { answer = A; }
 
-expr(A) ::= expr(B) PLUS term(C). { A = B + C; }
+expr(A) ::= expr(B) PLUS|FOO(O) term(C). {
+    _ = .{"has C in it", @O};
+    // std.debug.print("PLUS? {t}\n", .{@O});
+    A = B + C;
+}
 expr(A) ::= expr(B) MINUS term(C). { A = B - C; }
-expr(A) ::= term(B).  { A = B; }
 
+/* This generates the same code as the term-factor version,
+** with less fuss.  Prefer this style.  Note: it's illegal
+** to assign the same alias unless the rule types are also
+** the same. */
+expr(A) ::= term(A).
 term(A) ::= term(B) TIMES factor(C). { A = B * C; }
 term(A) ::= term(B) DIVIDE factor(C). { A = B / C; }
-term(A) ::= factor(B). { A = B; }
+
+/* Note: it is illegal to refer to B in the below, after
+** encountering the magic comment.  Why?  Ask DRH! */
+term(A) ::= factor(B). {
+    A = B;
+    // A-overwrites-B
+}
 
 %type NUMBER {f64}
 
@@ -98,11 +117,12 @@ pub const Tokenizer = struct {
 test "1 + 2" {
     var parser = try Parser.create(std.testing.allocator, 0.0);
     defer parser.destroy();
-    var tok = Tokenizer.init("1 + 2");
+    var tok = Tokenizer.init("1 + (2 * 2 - 2)");
     while (try tok.next()) |t| {
         try parser.parse(t.kind, t);
+    } else {
+        try parser.finalize();
     }
-    try parser.parse(.end_of_input, Token.empty);
     try std.testing.expectApproxEqAbs(3.0, parser.answer, 0.0001);
 }
 

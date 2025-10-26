@@ -44,7 +44,7 @@ const NDEBUG = builtin.mode == .Debug;
 //    YYACTIONTYPE       is the data type used for "action codes" - numbers
 //                       that indicate what to do in response to the next
 //                       token.
-//    ParseTOKENTYPE     is the data type used for minor type for terminal
+//    YY_TOKEN_TYPE     is the data type used for minor type for terminal
 //                       symbols.  Background: A "minor type" is a semantic
 //                       value associated with a terminal or non-terminal
 //                       symbols.  For example, for an "ID" terminal symbol,
@@ -55,7 +55,7 @@ const NDEBUG = builtin.mode == .Debug;
 //                       symbols.
 //    YYMINORTYPE        is the data type used for all minor types.
 //                       This is typically a union of many types, one of
-//                       which is ParseTOKENTYPE.  The entry in the union
+//                       which is YY_TOKEN_TYPE.  The entry in the union
 //                       for terminal symbols is called "yy0".
 //    YYSTACKDEPTH       is the maximum depth of the parser's stack.  If
 //                       zero the stack is dynamically sized using realloc()
@@ -87,6 +87,8 @@ const NDEBUG = builtin.mode == .Debug;
 // ************* Begin constants *****************************************
 %%
 // ************* End constants *******************************************
+
+const YY_VOIDTOKEN = @TypeOf(YY_TOKEN_TYPE) == void;
 
 const YY_NLOOKAHEAD = yy_lookahead.len;
 
@@ -172,7 +174,7 @@ const YYCOVERAGE = false;
 const yyFallback = [_]YYCODETYPE{
 %%
 };
-//
+
 /// The following structure represents a single element of the
 /// parser's stack.  Information stored includes:
 ///
@@ -196,7 +198,11 @@ const yyStackEntry = struct {
     /// The user-supplied minor token value.  This is the value of the token.
     minor: YYMINORTYPE,
 };
-//
+
+/// This value is the minimum amount of memory needed to build the
+/// parser stack.
+pub const parser_stack_minimum = @sizeOf(🍋PARSER_NAME) + (@sizeOf(yyStackEntry) * YYSTACKDEPTH);
+
 /// The state of the parser is completely contained in an instance of
 /// the following structure.
 pub const 🍋PARSER_NAME = struct {
@@ -208,13 +214,15 @@ pub const 🍋PARSER_NAME = struct {
     // TODO: reckon with `yyhwm`
     //
     /// Shifts left before out of the error
-    errcnt: ?usize,
+    errcnt: isize,
     🍋ARG_SDECL
     🍋CTX_SDECL
     stack_end: [*]yyStackEntry,
     stack: [*]yyStackEntry,
     stk0: []yyStackEntry,
 
+    /// Create a 🍋PARSER_NAME on the heap, returning a pointer to it.
+    /// Free later with `destroy`.
     pub fn create(allocator: std.mem.Allocator 🍋CTX_PDECL) !*🍋PARSER_NAME {
         var yypParser = try allocator.create(🍋PARSER_NAME);
         🍋CTX_STORE
@@ -222,30 +230,54 @@ pub const 🍋PARSER_NAME = struct {
         return yypParser;
     }
 
+    /// Free all 🍋PARSER_NAME memory, including the *🍋PARSER_NAME itself.
     pub fn destroy(yypParser: *🍋PARSER_NAME) void {
-        ParseFinalize(yypParser);
+        yypParser.deinit();
         yypParser.allocator.destroy(yypParser);
     }
 
-    pub fn init(yypParser: *🍋PARSER_NAME, allocator: std.mem.Allocator 🍋CTX_PDECL) !void {
+    /// Allocate a stack for the 🍋PARSER_NAME and set all fields to their
+    /// initial state.  No need to call this if using `create`.  Free later
+    /// with `deinit`.
+    pub fn init(yypParser: *🍋PARSER_NAME, allocator: std.mem.Allocator 🍋CTX_PDECL) std.mem.Allocator.Error!void {
         🍋CTX_STORE
         yypParser.allocator = allocator;
         yypParser.stk0 = try yypParser.allocator.alloc(yyStackEntry, 100);
         yypParser.stack = yypParser.stk0.ptr;
         yypParser.stack_end = yypParser.stack + (yypParser.stk0.len - 1);
-        yypParser.errcnt = null; // TODO: Deal with NOERRORRECOVERY
+        yypParser.errcnt = -1; // TODO: Deal with NOERRORRECOVERY
         yypParser.tos = yypParser.stack;
         yypParser.stack[0].stateno = 0;
         yypParser.stack[0].major = 0;
+        yypParser.stack[0].minor = undefined; // This is ok
     }
 
-    // TODO: this needs a dummy Token...
-    // pub fn finalize(yypParse: *🍋PARSER_NAME 🍋ARG_PDECL) !void {
-    //     try yypParse.parse(.end_of_input, 🍋ARG_PARAM);
-    // }
+    /// Free the stack memory of the parser, first destroying anything
+    /// left on the stack.
+    pub fn deinit(yypParse: *🍋PARSER_NAME) void {
+        yypParse.reset();
+        yypParse.allocator.free(yypParse.stk0);
+    }
 
-    pub const growStack = yyGrowStack;
-    pub const parse = Parse;
+    /// Call this when there are no tokens remaining.
+    pub fn finalize(yypParse: *🍋PARSER_NAME 🍋ARG_PDECL) !void {
+        // Undefined is ok here, it can't be captured and no
+        // destructor will ever be called on it, as determined
+        // by the 'major type', .end_of_input.
+        try yypParse.parse(.end_of_input, undefined 🍋ARG_PARAM);
+    }
+
+    // NOTE: this code is somewhat oddly organized due to being translated from
+    // C.  The following will appear as ordinary member functions in the type:
+
+    /// Reset the parser to a known-good state, freeing any
+    /// destructable data kept on the parsing stack.  Retains
+    /// the parser stack allocation, to free it, call `deinit`,
+    /// or just `destroy` if the parser itself is heap-allocated.
+    pub const reset = ParseFinalize;
+
+    /// Parse a token.
+    pub const parse = yyParse;
 };
 
 // TODO: Add ParseTrace
@@ -263,10 +295,9 @@ pub const yyRuleName = [_][:0]const u8{
 };
 
 
-/// Try to increase the size of the parser stack.  Return the number
-/// of errors.  Return 0 on success.
+/// Try to increase the size of the parser stack.  Throws if the allocation
+/// fails.
 fn yyGrowStack(yy_p: *🍋PARSER_NAME) !void {
-    // TODO: yyGrowableStack config, always return error
     const yy_new_size = yy_p.stk0.len * 2 + 100;
     const yy_idx = (@intFromPtr(yy_p.tos) - @intFromPtr(yy_p.stack));
     const yyp_new = try yy_p.allocator.realloc(yy_p.stk0, yy_new_size);
@@ -320,7 +351,7 @@ const yy_assert = std.debug.assert;
 ///
 /// If there is a destructor routine associated with the token which
 /// is popped from the stack, then call it.
-fn yy_pop_parser_stack(pParser: * 🍋PARSER_NAME) void {
+fn yy_pop_parser_stack(pParser: *🍋PARSER_NAME) void {
     yy_assert(@intFromPtr(pParser.tos) > @intFromPtr(pParser.stack));
     pParser.tos -= 1;
     // #ifndef NDEBUG
@@ -354,13 +385,6 @@ fn ParseFinalize(yypParser: *🍋PARSER_NAME) void {
             yytos -= 1;
         }
     }
-    // TODO: I think we remove all this growablestack nonsense,
-    // Zig has allocators for that kind of thing.
-    // if (comptime YYGROWABLESTACK) {
-    //     if (@intFromPtr(yypParser.stack) != @intFromPtr(yypParser.stk0.ptr)) {
-    yypParser.allocator.free(yypParser.stk0);
-    //     }
-    // }
 }
 
 //
@@ -530,23 +554,26 @@ fn yy_find_reduce_action(
 }
 
 /// The following routine is called if the stack overflows.
-fn yyStackOverflow(yypParser: *🍋PARSER_NAME, err: anyerror) void {
-    yy_assert(err != error.YyImpossibleError); // discards are quite difficult...
-   🍋ARG_FETCH
-   🍋CTX_FETCH
+fn yyStackOverflow(yypParser: *🍋PARSER_NAME) !void {
+    // Justify the !
+    if (false) return error.YyImpossibleError;
+    🍋ARG_FETCH
+    🍋CTX_FETCH
     // #ifndef NDEBUG
     //    if( yyTraceFILE ){
     //      fprintf(yyTraceFILE,"%sStack Overflow!\n",yyTracePrompt);
     //    }
     // #endif
-   while (@intFromPtr(yypParser.tos) > @intFromPtr(yypParser.stack)) yy_pop_parser_stack(yypParser);
-   // Here code is inserted which will execute if the parser
-   // stack every overflows
+    while (@intFromPtr(yypParser.tos) > @intFromPtr(yypParser.stack)) yy_pop_parser_stack(yypParser);
+    // Here code is inserted which will execute if the parser
+    // stack ever overflows.
+    { // This lets us re-throw:
 //******* Begin %stack_overflow code ******************************************/
 %%
 //******* End %stack_overflow code ********************************************/
-   🍋ARG_STORE // Suppress warning about unused %extra_argument var
-   🍋CTX_STORE
+    } // The cost: rare, non-pointer uses of ctx and arg will not get stored
+    🍋ARG_STORE // Suppress warning about unused %extra_argument var
+    🍋CTX_STORE
 }
 
 ///
@@ -583,7 +610,7 @@ fn yy_shift(
     /// The major token to shift in
     yyMajor: YYCODETYPE,
     /// The minor token to shift in
-    yyMinor: ParseTOKENTYPE,
+    yyMinor: YY_TOKEN_TYPE,
 ) void {
     yypParser.tos += 1;
     // #ifdef YYTRACKMAXSTACKDEPTH
@@ -595,10 +622,9 @@ fn yy_shift(
     var yytos = yypParser.tos;
     var yy_new = yyNewState;
     if (@intFromPtr(yytos) > @intFromPtr(yypParser.stack_end)) {
-        yyGrowStack(yypParser) catch |err| {
-            yy_assert(err != error.YyImpossibleError);
+        yyGrowStack(yypParser) catch  {
             yypParser.tos -= 1;
-            yyStackOverflow(yypParser, err);
+            try yyStackOverflow(yypParser);
             return;
         };
         yytos = yypParser.tos;
@@ -644,14 +670,22 @@ fn yy_reduce(
     /// Lookahead token, or YYNOCODE if none
     yyLookahead: YYCODETYPE,
     /// Value of the lookahead token */
-    yyLookaheadToken: ParseTOKENTYPE
-) YYACTIONTYPE {
+    yyLookaheadToken: YY_TOKEN_TYPE
+) !YYACTIONTYPE {
+    if (false) return error.YyImpossibleFakeError; // Now user code is throwable
     🍋ARG_FETCH
     🍋CTX_FETCH
     _ = .{yyruleno, yyLookahead, yyLookaheadToken};
     var yymsp = yypParser.tos;
     const allocator = yypParser.allocator; _ = .{allocator};
     var yylhsminor: YYMINORTYPE = undefined; _ = .{&yylhsminor};
+    const yysize = yyRuleInfoNRhs[yyruleno];
+    errdefer {
+        // If user code throws, we trim the stack, including
+        // where the reduced action was supposed to go.
+        yymsp = yymsp  - @abs(yysize);
+        yypParser.tos = yymsp;
+    }
     switch( yyruleno ){
     // Beginning here are the reduction cases.  A typical example
     // follows:
@@ -666,7 +700,6 @@ fn yy_reduce(
     }
     yy_assert(yyruleno < yyRuleInfoLhs.len);
     const yygoto = yyRuleInfoLhs[yyruleno];
-    const yysize = yyRuleInfoNRhs[yyruleno];
     const yyact = yy_find_reduce_action((yymsp - @abs(yysize))[0].stateno, yygoto);
 
     // There are no SHIFTREDUCE actions on nonterminals because the table
@@ -686,14 +719,15 @@ fn yy_reduce(
     return yyact;
 }
 
-// TODO: this should be able to throw yeah?
 /// The following code executes when the parse fails
 fn yy_parse_failed(
     /// The parser
     yypParser: *🍋PARSER_NAME,
-) void {
+) !void {
+    if (false) return error.YyImpossibleFakeError; // Now user code is throwable
     🍋ARG_FETCH
     🍋CTX_FETCH
+    const allocator = yypParser.allocator; _ = .{allocator};
     // #ifndef NDEBUG
     //   if( yyTraceFILE ){
     //     fprintf(yyTraceFILE,"%sFail!\n",yyTracePrompt);
@@ -703,9 +737,11 @@ fn yy_parse_failed(
         yy_pop_parser_stack(yypParser);
     // Here code is inserted which will be executed whenever the
     // parser fails.
+    { // Throw guard
 //*********** Begin %parse_failure code ***************************************/
 %%
 //*********** End %parse_failure code *****************************************/
+    }
     🍋ARG_STORE // Suppress warning about unused %extra_argument variable
     🍋CTX_STORE
 }
@@ -717,42 +753,55 @@ fn yy_syntax_error(
     /// The major type of the error token */
     yymajor: YYCODETYPE,
     /// The minor type of the error token */
-    yyminor: ParseTOKENTYPE,
-) void {
+    yyminor: YY_TOKEN_TYPE,
+) !void {
+    if (false) return error.YyImpossibleFakeError; // Now user code is throwable
     🍋ARG_FETCH
     🍋CTX_FETCH
-    const TOKEN = yyminor;
-    _ = .{ TOKEN, yymajor };
+    const err_token = yyminor;
+    const allocator = yypParser.allocator;
+    _ = .{ err_token, yymajor, allocator };
+    {
 //*********** Begin %syntax_error code ****************************************/
 %%
 //*********** End %syntax_error code ******************************************/
-  🍋ARG_STORE // Suppress warning about unused %extra_argument variable */
-  🍋CTX_STORE
+    }
+    🍋ARG_STORE
+    🍋CTX_STORE
 }
 
 /// The following is executed when the parser accepts
 fn yy_accept(
     /// The parser
     yypParser: *🍋PARSER_NAME,
-) void {
+) !void {
+    if (false) return error.YyImpossibleFakeError; // Now user code is throwable
     🍋ARG_FETCH
     🍋CTX_FETCH
+    const allocator = yypParser.allocator; _ = .{allocator};
     // #ifndef NDEBUG
     //   if( yyTraceFILE ){
     //     fprintf(yyTraceFILE,"%sAccept!\n",yyTracePrompt);
     //   }
     // #endif
     if (comptime YYNOERRORRECOVERY) {
-        yypParser.errcnt = null;
+        yypParser.errcnt = -1;
     }
     yy_assert(yypParser.tos == yypParser.stack);
-  // Here code is inserted which will be executed whenever the
-  // parser accepts.
+    // Here code is inserted which will be executed whenever the
+    // parser accepts.
+    {
 //********** Begin %parse_accept code *****************************************/
 %%
 //********** End %parse_accept code *******************************************/
+    }
     🍋ARG_STORE // Suppress warning about unused %extra_argument variable */
     🍋CTX_STORE
+}
+
+/// Cast the token number to its affiliated enum
+inline fn yyEnum(yymajor: YYCODETYPE) 🍋TOKEN_ENUM {
+    return @enumFromInt(yymajor);
 }
 
 // TODO: This could return the context when there is one, and
@@ -778,13 +827,13 @@ fn yy_accept(
 ///
 ///   - None.
 ///
-pub fn Parse(
+fn yyParse(
     /// The parser
     yypParser: *🍋PARSER_NAME,
     /// The major token enum
     yy_token: 🍋TOKEN_ENUM,
     /// The value for the token
-    yyminor: ParseTOKENTYPE
+    yyminor: YY_TOKEN_TYPE
     🍋ARG_PDECL               // Optional %extra_argument parameter
 ) !void {
     var yyminorunion: YYMINORTYPE = undefined;
@@ -844,13 +893,13 @@ pub fn Parse(
                 //     yy_assert(yypParser.yyhwm == yypParser.yytos - yypParser.yystack);
                 // }
                 if (@intFromPtr(yypParser.tos) >= @intFromPtr(yypParser.stack_end)) {
-                    if (yyGrowStack(yypParser)) |_| {} else |err| {
-                        yyStackOverflow(yypParser, err);
+                    yyGrowStack(yypParser) catch {
+                        try yyStackOverflow(yypParser);
                         break;
-                    }
+                    };
                 }
             }
-            yyact = yy_reduce(yypParser, yyruleno, yymajor, yyminor);
+            yyact = try yy_reduce(yypParser, yyruleno, yymajor, yyminor);
         } else if (yyact <= YY_MAX_SHIFTREDUCE) {
             yy_shift(yypParser, yyact, yymajor, yyminor);
             if (comptime !YYNOERRORRECOVERY) {
@@ -859,7 +908,7 @@ pub fn Parse(
             break;
         } else if (yyact == YY_ACCEPT_ACTION) {
             yypParser.tos -= 1;
-            yy_accept(yypParser);
+            try yy_accept(yypParser);
             return;
         } else {
             yy_assert( yyact == YY_ERROR_ACTION );
@@ -891,7 +940,7 @@ pub fn Parse(
                 //
                 //
                 if (yypParser.errcnt < 0) {
-                    yy_syntax_error(yypParser, yymajor, yyminor);
+                    try yy_syntax_error(yypParser, yymajor, yyminor);
                 }
                 const yymx = yypParser.tos[0].major;
                 if (yymx == @This().YYERRORSYMBOL or yyerrorhit) {
@@ -911,7 +960,7 @@ pub fn Parse(
                     }
                     if (yypParser.tos <= yypParser.stack or yymajor == 0) {
                         yy_destructor(yypParser, yymajor, &yyminorunion);
-                        yy_parse_failed(yypParser);
+                        try yy_parse_failed(yypParser);
                         if (comptime !YYNOERRORRECOVERY) {
                             yypParser.yyerrcnt = null;
                         }
@@ -932,7 +981,7 @@ pub fn Parse(
                 // Applications can set this macro (for example inside %include) if
                 // they intend to abandon the parse upon the first syntax error seen.
                 //
-                yy_syntax_error(yypParser, yymajor, yyminor);
+                try yy_syntax_error(yypParser, yymajor, yyminor);
                 yy_destructor(yypParser, yymajor, &yyminorunion);
                 break;
             } else { // YYERRORSYMBOL is not defined, nor YYNOERRORRECOVERY
@@ -946,12 +995,12 @@ pub fn Parse(
                 // three input tokens have been successfully shifted.
                 //
                 if (yypParser.errcnt <= 0) {
-                    yy_syntax_error(yypParser, yymajor, yyminor);
+                    try yy_syntax_error(yypParser, yymajor, yyminor);
                 }
                 yypParser.errcnt = 3;
                 yy_destructor(yypParser, yymajor, &yyminorunion);
                 if( yyendofinput ){
-                      yy_parse_failed(yypParser);
+                    try yy_parse_failed(yypParser);
                     if (comptime !YYNOERRORRECOVERY) {
                           yypParser.errcnt = -1;
                     }

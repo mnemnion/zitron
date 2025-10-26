@@ -1,8 +1,6 @@
-[]{#main}
+# The Zitron Parser Generator <a id="main">
 
-# The Zitron Parser Generator {#the-zitron-parser-generator align="center"}
-
-Zitron is a Zig-native clone of Lemon.
+Zitron is a Zig-native clone of [Lemon](https://sqlite.org/lemon.html).
 
 Lemon is an LALR(1) parser generator for C.  It does the same job as
 "bison" and "yacc".  But Lemon is not a bison or yacc clone.  Lemon
@@ -25,17 +23,15 @@ public domain.  The repo generally is licensed under the zero-clause BSD
 license, which amounts to the same thing.
 
 The author would like to express his deep appreciation for the work of
-D. Richard Hipp and HWACI, in providing robust and powerful software
-free to the world.  In his work and in his example, there is much for
-the student to learn.
+[D. Richard Hipp and HWACI](https://www.hwaci.com/drh/index.html), in
+providing robust and powerful software free to the world.  In his work
+and in his example, there is much for the student to learn.
 
-[]{#toc}
-
-## 1.0 Table of Contents
+## 1.0 Table of Contents <a id="toc">
 
 - [Introduction](#main)
 - [1.0 Table of Contents](#toc)
-- [2.0 Security Notes](#secnot)\
+- [2.0 Security Notes](#secnot)
 - [3.0 Theory of Operation](#optheory)
   - [3.1 Command Line Options](#options)
   - [3.2 The Parser Interface](#interface)
@@ -52,9 +48,8 @@ the student to learn.
 - [6.0 History of Lemon](#history)
 - [7.0 Copyright](#copyright)
 
-[]{#secnot}
 
-## 2.0 Security Note
+## 2.0 Security Note <a id="secnot">
 
 The language parser code created by Lemon is very robust and is
 well-suited for use in internet-facing applications that need to safely
@@ -78,9 +73,8 @@ not automatically interesting.  Problems with the generated parser code,
 on the other hand, we would be grateful to be informed of so that they
 can be fixed.
 
-[]{#optheory}
 
-## 3.0 Theory of Operation
+## 3.0 Theory of Operation <a id="optheory">
 
 Zitron is a computer program that translates a context free grammar (CFG)
 for a particular language into Zig code that implements a parser for that
@@ -123,9 +117,39 @@ This command will generate two output files named "gram.zig", and
 "gram.out". The first is Zig code to implement the parser. The second is
 the report that explains the states used by the parser automaton.
 
-[]{#options}
 
-### 3.1 Command Line Options <tk>
+### 3.1 Command Line Options <a id="options"> <tk>
+
+Lemon is designed to work with the classical style of C programs:
+command-line tools triggered by makefiles.  Zitron is also a separate
+binary tool, which can be run from the command line, but the intended
+ordinary use case will call it from a `build.zig`, then use it to
+generate code for a parser.
+
+To achieve this hybrid approach, anything which can be done with a
+command-line argument (excepting the input file name) can also be
+done using a build-time option.  A few options can also be triggered
+in-file using a `%pragma` directive.  The order is: command line options
+override build options, and `%pragma` directives override both.
+
+The command line switches are all booleans, every one of which is
+logically `false`, and the description in this documentation tells
+the user what happens if they're set to `true`.  These correspond to
+boolean build options, naturally.  The wrinkle is that if the build
+sets them to `true`, then providing the switch on the command line
+will set it back to `false`.  The `-h --help` documentation for a
+given build will tell you which is which.
+
+The string-taking options such as `-T`, `-o`, and `-d`, simply override
+any analogous build option.  The odd case is `-D` and `-U`, which define
+and undefine preprocessor macros (see [`%if`](#pifdef) for the details
+here).  The build only allows _defining_ macros, which can be undefined
+on the CLI with `-U`.  It is harmless to define a macro more than once,
+or undefine a macro which does not exist; double-defining is `info`
+logged, but a spurious undefine is `warn` logged.  In default build
+mode, `Zitron` will only write `err`-level logging to stdout.
+
+<tk>
 
 As of right now, the command line options for Zitron are the same as
 those provided here.  That will not remain true for long.
@@ -155,8 +179,7 @@ As of this writing, the following command-line options are supported:
 - **-l** Omit "#line" directives in the generated parser C code.
 - **-m** Cause the output C source code to be compatible with the
   "makeheaders" program.
-- **-p** Display all conflicts that are resolved by [precedence
-  rules](#precrules).
+- **-p** Display all conflicts that are resolved by [precedence rules](#precrules).
 - **-q** Suppress generation of the report file.
 - **-r** Do not sort or renumber the parser states as part of
   optimization.
@@ -165,9 +188,8 @@ As of this writing, the following command-line options are supported:
   parser implementation.
 - **-x** Print the Lemon version number.
 
-[]{#interface}
 
-### 3.2 The Parser Interface
+### 3.2 The Parser Interface <a id="interface">
 
 Zitron doesn't generate a complete, working program.  It generates a
 zig file, a container, containing few types which collectively implement
@@ -184,9 +206,7 @@ will be called `Parser`.  Created like so:
     defer a_parser.destroy(); // The allocator is retained
 ```
 The above is of course not structurally-valid Zig.  `extra_context` is an
-optional parameter [explained below](#446-the-extracontext-directive);
-
-<tk creating a parser without putting it on the heap>
+optional parameter [explained below](#446-the-extracontext-directive).
 
 After a parser has been created, the programmer must supply the parser
 with a sequence of tokens (terminal symbols) to be parsed. This is
@@ -194,13 +214,14 @@ accomplished by calling the following function once for each token:
 
        try a_parser.parse(token_enum, token_data [, extra_argument]);
 
-The `token_enum` argument is the name of the token.  For reasons soon to
-be explained, this will be all capital letters, which is not at all the
-typical Zig style.  It is, by default, of type `TokenKind`, although this
-may be renamed if desired.  The `token_data` argument is, by default, of
-type `void`, but useful parsers will invariably define it to be some more
-useful type, carrying information such as the span of the token and what
-have you.
+The `token_enum` argument is the name of the token.  For reasons soon
+to be explained, this will be all capital letters[^⁕], which is not at
+all the typical Zig style.  It is, by default, of type `TokenKind`,
+although this may be renamed if desired.  The `token_data` argument
+is, by default, of type `void`, but useful parsers will invariably
+define it to be some more useful type, carrying information such as
+the span of the token and what have you.  This is all explained in the
+[%token_type](#4424-the-tokentype-and-type-directives) section.
 
 If the grammar specification file requests it (via the
 [`%extra_argument`](#extraarg) directive), the function `parser.parse`
@@ -212,65 +233,63 @@ routines without having to use global variables.
 
 A typical use of a Zitron parser might look something like the following:
 
-<tk rewrite this>
+```zig
+fn parse(allocator: Allocator, str: [:0]const u8) !*TreeRoot {
+    // Some kind of %extra_context object
+    var ctx: ParseContext = .init(allocator);
+    defer ctx.deinit();
+    var parser = try Parser.create(allocator, &ctx);
+    defer parser.destroy();
+    // You'll need a tokenizer:
+    var tok = Tokenizer.init(str);
+    // We assume it returns a ?Token:
+    while (try tok.next()) |t: Token| {
+        try parser.parse(t.kind, t);
+    } else {
+        try parser.finalize();
+    }
+    // Since we didn't throw, we're done
+    return ctx.root;
+}
+```
 
-        1 ParseTree *ParseFile(const char *zFilename){
-        2    Tokenizer *pTokenizer;
-        3    void *pParser;
-        4    Token sToken;
-        5    int hTokenId;
-        6    ParserState sState;
-        7
-        8    pTokenizer = TokenizerCreate(zFilename);
-        9    pParser = ParseAlloc( malloc );
-       10    InitParserState(&sState);
-       11    while( GetNextToken(pTokenizer, &hTokenId, &sToken) ){
-       12       Parse(pParser, hTokenId, sToken, &sState);
-       13    }
-       14    Parse(pParser, 0, sToken, &sState);
-       15    ParseFree(pParser, free );
-       16    TokenizerFree(pTokenizer);
-       17    return sState.treeRoot;
-       18 }
+This example shows a user-written routine that parses a string and
+returns a pointer to the parse tree.  We assume the existence of some
+kind of tokenizer, which is created using `Tokenizer.init`, and needs no
+deinitialization.  The `tok.next()` call retrieves the next token from
+the string, returning a `Token`, which we assume has the token enum on
+a field `t.kind`.  The Token variable is assumed to be some kind of
+structure that contains details about each token, such as its complete
+text, what line it occurs on, etc.  Zitron doesn't care about the
+contents of the `Token`, and doesn't know it has the enum as part of it.
+If your action code doesn't need that information, it would be just
+fine for `tok.next()` to return a `struct ?{TokenKind, Token}` which
+could be destructured into `|kind, t|`.
 
-This example shows a user-written routine that parses a file of text and
-returns a pointer to the parse tree. (All error-handling code is omitted
-from this example to keep it simple.) We assume the existence of some
-kind of tokenizer which is created using TokenizerCreate() on line 8 and
-deleted by TokenizerFree() on line 16. The GetNextToken() function on
-line 11 retrieves the next token from the input file and puts its type
-in the integer variable hTokenId. The sToken variable is assumed to be
-some kind of structure that contains details about each token, such as
-its complete text, what line it occurs on, etc.
+This example also assumes the existence of a context object, `ctx`,
+specified using the [`%extra_context`](#extra_context) directive.
+This is available for any user action as `ctx`, or whatever the code
+names it.  The premise is that this is used to build up a parse tree,
+ultimately stored as a `*TreeRoot` on `ctx.root`.  The `allocator`
+provided to `Parser.create` is always available as well under the
+identifier `allocator`.
 
-This example also assumes the existence of a structure of type
-ParserState that holds state information about a particular parse. An
-instance of such a structure is created on line 6 and initialized on
-line 10. A pointer to this structure is passed into the Parse() routine
-as the optional 4th argument. The action routine specified by the
-grammar for the parser can use the ParserState structure to hold
-whatever information is useful and appropriate. In the example, we note
-that the treeRoot field of the ParserState structure is left pointing to
-the root of the parse tree.
+Basically, what a program has to do to use a Zitron-generated parser
+is first create the parser, then send it lots of tokens obtained by
+tokenizing an input source.  When the end of input is reached, call
+`parser.finalize([arg])`.  This step is necessary to inform the parser
+that the end of input has been reached.  Cleanup happens from the
+`defer` statement which `destroy`s the heap-allocated `Parser`, use
+`deinit` if the parser is living on the stack (which would be more
+practical for a use case like this).
 
-The core of this example as it relates to Lemon is as follows:
+`[arg]` in finalize is the optional [`%extra_argument`](#extra_argument)
+parameter.  If you define one, you must provide it to both `parse` and
+`finalize`.  Under the hood, `finalize` is a special case of `parse`,
+and it's normal for the end of input to trigger a final reduction, which
+may have user code which makes use of the argument.
 
-       ParseFile(){
-          pParser = ParseAlloc( malloc );
-          while( GetNextToken(pTokenizer,&hTokenId, &sToken) ){
-             Parse(pParser, hTokenId, sToken);
-          }
-          Parse(pParser, 0, sToken);
-          ParseFree(pParser, free );
-       }
-
-Basically, what a program has to do to use a Lemon-generated parser is
-first create the parser, then send it lots of tokens obtained by
-tokenizing an input source. When the end of input is reached, the
-Parse() routine should be called one last time with a token type of 0.
-This step is necessary to inform the parser that the end of input has
-been reached. Finally, we reclaim memory used by the parser by calling
-ParseFree().
+<tk figure out how tracing works>
 
 There is one other interface routine that should be mentioned before we
 move on. The ParseTrace() function can be used to generate debugging
@@ -284,54 +303,55 @@ calls an action routine. Each such message is prefaced using the text
 given by zPrefix. This debugging output can be turned off by calling
 ParseTrace() again with a first argument of NULL (0).
 
-[]{#onstack}
+[^⁕]: Structurally a token only needs to begin with a capital letter,
+the rest is convention.
 
-#### 3.2.1 Allocating The Parse Object On Stack
+#### 3.2.1 Allocating The Parser On Stack <a id="onstack">
 
-If all calls to the Parse() interface are made from within [`%code`
-directives](#pcode), then the parse object can be allocated from the
-stack rather than from the heap. These are the steps:
+Zitron parsers must always be initialized with an [`Allocator`][alloc],
+but this doesn't mean they must be put on the heap, or even use the
+heap at all.
 
-- Declare a local variable of type "yyParser"
-- Initialize the variable using ParseInit()
-- Pass a pointer to the variable in calls to Parse()
-- Deallocate substructure in the parse variable using ParseFinalize().
+The technique for doing this is discussed with the [%stack_size](#stack_size)
+directive.
 
-The following code illustrates how this is done:
 
-       ParseFile(){
-          yyParser x;
-          ParseInit( &x );
-          while( GetNextToken(pTokenizer,&hTokenId, &sToken) ){
-             Parse(&x, hTokenId, sToken);
-          }
-          Parse(&x, 0, sToken);
-          ParseFinalize( &x );
-       }
+[alloc]: https://ziglang.org/documentation/master/std/#std.mem.Allocator
 
-[]{#namespace}
 
-#### 3.2.2 More About the Namespace
+#### 3.2.2 More About the Namespace <a id="namespace">
 
 A Zitron parser can include arbitrary code before and after the
 generated code, using the [%include](#449-the-include-directive) and
 [%code](#441-the-code-directive) directives, respectively.  Due to
-Zig being somewhat strict about variable shadowing, some co-operation
+Zig being somewhat strict about variable shadowing, some coöperation
 is needed to prevent colliding this outer namespace with inner variables.
 
 Primarily: do not start any name with `yy`, `YY`, or any
 oddly-capitalized combination of two Ys.  This is an old tradition which
 hearkens back to `yacc`, and to C's somewhat derisory namespacing, if we
-might even use that word.
+might even use that word.  The author considered using the `@"anything"`
+syntax to deeply hide parse names, and concluded: nah.  Just don't use
+`yy`, simple.
 
 For interior code convenience, the allocator provided to a `Parser`
 instance will be localized inside various functions with the name
 `allocator`, as is idiomatic within Zig code.  Accordingly one should
 not use this name in the outer namespace.
 
+There are some other identifiers to avoid, corresponding to other
+magically-available identifiers described later: `err` and `err_token`.
+Again, these are only to be avoided in the outer namespace, where
+they would shadow these uses.
+
+Last, there's a special value `parser_stack_minimum`, the utility of
+which is also [described later](#stack_size).  This is in the outer
+namespace, so unlike `err` etc, you can't use it within braces either,
+except to read it.  That part is fine.  Intended even.
+
 The identifiers `std` and `builtin` will be defined for you, with their
 accustomed meanings.  Therefore you will not want to repeat this in user
-code, this kind of redefinition being quite forbidden.
+code, this kind of redefinition being forbidden.
 
 Notes:
 
@@ -344,9 +364,40 @@ Notes:
 - Use the [`%extra_argument` directive](#extraarg) to specify the type
   and name of the extra parameter to the `Parser.parse()` function.
 
-[]{#yaccdiff}
+One final observation: Lemon is comfortable to use in a single-file
+fashion, an example being [Pikchr](https://pikchr.org/), which is wholly
+contained in the file `pikchr.y`.  Zig offers a few reasons not to
+do this: for one, it has no equivalent of a `#line` macro[^†], so finding
+code errors while developing would be more exciting.  Also, ZLS is
+not going to help you with a `.zy` file in any manner, adding further
+friction to this style of development.
 
-### 3.3 Differences With YACC and BISON
+Happily, however, Zig does allow circular imports, allowing identifiers
+to be 'smuggled' in and out of the grammar file at leisure.  The
+author suggests taking advantage of this and making relatively
+minimal use of the [%include](#449-the-include-directive) and
+[%code](#441-the-code-directive) directives, just enough to give reduce
+actions access to the namespaces and types which they need in order to
+execute.
+
+[^†]: Zitron has an option to print the line numbers as comments, but this
+is simply not as helpful as a proper `#line` directive.  It was left in
+because there's little motive to remove it, and in the faint hope that it
+might assist someone, at some point.  Potentially a language server could
+be developed, which uses those lines to map back to the `.zy` file from
+the `.zig`; `zitron` can process a large grammar file in milliseconds,
+so this could be kept in sync readily.  I am personally unlikely to do
+this, however.
+
+
+### 3.3 Differences With YACC and BISON <a id="yaccdiff">
+
+> [!NOTE]
+> Zitron author: this section, like much of the docs, is Lemon-original.
+> I am not a time-traveler writing Zig in the 1990s, although I
+> sometimes feel like one.  I have included it unmodified; the
+> statements about Lemon apply to Zitron as well, those about yacc/bison
+> I cannot speak to.
 
 Programmers who have previously used the yacc or bison parser generator
 will notice several important differences between yacc and/or bison and
@@ -354,9 +405,9 @@ Lemon.
 
 - In yacc and bison, the parser calls the tokenizer. In Lemon, the
   tokenizer calls the parser.
-- Lemon uses no global variables. Yacc and bison use global variables to
+- Lemon uses no global variables.  Yacc and bison use global variables to
   pass information between the tokenizer and parser.
-- Lemon allows multiple parsers to be running simultaneously. Yacc and
+- Lemon allows multiple parsers to be running simultaneously.  Yacc and
   bison do not.
 
 These differences may cause some initial confusion for programmers with
@@ -366,11 +417,10 @@ Lemon, I firmly believe that the Lemon way of doing things is better.
 *Updated as of 2016-02-16:* The text above was written in the 1990s. We
 are told that Bison has lately been enhanced to support the
 tokenizer-calls-parser paradigm used by Lemon, eliminating the need for
-global variables.
+global variables.  .
 
-[]{#build}
 
-### 3.4 Building and using the "zitron" or "zitron.exe" Executable
+### 3.4 Building and using the "zitron" or "zitron.exe" Executable <a id="build">
 
 It is possible to build and install `zitron` as an ordinary command-line
 program, but we anticipate that it will more commonly be used as a tool
@@ -382,73 +432,102 @@ repo root, run
 ```sh
 zig build install
 ```
-And `./zig-out` will have `zitron` and `lemon` in it.
+And `./zig-out` will have `zitron` and `lemon` in it.  The `lemon` binary
+is a note-perfect clone of DRH's Lemon; this was a necessary step on the
+path to writing Zitron, and I saw no reason to leave it lost in the mists
+of the git repository.
 
-Using it from your own `build.zig` is a bit more involved.
+Using Zitron from your own `build.zig` is a bit more involved.
 
 <tk build.zig.zon and zig fetch etc>
 
-Then in your `build.zig`:
+Then in your `build.zig`, things are moderately complex.  We'll
+assume your source file is at `grammar/parse.zy` and you're
+generating a separate [%token_enum](#token_enum) as `TokenKind`,
+the default.
 
 ```zig
     const zitron_dep = b.dependency("zitron", .{
        .target = target,
        .host = b.graph.host, // Since it runs on the host
-        // Other options are best provided here
+       // Other options are best provided here, they
+       // can be sent as options below, as well
+       .generate_enum_file = true,
     });
 
     const zitron_exe = zitron_dep.artifact(zitron);
 
     const zitron_run = b.addRunArtifact(zitron_exe);
+    // Zitron expects the file name last, we need to
+    // give an output directory first.
+
+    // First create a directory in cache:
+    const zitron_wf = b.addWriteFiles();
+    // <tk> I have to actually do this, I can't just make
+    // this up and expect it to work...
 
 ```
 
-[]{#syntax}
 
-## 4.0 Input File Syntax
+## 4.0 Input File Syntax <a id="syntax">
 
-The main purpose of the grammar specification file for Lemon is to
-define the grammar for the parser. But the input file also specifies
-additional information Lemon requires to do its job. Most of the work in
-using Lemon is in writing an appropriate grammar file.
+The main purpose of the grammar specification file for Zitron is to
+define the grammar for the parser.  But the input file also specifies
+additional information Zitron requires to do its job.  Most of the work in
+using Zitron is in writing an appropriate grammar file.
 
-The grammar file for Lemon is, for the most part, a free format. It does
-not have sections or divisions like yacc or bison. Any declaration can
-occur at any point in the file. Lemon ignores whitespace (except where
+The grammar file for Zitron is, for the most part, a free format.  It does
+not have sections or divisions like yacc or bison.  Any declaration can
+occur at any point in the file.  Zitron ignores whitespace (except where
 it is needed to separate tokens), and it honors the same commenting
 conventions as C and C++.
 
-[]{#tnt}
+The above is not a typo: Zitron grammar files also accept `/* This kind */`
+of comment, as well as the C++ (and Zig) `// This kind` line comments.
+This laxity does not apply, of course, inside code blocks, but there was
+little motive to remove it outside of them, so there it remains.  Zitron
+does not know or care about the doc-style comment variations, feel free
+to use them, but it is not a syntax error to abuse this privilege.
 
-### 4.1 Terminals and Nonterminals
+
+### 4.1 Terminals and Nonterminals <a id="tnt">
 
 A terminal symbol (token) is any string of alphanumeric and/or
-underscore characters that begins with an uppercase letter. A terminal
-can contain lowercase letters after the first character, but the usual
-convention is to make terminals all uppercase. A nonterminal, on the
-other hand, is any string of alphanumeric and underscore characters than
-begins with a lowercase letter. Again, the usual convention is to make
-nonterminals use all lowercase letters.
+underscore ASCII characters that begins with an uppercase letter.  A
+terminal can contain lowercase letters after the first character, but
+the usual convention is to make terminals all uppercase.  A nonterminal,
+on the other hand, is any string of alphanumeric and underscore ASCII
+characters which begins with a lowercase letter.  Again, the usual
+convention is to make nonterminals use all lowercase letters.
 
-In Lemon, terminal and nonterminal symbols do not need to be declared or
-identified in a separate section of the grammar file. Lemon is able to
+In Zitron, terminal and nonterminal symbols do not need to be declared or
+identified in a separate section of the grammar file.  Zitron is able to
 generate a list of all terminals and nonterminals by examining the
 grammar rules, and it can always distinguish a terminal from a
 nonterminal by checking the case of the first character of the name.
 
 Yacc and bison allow terminal symbols to have either alphanumeric names
 or to be individual characters included in single quotes, like this:
-\')\' or \'\$\'. Lemon does not allow this alternative form for terminal
-symbols. With Lemon, all symbols, terminals and nonterminals, must have
+`')'` or `'$'`.  Zitron does not allow this alternative form for terminal
+symbols.  With Zitron, all symbols, terminals and nonterminals, must have
 alphanumeric names.
 
-[]{#rules}
+Note that this convention, established by Lemon, means that the
+generated token enum uses uppercase variant names, in contradiction to
+established Zig style.  After considering the possibility of swapping
+the meaning of upper and lower cases, your author thought better of it.
+A few leaking C-isms are not the worst thing.
 
-### 4.2 Grammar Rules
+It does have the useful property that, since there are no uppercase
+keywords in Zig, code doesn't have to handle collisions like `WHILE`,
+which, given this is a parser generator, are far from unlikely to occur.
 
-The main component of a Lemon grammar file is a sequence of grammar
+
+### 4.2 Grammar Rules <a id="rules">
+
+The main component of a Zitron grammar file is a sequence of grammar
 rules. Each grammar rule consists of a nonterminal symbol followed by
-the special symbol "::=" and then a list of terminals and/or
+the special symbol `::=` and then a list of terminals and/or
 nonterminals. The rule is terminated by a period. The list of terminals
 and nonterminals on the right-hand side of the rule can be empty. Rules
 can occur in any order, except that the left-hand side of the first rule
@@ -462,76 +541,219 @@ this:
       expr ::= LPAREN expr RPAREN.
       expr ::= VALUE.
 
-There is one non-terminal in this example, "expr", and five terminal
-symbols or tokens: "PLUS", "TIMES", "LPAREN", "RPAREN" and
-"VALUE".
+There is one non-terminal in this example, `expr`, and five terminal
+symbols or tokens: `PLUS`, `TIMES`, `LPAREN`, `RPAREN` and `VALUE`.
+This multiple definitions are used instead of the more familiar `|`
+syntax to write rule alternates; Zitron reserves that symbol for a
+better and more useful purpose.
 
-Like yacc and bison, Lemon allows the grammar to specify a block of C
+Like yacc and bison, Zitron allows the grammar to specify a block of Zig
 code that will be executed whenever a grammar rule is reduced by the
-parser. In Lemon, this action is specified by putting the C code
+parser.  In Zitron, this action is specified by putting the Zig code
 (contained within curly braces `{...}`) immediately after the period
 that closes the rule. For example:
 
-      expr ::= expr PLUS expr.   { printf("Doing an addition...\n"); }
+```
+expr ::= expr PLUS expr.   { std.debug.print(`Doing an addition...\n", .{}); }
+```
 
 In order to be useful, grammar actions must normally be linked to their
-associated grammar rules. In yacc and bison, this is accomplished by
-embedding a "\$\$" in the action to stand for the value of the
-left-hand side of the rule and symbols "\$1", "\$2", and so forth to
+associated grammar rules.  In yacc and bison, this is accomplished by
+embedding a `$$` in the action to stand for the value of the
+left-hand side of the rule and symbols `$1`, `$2`, and so forth to
 stand for the value of the terminal or nonterminal at position 1, 2 and
-so forth on the right-hand side of the rule. This idea is very powerful,
-but it is also very error-prone. The single most common source of errors
+so forth on the right-hand side of the rule.  This idea is very powerful,
+but it is also very error-prone.  The single most common source of errors
 in a yacc or bison grammar is to miscount the number of symbols on the
-right-hand side of a grammar rule and say "\$7" when you really mean
-"\$8".
+right-hand side of a grammar rule and say `$7` when you really mean
+`$8`.
 
-Lemon avoids the need to count grammar symbols by assigning symbolic
+Zitron avoids the need to count grammar symbols by assigning symbolic
 names to each symbol in a grammar rule and then using those symbolic
 names in the action. In yacc or bison, one would write this:
 
-      expr -> expr PLUS expr  { $$ = $1 + $3; };
+    expr -> expr PLUS expr  { $$ = $1 + $3; };
 
-But in Lemon, the same rule becomes the following:
+But in Zitron, the same rule becomes the following:
 
-      expr(A) ::= expr(B) PLUS expr(C).  { A = B+C; }
+    expr(A) ::= expr(B) PLUS expr(C).  { A = B + C; }
 
-In the Lemon rule, any symbol in parentheses after a grammar rule symbol
-becomes a place holder for that symbol in the grammar rule. This place
-holder can then be used in the associated C action to stand for the
-value of that symbol.
+In the Zitron rule, any symbol in parentheses after a grammar rule
+symbol becomes a place holder for that symbol in the grammar rule. This
+place holder can then be used in the associated C action to stand for
+the value of that symbol.  The symbol (called the alias) follows the
+familiar rule: it must start with an alphabetic ASCII character, and
+may be followed by any number of alphanumerics or `_`.
 
-The Lemon notation for linking a grammar rule with its reduce action is
-superior to yacc/bison on several counts. First, as mentioned above, the
-Lemon method avoids the need to count grammar symbols. Secondly, if a
-terminal or nonterminal in a Lemon grammar rule includes a linking
+The Zitron notation for linking a grammar rule with its reduce action is
+superior to yacc/bison on several counts.  First, as mentioned above, the
+Zitron method avoids the need to count grammar symbols.  Secondly, if a
+terminal or nonterminal in a Zitron grammar rule includes a linking
 symbol in parentheses but that linking symbol is not actually used in
 the reduce action, then an error message is generated. For example, the
 rule
 
       expr(A) ::= expr(B) PLUS expr(C).  { A = B; }
 
-will generate an error because the linking symbol "C" is used in the
+will generate an error because the linking symbol `C` is used in the
 grammar rule but not in the reduce action.
 
-The Lemon notation for linking grammar rules to reduce actions also
+The Zitron notation for linking grammar rules to reduce actions also
 facilitates the use of destructors for reclaiming memory allocated by
 the values of terminals and nonterminals on the right-hand side of a
-rule.
+rule.  Any stack entry which has a destructor for its type, which does
+not appear as an alias capture, will have a call to that destructor
+generated for that rule reduction.
 
-[]{#precrules}
+Zitron, unlike Lemon, will also skip any use of an alias inside a
+string literal or comment.  This wasn't a real problem, since any
+collision can be solved by choosing a different alias, but it wasn't
+difficult to solve it, either:
 
-### 4.3 Precedence Rules
+    calc(A) ::= expr(answer). {
+        // A demonstration:
+        print("The answer is {d}!", .{answer});
+        A = answer + 'A';
+    }
 
-Lemon resolves parsing ambiguities in exactly the same way as yacc and
-bison. A shift-reduce conflict is resolved in favor of the shift, and a
+Will do the intended thing.
+
+Occasionally it may be more useful, or efficient, to accept the enum
+corresponding to a token rather than the token itself.  Zitron allows
+this by prepending `@` to the symbolic name:
+
+    expr(A) ::= expr(B) PLUS|MINUS(O) expr(C). { A = plusOrMinus(B, @O, C); }
+
+This also illustrates multiterminals: several token types may be chained
+together as shown (spaces are forbidden).  Note that this differs
+from yacc and bison as well, which use `|` to separate entire rule
+definitions, while Zitron uses the symbol with a higher precedence to
+create a group of several accepted terminals.  Alternative reductions
+for a given non-terminal are written as several definitions for that
+non-terminal.  The multiterminal is easily the best part of Lemon which
+is documented precisely nowhere at the time of writing.
+
+Note that the `@` can only be placed on the capture of a terminal or
+multiterminal (or [%token_class](#token_class)).
+These are the only grammatical particles where it makes sense to do so,
+as nonterminals don't have an associated enum type.  A violation of this
+rule will be reported as an error during compilation of the grammar.
+
+Special note: Lemon, and therefore Zitron, looks for a magic comment
+in user code.  The magic looks like this:
+
+    // A-overwrites-Z
+
+Just like that, one space, no trailing whitespace. `A` is a
+left-hand-side alias, and `Z` is a right-hand-side one, specifically
+it must be the first value (not _aliased_ value, just _value_, period).
+
+Why though?  Good question, these are reduce actions, so named because
+the stack reduces in size.  When you see a rule like:
+
+     alphabet(Alpha) ::= A(Z) B C D E.
+
+Tokens corresponding to `A`, `B`, `C`, `D`, `E` are pushed (we say
+_shifted_) onto the parsing stack.  When `E` is seen, the parser knows
+to _reduce_ this to a stack entry meaning `alphabet`: all five tokens
+are removed (with destructors called if needed), and a stack entry for
+`alphabet` is shifted in place.  Hence, a _shift-reduce_ parser.
+
+What you'll notice is that `alphabet` ends up in the slot formerly
+occupied by `A`.  In full generality, this requires that `alphabet`
+be written to a temporary variable.  Zitron can't know if you want to
+assign to `Alpha`, and then later do something involving `Z` and `Alpha`
+both.  So the magic comment promises Zitron you won't do that, and it's
+allowed to write any reference to `Alpha`, and any reference to `Z`,
+as indices into the same slot in the stack.
+
+I will not even attempt to teach you how to use this correctly.  You
+make find some of the examples to be helpful in this regard.  I am
+handing you a blade, without a hilt, please grasp it from the flat
+sides.  Thank you.
+
+
+#### 4.2.1 Writing Leak-free Action Code
+
+One key difference between the C code which Lemon generates, and the Zig
+code which Zitron generates: grammar action rules in Zitron are allowed
+to return an error via `try`, or indeed with `return`.  This must be
+done carefully.
+
+There are two rules here.  Rule number 1: if you capture it on the RHS,
+your code is responsible for those resources in some fashion.  Note
+that this was already true, in that Zitron only generates destructors
+if a) the type in question has one defined and b) that instance of said
+type is not captured.  If a) applies and b) does not, the reasonable
+assumption is made that the capture is either going to become a durable
+part of some data structure, or, the user code will dispose of it
+itself.
+
+Rule number 2: if you throw after assigning to the LHS alias, then your
+code is responsible for cleaning up the LHS as well.  It's worth making
+a subtle fact clear here: trying to use the LHS alias on the right hand
+side of a Zig statement, before assigning anything to it, will not give
+you the result you desire.  Zitron doesn't even try to detect this, so
+to avoid a bad day, don't do it.
+
+Let's work an example.  Given this rule:
+
+    fee(A) ::= fie(B) foe fum(C). /* Action code follows */
+
+This is ok:
+
+```zig
+    {
+      errdefer {
+          B.destroy(allocator);
+          C.destroy(allocator);
+      }
+      const a_thing = try allocator.create(AnThing);
+      errdefer allocator.destroy(a_thing);
+      A = try doStuffWithIt(B, C, a_thing);
+    }
+```
+Because if either `try` fails, `A` remains unassigned.  Zitron will
+destroy the value of `foe` (if needed) since it wasn't captured, and
+`A` never receives a value, so all is well.  If your code needs to
+throw below the assignment to `A`, you have to clean it up, just like
+`a_thing` above.
+
+Your author believes that while this is relatively straightforward,
+it was well worth making a section to discuss, nonetheless.  Debugging
+generated code is a special kind of hell, one best avoided.
+
+Also worth noting: the function in which the action code takes place
+will clean up the parser stack only in relation to the rule which
+failed.  Any amount of rule nesting which happens to be present will
+remain on the stack, and it's up to your code how you want to handle
+that.
+
+The idea is to make it safe to guard `try` statements with just:
+
+```zig
+{
+    // ...
+    errdefer parser.deinit();
+    // ...
+}
+```
+
+But the parser itself does not clean up the stack, if and when an
+error is thrown from within `parser.parse`.
+
+### 4.3 Precedence Rules <a id="precrules">
+
+Zitron resolves parsing ambiguities in exactly the same way as yacc and
+bison.  A shift-reduce conflict is resolved in favor of the shift, and a
 reduce-reduce conflict is resolved by reducing whichever rule comes
 first in the grammar file.
 
-Just like in yacc and bison, Lemon allows a measure of control over the
-resolution of parsing conflicts using precedence rules. A precedence
+Just like in yacc and bison, Zitron allows a measure of control over the
+resolution of parsing conflicts using precedence rules.  A precedence
 value can be assigned to any terminal symbol using the
 [`%left`](#pleft), [`%right`](#pright) or [`%nonassoc`](#pnonassoc)
-directives. Terminal symbols mentioned in earlier directives have a
+directives.  Terminal symbols mentioned in earlier directives have a
 lower precedence than terminal symbols mentioned in later directives.
 For example:
 
@@ -543,8 +765,8 @@ For example:
        %right EXP NOT.
 
 In the preceding sequence of directives, the AND operator is defined to
-have the lowest precedence. The OR operator is one precedence level
-higher. And so forth. Hence, the grammar would attempt to group the
+have the lowest precedence.  The OR operator is one precedence level
+higher.  And so forth.  Hence, the grammar would attempt to group the
 ambiguous expression
 
          a AND b OR c
@@ -554,7 +776,7 @@ like this
          a AND (b OR c).
 
 The associativity (left, right or nonassoc) is used to determine the
-grouping when the precedence is the same. AND is left-associative in our
+grouping when the precedence is the same.  AND is left-associative in our
 example, so
 
          a AND b AND c
@@ -579,21 +801,24 @@ is an error.
 
 The precedence of non-terminals is transferred to rules as follows: The
 precedence of a grammar rule is equal to the precedence of the left-most
-terminal symbol in the rule for which a precedence is defined. This is
+terminal symbol in the rule for which a precedence is defined.  This is
 normally what you want, but in those cases where you want the precedence
 of a grammar rule to be something different, you can specify an
 alternative precedence symbol by putting the symbol in square braces
-after the period at the end of the rule and before any C-code. For
+after the period at the end of the rule and before any Zig code.  For
 example:
 
        expr = MINUS expr.  [NOT]
 
 This rule has a precedence equal to that of the NOT symbol, not the
-MINUS symbol as would have been the case by default.
+MINUS symbol as would have been the case by default.  It's valid to
+define a token (say, UMINUS) which is only assigned a precedence, and
+does not show up as a production in the grammar.  But it's better to
+reuse an actual token when possible.
 
 With the knowledge of how precedence is assigned to terminal symbols and
 individual grammar rules, we can now explain precisely how parsing
-conflicts are resolved in Lemon. Shift-reduce conflicts are resolved as
+conflicts are resolved in Zitron. Shift-reduce conflicts are resolved as
 follows:
 
 - If either the token to be shifted or the rule to be reduced lacks
@@ -625,21 +850,20 @@ Reduce-reduce conflicts are resolved this way:
 - Otherwise, resolve the conflict by reducing by the rule that appears
   first in the grammar, and report a parsing conflict.
 
-[]{#special}
 
-### 4.4 Special Directives
+### 4.4 Special Directives <a id="special">
 
-The input grammar to Lemon consists of grammar rules and special
-directives. We\'ve described all the grammar rules, so now we\'ll talk
+The input grammar to Zitron consists of grammar rules and special
+directives. We've described all the grammar rules, so now we'll talk
 about the special directives.
 
-Directives in Lemon can occur in any order. You can put them before the
+Directives in Zitron can occur in any order. You can put them before the
 grammar rules, or after the grammar rules, or in the midst of the
-grammar rules. It doesn\'t matter. The relative order of directives used
+grammar rules. It doesn't matter. The relative order of directives used
 to assign precedence to terminals is important, but other than that, the
-order of directives in Lemon is arbitrary.
+order of directives in Zitron is arbitrary.
 
-Lemon supports the following special directives:
+Zitron supports the following special directives:
 
 - [`%code`](#pcode)
 - [`%default_destructor`](#default_destructor)
@@ -649,7 +873,6 @@ Lemon supports the following special directives:
 - [`%endif`](#pifdef)
 - [`%extra_argument`](#extraarg)
 - [`%fallback`](#pfallback)
-- [`%free`](#reallc)
 - [`%if`](#pifdef)
 - [`%ifdef`](#pifdef)
 - [`%ifndef`](#pifdef)
@@ -660,7 +883,6 @@ Lemon supports the following special directives:
 - [`%parse_accept`](#parse_accept)
 - [`%parse_failure`](#parse_failure)
 - [`%right`](#pright)
-- [`%realloc`](#reallc)
 - [`%stack_overflow`](#stack_overflow)
 - [`%stack_size`](#stack_size)
 - [`%start_symbol`](#start_symbol)
@@ -668,7 +890,8 @@ Lemon supports the following special directives:
 - [`%token`](#token)
 - [`%token_class`](#token_class)
 - [`%token_destructor`](#token_destructor)
-- [`%token_prefix`](#token_prefix)
+- [`%token_enum`](#token_enum)
+- [`%token_enum_integer`](#token_enum)
 - [`%token_type`](#token_type)
 - [`%type`](#ptype)
 - [`%wildcard`](#pwildcard)
@@ -676,11 +899,10 @@ Lemon supports the following special directives:
 Each of these directives will be described separately in the following
 sections:
 
-[]{#pcode}
 
-#### 4.4.1 The `%code` directive
+#### 4.4.1 The `%code` directive <a id="pcode">
 
-The `%code` directive is used to specify additional C code that is added
+The `%code` directive is used to specify additional Zig code that is added
 to the end of the main output file. This is similar to the
 [`%include`](#pinclude) directive except that `%include` is inserted at
 the beginning of the main output file.
@@ -691,13 +913,12 @@ tokenizer or even the "main()" function as part of the output file.
 There can be multiple `%code` directives. The arguments of all `%code`
 directives are concatenated.
 
-[]{#default_destructor}
 
-#### 4.4.2 The `%default_destructor` directive
+#### 4.4.2 The `%default_destructor` directive <a id="default_destructor">
 
 The `%default_destructor` directive specifies a destructor to use for
 non-terminals that do not have their own destructor specified by a
-separate `%destructor` directive. See the documentation on the
+separate `%destructor` directive.  See the documentation on the
 [`%destructor`](#destructor) directive below for additional information.
 
 In some grammars, many different non-terminal symbols have the same data
@@ -705,31 +926,45 @@ type and hence the same destructor. This directive is a convenient way
 to specify the same destructor for all those non-terminals using a
 single statement.
 
-[]{#default_type}
+Zig being Zig, this generally looks like this:
 
-#### 4.4.3 The `%default_type` directive
+    allocator.destroy($$);
 
-The `%default_type` directive specifies the data type of non-terminal
+Or the also-popular
+
+    $$.destroy(allocator);
+
+Since this is a default, you only get one, so pick a lane.
+
+In this and all cases, `allocator` is the allocator provided to the parser
+type during creation.
+
+Destructor code is not allowed to throw: resource deallocation must
+succed.
+
+
+#### 4.4.3 The `%default_type` directive <a id="default_type">
+
+The `%default_type` directive specifies the data type of **non-terminal**
 symbols that do not have their own data type defined using a separate
 [`%type`](#ptype) directive.
 
-[]{#destructor}
 
-#### 4.4.4 The `%destructor` directive
+#### 4.4.4 The `%destructor` directive <a id="destructor">
 
 The `%destructor` directive is used to specify a destructor for a
 non-terminal symbol. (See also the
 [`%token_destructor`](#token_destructor) directive which is used to
 specify a destructor for terminal symbols.)
 
-A non-terminal\'s destructor is called to dispose of the non-terminal\'s
+A non-terminal's destructor is called to dispose of the non-terminal's
 value whenever the non-terminal is popped from the stack. This includes
 all of the following circumstances:
 
 - When a rule reduces and the value of a non-terminal on the right-hand
-  side is not linked to C code.
+  side is not linked to Zig code.
 - When the stack is popped during error processing.
-- When the ParseFree() function runs.
+- When the `parser.destroy()` or `parser.deinit()` functions are run.
 
 The destructor can do whatever it wants with the value of the
 non-terminal, but its design is to deallocate memory or other resources
@@ -737,86 +972,111 @@ held by that non-terminal.
 
 Consider an example:
 
-       %type nt {void*}
-       %destructor nt { free($$); }
-       nt(A) ::= ID NUM.   { A = malloc( 100 ); }
+       %type nt { []u8 }
+       %destructor nt { allocator.free($$); }
+
+       nt(A) ::= ID NUM(N).   { A = try allocator.alloc(u8, N.val.?); }
 
 This example is a bit contrived, but it serves to illustrate how
-destructors work. The example shows a non-terminal named "nt" that
-holds values of type "void\*". When the rule for an "nt" reduces, it
-sets the value of the non-terminal to space obtained from malloc().
-Later, when the nt non-terminal is popped from the stack, the destructor
-will fire and call free() on this malloced space, thus avoiding a memory
-leak. (Note that the symbol "\$\$" in the destructor code is replaced
-by the value of the non-terminal.)
+destructors work. The example shows a non-terminal named `nt` that
+holds values of type `[]u8`.  We're making the further assumption that
+the token type (see [%token-type](#4420-the-token-directive)) has a
+`?usize` field called `val`, which the tokenizer helpfully fills with
+the indicated number.  When the rule for an `nt` reduces, it sets the
+value of the non-terminal to space obtained from the allocator.  Later,
+when the nt non-terminal is popped from the stack, the destructor will
+fire and call `allocator.free` on this allocated space, thus avoiding
+a memory leak. (Note that the symbol `$$` in the destructor code is
+replaced by the value of the non-terminal.)
 
 It is important to note that the value of a non-terminal is passed to
 the destructor whenever the non-terminal is removed from the stack,
-unless the non-terminal is used in a C-code action. If the non-terminal
-is used by C-code, then it is assumed that the C-code will take care of
-destroying it. More commonly, the value is used to build some larger
-structure, and we don\'t want to destroy it, which is why the destructor
+unless the non-terminal is used in a Zig code action.  If the non-terminal
+is used by Zig code, then it is assumed that the Zig code will take care of
+destroying it.  More commonly, the value is used to build some larger
+structure, and we don't want to destroy it, which is why the destructor
 is not called in this circumstance.
 
 Destructors help avoid memory leaks by automatically freeing allocated
-objects when they go out of scope. To do the same using yacc or bison is
+objects when they go out of scope.  To do the same using yacc or bison is
 much more difficult.
 
-[]{#extraarg}
+Note that defining a null destructor is valid, just say `{ }`, with the
+space, or leave a comment:
 
-#### 4.4.5 The `%extra_argument` directive
+    %type foobar isize
+    %destructor foobar "// foobar is an integer, no destructor"
 
-The `%extra_argument` directive instructs Lemon to add a 4th parameter
-to the parameter list of the Parse() function it generates. Lemon
-doesn\'t do anything itself with this extra argument, but it does make
-the argument available to C-code action routines, destructors, and so
-forth. For example, if the grammar file contains:
+This can be useful if a `%default_destructor` is defined, but some
+values live directly on the parser stack.  Note the wrinkle: the
+`%default_destructor` is called for any non-token type which doesn't
+have its own `%destructor`, and the `%default_type` goes to any
+non-token type which doesn't have its own `%type`, but these can be
+disjoint.  Defining a null destructor can solve any problem which arises
+from this.
 
-        %extra_argument { MyStruct *pAbc }
+Destructor code is not allowed to throw: resource deallocation must
+succed.
 
-Then the Parse() function generated will have an 4th parameter of type
-"MyStruct\*" and all action routines will have access to a variable
-named "pAbc" that is the value of the 4th parameter in the most recent
-call to Parse().
+#### 4.4.5 The `%extra_argument` directive <a id="extraarg">
+
+The `%extra_argument` directive instructs Zitron to add a fourth parameter
+(or third, depending on how you look at it) to the parameter list of the
+`Parser.parse` function it generates.  Zitron doesn't do anything itself with
+this extra argument, but it does make the argument available to Zig code
+action routines, destructors, and so forth.  For example, if the grammar
+file contains:
+
+    %extra_argument { p_abc: *MyStruct }
+
+Then the `Parser.parse` function generated will have an 4th parameter
+of type `*MyStruct` and all action routines will have access to a
+variable named "p_abc" that is the value of the 4th parameter in the
+most recent call to `try parser.parse(token_enum, token, p_abc)`.
+
+Fourth, that is, counting the receiver as a parameter.  This section,
+like most, is translated from the Lemon documentation, and C is lacking
+such a pleasant affordance.
 
 The `%extra_context` directive works the same except that it is passed
-in on the ParseAlloc() or ParseInit() routines instead of on Parse().
+in on the `Parse.init` or `Parse.create` functions, instead of on
+`parser.parse`.
 
-[]{#extractx}
 
-#### 4.4.6 The `%extra_context` directive
+#### 4.4.6 The `%extra_context` directive <a id="extractx">
 
-The `%extra_context` directive instructs Lemon to add a 2nd parameter to
-the parameter list of the ParseAlloc() and ParseInit() functions. Lemon
-doesn\'t do anything itself with these extra argument, but it does store
-the value make it available to C-code action routines, destructors, and
+The `%extra_context` directive instructs Zitron to add an additional parameter to
+the parameter list of the `Parse.init` and `Parse.create` functions.  Zitron
+doesn't do anything itself with this extra argument, but it does store
+the value and makes it available to Zig code action routines, destructors, and
 so forth. For example, if the grammar file contains:
 
-        %extra_context { MyStruct *pAbc }
+    %extra_context{ p_abc: *MyStruct }
 
-Then the ParseAlloc() and ParseInit() functions will have an 2nd
-parameter of type "MyStruct\*" and all action routines will have
-access to a variable named "pAbc" that is the value of that 2nd
-parameter.
+Then the `Parse.init` and `Parse.create` functions will have a third
+(for `init`) and second (for `create`) parameter of type `*MyStruct`, after
+the allocator, and all action routines will have access to a variable
+named `p_abc` that is the value of that parameter.
 
-The `%extra_argument` directive works the same except that it is passed
-in on the Parse() routine instead of on ParseAlloc()/ParseInit().
+The `%extra_argument` directive works the same, except that it is
+passed in on the `parser.parse` routine, instead of on `Parse.init` and
+`Parse.create`.  Both directives will create a field on Parser which has
+the same identifier.
 
-[]{#pfallback}
 
-#### 4.4.7 The `%fallback` directive
+#### 4.4.7 The `%fallback` directive <a id="pfallback">
 
 The `%fallback` directive specifies an alternative meaning for one or
-more tokens. The alternative meaning is tried if the original token
+more tokens.  The alternative meaning is tried if the original token
 would have generated a syntax error.
 
 The `%fallback` directive was added to support robust parsing of SQL
-syntax in [SQLite](https://sqlite.org/). The SQL language contains a
+syntax in [SQLite](https://sqlite.org/).  The SQL language contains a
 large assortment of keywords, each of which appears as a different token
-to the language parser. SQL contains so many keywords that it can be
-difficult for programmers to keep up with them all. Programmers will,
+to the language parser.  SQL contains so many keywords that it can be
+difficult for programmers to keep up with them all.  Programmers will,
 therefore, sometimes mistakenly use an obscure language keyword for an
-identifier. The `%fallback` directive provides a mechanism to tell the
+identifier.  The `%fallback` directive provides a mechanism to tell the
 parser: "If you are unable to parse this keyword, try treating it as an
 identifier instead."
 
@@ -825,67 +1085,71 @@ The syntax of `%fallback` is as follows:
 > `%fallback` *ID* *TOKEN\...* **.**
 
 In words, the `%fallback` directive is followed by a list of token names
-terminated by a period. The first token name is the fallback token ---
-the token to which all the other tokens fall back to. The second and
+terminated by a period.  The first token name is the fallback token ---
+the token to which all the other tokens fall back to.  The second and
 subsequent arguments are tokens which fall back to the token identified
 by the first argument.
 
-[]{#pifdef}
+Zitron note: `%fallback` is not, as yet, tested in Zitron.  While it
+_should_ work, that _should_ always does a certain amount of heavy
+lifting.
 
-#### 4.4.8 The `%if` directive and its friends
+
+#### 4.4.8 The `%if` directive and its friends <a id="pifdef">
 
 The `%if`, `%ifdef`, `%ifndef`, `%else`, and `%endif` directives are
-similar to #if, #ifdef, #ifndef, #else, and #endif in the
-C-preprocessor, just not as general. Each of these directives must begin
+similar to `#if`, `#ifdef`, `#ifndef`, `#else`, and `#endif` in the
+C-preprocessor, just not as general.  Each of these directives must begin
 at the left margin. No whitespace is allowed between the "%" and the
 directive name.
 
-Grammar text in between "`%ifdef MACRO`" and the next nested
-"`%endif`" is ignored unless the "-DMACRO" command-line option is
-used. Grammar text between "`%ifndef MACRO`" and the next nested
-"`%endif`" is included except when the "-DMACRO" command-line option
+Grammar text in between `%ifdef MACRO` and the next nested
+`%endif` is ignored unless the `-DMACRO` command-line option is
+used. Grammar text between `%ifndef MACRO` and the next nested
+`%endif` is included except when the `-DMACRO` command-line option
 is used.
 
-The text in between "`%if` *CONDITIONAL*" and its corresponding
-`%endif` is included only if *CONDITIONAL* is true. The CONDITION is one
-or more macro names, optionally connected using the "\|\|" and "&&"
-binary operators, the "!" unary operator, and grouped using balanced
+The text in between `%if *CONDITIONAL*` and its corresponding `%endif`
+is included only if `*CONDITIONAL*` is true. The CONDITION is one
+or more macro names, optionally connected using the `||` and `&&`
+binary operators, the `!` unary operator, and grouped using balanced
 parentheses. Each term is true if the corresponding macro exists, and
 false if it does not exist.
 
-An optional "`%else`" directive can occur anywhere in between a
+An optional `%else` directive can occur anywhere in between a
 `%ifdef`, `%ifndef`, or `%if` directive and its corresponding `%endif`.
 
 Note that the argument to `%ifdef` and `%ifndef` is intended to be a
-single preprocessor symbol name, not a general expression. Use the
-"`%if`" directive for general expressions.
+single preprocessor symbol name, not a general expression.  Use the
+`%if` directive for general expressions.
 
-[]{#pinclude}
 
-#### 4.4.9 The `%include` directive
+#### 4.4.9 The `%include` directive <a id="pinclude">
 
-The `%include` directive specifies C code that is included at the top of
-the generated parser. You can include any text you want --- the Lemon
-parser generator copies it blindly. If you have multiple `%include`
+The `%include` directive specifies Zig code that is included at the top of
+the generated parser.  You can include any text you want[‡] - the Zitron
+parser generator copies it blindly.  If you have multiple `%include`
 directives in your grammar file, their values are concatenated so that
 all `%include` code ultimately appears near the top of the generated
 parser, in the same order as it appeared in the grammar.
 
-The `%include` directive is very handy for getting some extra #include
-preprocessor statements at the beginning of the generated parser. For
-example:
-
-       %include {#include <unistd.h>}
-
-This might be needed, for example, if some of the C actions in the
-grammar call functions that are prototyped in unistd.h.
-
 Use the [`%code`](#pcode) directive to add code to the end of the
 generated parser.
 
-[]{#pleft}
+Zitron note: Zig, quite unlike C, is serenely unconcerned with the order
+in which identifiers are added to a container.  So the existence of
+separate `%include` and `%code` directives is not as critical.  It does
+seem to make grammar files easier to read, however, and there was no
+advantage to be had in removing one of them, so there we have it.
 
-#### 4.4.10 The `%left` directive
+[^‡]: The minimum amount of structurally-necessary parsing is
+performed, such that a Zig token such as `"oops! } lol"` does not
+prematurely terminate the code block.  This parser is meant to reliably
+accept valid Zig code, but much which is not valid Zig code can also
+pass without qualm.
+
+
+#### 4.4.10 The `%left` directive <a id="pleft">
 
 The `%left` directive is used (along with the [`%right`](#pright) and
 [`%nonassoc`](#pnonassoc) directives) to declare precedences of terminal
@@ -905,93 +1169,101 @@ Note the period that terminates each `%left`, `%right` or `%nonassoc`
 directive.
 
 LALR(1) grammars can get into a situation where they require a large
-amount of stack space if you make heavy use or right-associative
-operators. For this reason, it is recommended that you use `%left`
+amount of stack space if you make heavy use of right-associative
+operators.  For this reason, it is recommended that you use `%left`
 rather than `%right` whenever possible.
 
-[]{#pname}
 
-#### 4.4.11 The `%name` directive
+#### 4.4.11 The `%name` directive <a id="pname">
 
-By default, the functions generated by Lemon all begin with the
-five-character string "Parse". You can change this string to something
-different using the `%name` directive. For instance:
+By default, the main type generated by Zitron is called `Parser`.
+You can change this string to something different using the `%name`
+directive.  For instance:
 
        %name Abcde
 
-Putting this directive in the grammar file will cause Lemon to generate
-functions named
+Putting this directive in the grammar file will cause Zitron to
+generate a parser named `Abcde`.
 
-- AbcdeAlloc(),
-- AbcdeFree(),
-- AbcdeTrace(), and
-- Abcde().
+The `%name` directive is another C-ism, frankly.  The most Zig-idiomatic
+way to do things would arguably be to make the entire grammar file
+into the parser's type.  While this was considered, it was ultimately
+rejected.  Treating the grammar file as a 'naked container' is the most
+flexible approach, which at least allows for a single-file executable to
+be specified in a `.zy` file, if desired.  Ultimately, the extra effort
+involved did not seem justified by the neatness of the result.
 
-The `%name` directive allows you to generate two or more different
-parsers and link them all into the same executable.
 
-[]{#pnonassoc}
-
-#### 4.4.12 The `%nonassoc` directive
+#### 4.4.12 The `%nonassoc` directive <a id="pnonassoc">
 
 This directive is used to assign non-associative precedence to one or
-more terminal symbols. See the section on [precedence rules](#precrules)
+more terminal symbols.  See the section on [precedence rules](#precrules)
 or on the [`%left`](#pleft) directive for additional information.
 
-[]{#parse_accept}
 
-#### 4.4.13 The `%parse_accept` directive
+#### 4.4.13 The `%parse_accept` directive <a id="parse_accept">
 
-The `%parse_accept` directive specifies a block of C code that is
+The `%parse_accept` directive specifies a block of Zig code that is
 executed whenever the parser accepts its input string. To "accept" an
 input string means that the parser was able to process all tokens
 without error.
 
 For example:
 
-       %parse_accept {
-          printf("parsing complete!\n");
-       }
+    %parse_accept {
+        std.debug.print("parsing complete!\n", .{});
+    }
 
-[]{#parse_failure}
+This code is throw-friendly, meaning you can `try` or return an
+error in some other manner.
 
-#### 4.4.14 The `%parse_failure` directive
 
-The `%parse_failure` directive specifies a block of C code that is
+#### 4.4.14 The `%parse_failure` directive <a id="parse_failure">
+
+The `%parse_failure` directive specifies a block of Zig code that is
 executed whenever the parser fails complete. This code is not executed
 until the parser has tried and failed to resolve an input error using is
 usual error recovery strategy. The routine is only invoked when parsing
 is unable to continue.
 
-       %parse_failure {
-         fprintf(stderr,"Giving up.  Parser is hopelessly lost...\n");
-       }
+    %parse_failure {
+        std.debug.print("Giving up.  Parser is hopelessly lost...\n", .{});
+    }
 
-[]{#pright}
+This code is throw-friendly, meaning you can `try` or return an
+error in some other manner.
 
-#### 4.4.15 The `%right` directive
+
+#### 4.4.15 The `%right` directive <a id="pright">
 
 This directive is used to assign right-associative precedence to one or
 more terminal symbols. See the section on [precedence rules](#precrules)
 or on the [%left](#pleft) directive for additional information.
 
-[]{#stack_overflow}
 
-#### 4.4.16 The `%stack_overflow` directive
+#### 4.4.16 The `%stack_overflow` directive <a id="stack_overflow">
 
-The `%stack_overflow` directive specifies a block of C code that is
-executed if the parser\'s internal stack ever overflows. Typically this
+The `%stack_overflow` directive specifies a block of Zig code that is
+executed if the parser's internal stack ever overflows.  Typically this
 just prints an error message. After a stack overflow, the parser will be
 unable to continue and must be reset.
 
-       %stack_overflow {
-         fprintf(stderr,"Giving up.  Parser stack overflow\n");
-       }
+    %stack_overflow {
+        std.debug.print("Giving up.  Parser is stack overflow\n", .{});
+    }
+
+This code is throw-friendly, meaning you can `try` or return an
+error in some other manner.
+
+Zitron will always try to grow the stack using the provided allocator.
+If this fails, we catch the `error.OutOfMemory` and call this routine.
+If you wish to limit the available stack space, perhaps put it on the
+program stack: keep reading.
 
 You can help prevent parser stack overflows by avoiding the use of right
-recursion and right-precedence operators in your grammar. Use left
+recursion and right-precedence operators in your grammar.  Use left
 recursion and and left-precedence operators instead to encourage rules
-to reduce sooner and keep the stack size down. For example, do rules
+to reduce sooner and keep the stack size down.  For example, do rules
 like this:
 
        list ::= list element.      // left-recursion.  Good!
@@ -1002,195 +1274,274 @@ Not like this:
        list ::= element list.      // right-recursion.  Bad!
        list ::= .
 
-[]{#stack_size}
+Zitron note: Lemon is rather cleverly macro-engineered so that the
+parser can either be allocated on the stack, or the heap, and may or
+may not be able to allocate more stack when the limit (see below) is
+reached.  In Zig, we can use a [`FixedBufferAllocator`][fba] to obtain
+the same effect, or nearly so, which brings us to:
 
-#### 4.4.17 The `%stack_size` directive
+[fba]: https://ziglang.org/documentation/master/std/#std.heap.FixedBufferAllocator
 
-If stack overflow is a problem and you can\'t resolve the trouble by
+
+#### 4.4.17 The `%stack_size` directive <a id="stack_size">
+
+If stack overflow is a problem and you can't resolve the trouble by
 using left-recursion, then you might want to increase the size of the
-parser\'s stack using this directive. Put an positive integer after the
-`%stack_size` directive and Lemon will generate a parse with a stack of
-the requested size. The default value is 100.
+parser's stack using this directive.  Put an positive integer after the
+`%stack_size` directive and Zitron will generate a parse with a stack of
+the requested size.  The default value is 256.
 
-       %stack_size 2000
+    %stack_size 2048
 
-[]{#start_symbol}
+Zitron note: unlike Lemon, Zitron will always try and grow the stack
+if it can.  Every `Parser` must be provided with an `Allocator`, and
+the stack itself is always allocated using this.  The `%stack_size`
+directive determines the initial level of the allocation.
 
-#### 4.4.18 The `%start_symbol` directive
+The `Parser` can live on the stack, just use `.init` instead of
+`.create`, and as described above, the parse stack can be allocated on
+the program stack using the `FixedBufferAllocator`.  Indeed, a hybrid
+strategy can be pursued, allocating initial stack space onto the program
+stack with a [`StackFallbackAllocator`][sfa], while allowing unusual
+parses to reallocate to the heap in the event.
 
-By default, the start symbol for the grammar that Lemon generates is the
-first non-terminal that appears in the grammar file. But you can choose
+As a convenience, the size of the initially allocated stack is calculated
+and available from the identifier `parser_stack_minimum`.  This size does
+not include the size of a `Parser`, just the stack, but use cases where
+this is helpful will build the parser on the stack directly.
+
+That would look something like this:
+
+```zig
+const buf: [parser_stack_minimum]u8 = undefined;
+const fba = std.heap.FixedBufferAllocator.init(&buf);
+const allocator = fba.allocator;
+const parser: Parser = undefined;
+const ctx: ParserContext = .init(heap_allocator); // If you want to
+// This sets up the stack and assigns every parser field a valid value
+parser.init(allocator, ctx) catch unreachable; // Can't run out by definition
+// etc
+```
+
+With this setup, any attempt to grow the stack will fail with
+`error.OutOfMemory`.  This assumes that user code will not take
+advantage of `allocator`, needing neither to allocate further memory nor
+to destroy it later.  If this is invalid, there are several options: use
+`buf` for a `StackFallbackAllocator` instead, pad the `buf` allocation
+enough to handle expected allocations, or provide an `%extra_context`
+containing a different allocator which user code makes use of.  You just
+can't call it `allocator` in user code, `ctx.allocator` would be fine
+presuming you named the context object `ctx`.
+
+[sfa]: https://ziglang.org/documentation/master/std/#std.heap.StackFallbackAllocator
+
+
+#### 4.4.18 The `%start_symbol` directive <a id="start_symbol">
+
+By default, the start symbol for the grammar that Zitron generates is the
+first non-terminal that appears in the grammar file.  But you can choose
 a different start symbol using the `%start_symbol` directive.
 
-       %start_symbol  prog
+    %start_symbol  prog
 
-[]{#syntax_error}
+This can be used with `%ifdef` conditionals to define a subset of the
+grammar as its own parser, for example.
 
-#### 4.4.19 The `%syntax_error` directive
 
-See [Error Processing](#errors).
+#### 4.4.19 The `%syntax_error` directive <a id="syntax_error">
 
-[]{#token}
+Specifies code to run when a syntax error is encountered.
 
-#### 4.4.20 The `%token` directive
+This code is throw-friendly, meaning you can `try` or return an
+error in some other manner.
+
+See [Error Processing](#errors) for more details on how Zitron handles
+this situation when it arises.
+
+
+#### 4.4.20 The `%token` directive <a id="token">
 
 Tokens are normally created automatically, the first time they are used.
 Any identifier that begins with an upper-case letter is a token.
 
 Sometimes it is useful to declare tokens in advance, however. The
 integer values assigned to each token determined by the order in which
-the tokens are seen. So by declaring tokens in advance, it is possible
+the tokens are seen.  So by declaring tokens in advance, it is possible
 to cause some tokens to have low-numbered values, which might be
 desirable in some grammers, or to have sequential values assigned to a
-sequence of related tokens. For this reason, the %token directive is
-provided to declare tokens in advance. The syntax is as follows:
+sequence of related tokens.  For this reason, the `%token` directive is
+provided to declare tokens in advance.  The syntax is as follows:
 
 > `%token` *TOKEN* *TOKEN\...* **.**
 
-The %token directive is followed by zero or more token symbols and
-terminated by a single ".". Each token named is created if it does not
-already exist. Tokens are created in order. []{#token_class}
+The `%token` directive is followed by zero or more token symbols and
+terminated by a single `.`.  Each token named is created if it does not
+already exist. Tokens are created in order.
 
-#### 4.4.21 The `%token_class` directive
+Note: the token enum generated for token names always has a "magic"
+token named `.end_of_input` with the value 0.  Therefore the first token
+mentioned, whether with a `%token` directive or within the grammar, will
+have the number `1`.
 
-Undocumented. Appears to be related to the MULTITERMINAL concept.
-[Implementation](http://sqlite.org/src/fdiff?v1=796930d5fc2036c7&v2=624b24c5dc048e09&sbs=0).
 
-[]{#token_destructor}
+#### 4.4.21 The `%token_class` directive <a id="token_class">
 
-#### 4.4.22 The `%token_destructor` directive
+Undocumented... in Lemon!  Having pored over the source code in sufficient
+detail to translate it into Zitron, we're prepared to spill the beans.
+
+As mentioned, multiple valid tokens for a single rule can be specified using
+the multiterminal syntax, like `PLUS|MINUS(O)`.  A token class allows such
+a set to be specified and treated as though it were a non-terminal rule
+in the grammar:
+
+    %token_class plus_minus PLUS|MINUS .
+
+Then
+
+    term(A) ::= expr(B) plus_minus(O) term(C) {
+      A = if (@O == .PLUS) B + C else B - C;
+    }
+
+While somewhat silly, this example illustrates a number of clever features
+of Lemon (and therefore Zitron) which are not in fact documented at the
+time of writing.
+
+
+#### 4.4.22 The `%token_destructor` directive <a id="token_destructor">
 
 The `%destructor` directive assigns a destructor to a non-terminal
-symbol. (See the description of the
-[`%destructor`](https://sqlite.org/src/doc/trunk/doc/%destructor)
-directive above.) The `%token_destructor` directive does the same thing
+symbol.  (See the description of the [`%destructor`](#destructor)
+directive above.)  The `%token_destructor` directive does the same thing
 for all terminal symbols.
 
 Unlike non-terminal symbols, which may each have a different data type
 for their values, terminals all use the same data type (defined by the
 [`%token_type`](#token_type) directive) and so they use a common
-destructor. Other than that, the token destructor works just like the
+destructor.  Other than that, the token destructor works just like the
 non-terminal destructors.
 
-[]{#token_prefix}
+One possibility is to create a [MemoryPool][mempool] for allocating tokens,
+include a pointer to it on (or as) the `%extra_context` argument,
+and recycle tokens accordingly:
 
-#### 4.4.23 The `%token_prefix` directive
+    %token_destructor { p_ctx.mem_pool.destroy($$); }
 
-Lemon generates #defines that assign small integer constants to each
-terminal symbol in the grammar. If desired, Lemon will add a prefix
-specified by this directive to each of the #defines it generates.
+Mostly a token type should be on the order of two to four machine
+words wide, and this may as well be copied by value, in which case no
+`%token_destructor` is needed.  But if you find yourself in need of a
+'fat token', this approach could come in handy.
 
-So if the default output of Lemon looked like this:
+[mempool]:https://ziglang.org/documentation/master/std/#std.heap.memory_pool.MemoryPool
 
-        #define AND              1
-        #define MINUS            2
-        #define OR               3
-        #define PLUS             4
 
-You can insert a statement into the grammar like this:
+#### 4.4.23 The `%token_enum` and `%token_enum_integer` directives <a id="token_enum">
 
-        %token_prefix    TOKEN_
+Zitron generates an enum representing all possible terminal token
+variants.  By default this is called `TokenKind`, but a custom name
+may be specified using the `%token_enum` directive.
 
-to cause Lemon to produce these symbols instead:
+    %token_enum MySpecialEnumType
 
-        #define TOKEN_AND        1
-        #define TOKEN_MINUS      2
-        #define TOKEN_OR         3
-        #define TOKEN_PLUS       4
+By default, this will generate an enum just large enough to
+hold all tokens, this can be set to whatever is convenient with
+`%token_enum_integer`:
 
-[]{#token_type}[]{#ptype}
+    %token_enum_integer u7
 
-#### 4.4.24 The `%token_type` and `%type` directives
+
+#### 4.4.24 The `%token_type` and `%type` directives <a id="token_type">
 
 These directives are used to specify the data types for values on the
-parser\'s stack associated with terminal and non-terminal symbols. The
-values of all terminal symbols must be of the same type. This turns out
-to be the same data type as the 3rd parameter to the Parse() function
-generated by Lemon. Typically, you will make the value of a terminal
-symbol be a pointer to some kind of token structure. Like this:
+parser's stack associated with terminal and non-terminal symbols.  The
+values of all terminal symbols must be of the same type.  This turns
+out to be the same data type as the 3rd parameter to the `Parser.parse`
+function generated by Zitron.  Typically, you will make the value of
+a terminal symbol be a pointer to some kind of token structure.  Like
+this:
 
-       %token_type    {Token*}
+       %token_type     "*Token"
 
 If the data type of terminals is not specified, the default value is
-"void\*".
+`void`.
 
-Non-terminal symbols can each have their own data types. Typically the
+Non-terminal symbols can each have their own data types.  Typically the
 data type of a non-terminal is a pointer to the root of a parse tree
-structure that contains all information about that non-terminal. For
+structure that contains all information about that non-terminal.  For
 example:
 
-       %type   expr  {Expr*}
+       %type expr "*Expr"
 
-Each entry on the parser\'s stack is actually a union containing
+Each entry on the parser's stack is actually a union (bare) containing
 instances of all data types for every non-terminal and terminal symbol.
-Lemon will automatically use the correct element of this union depending
-on what the corresponding non-terminal or terminal symbol is. But the
+Zitron will automatically use the correct element of this union depending
+on what the corresponding non-terminal or terminal symbol is.  But the
 grammar designer should keep in mind that the size of the union will be
-the size of its largest element. So if you have a single non-terminal
+the size of its largest element.  So if you have a single non-terminal
 whose data type requires 1K of storage, then your 100 entry parser stack
-will require 100K of heap space. If you are willing and able to pay that
-price, fine. You just need to know.
+will require 100K of heap space.  If you are willing and able to pay that
+price, fine.  You just need to know.
 
-[]{#pwildcard}
 
-#### 4.4.25 The `%wildcard` directive
+#### 4.4.25 The `%wildcard` directive <a id="pwildcard">
 
 The `%wildcard` directive is followed by a single token name and a
-period. This directive specifies that the identified token should match
+period.  This directive specifies that the identified token should match
 any input token.
 
 When the generated parser has the choice of matching an input against
 the wildcard token and some other token, the other token is always used.
 The wildcard token is only matched if there are no alternatives.
 
-[]{#reallc}
+Your author finds this functionality quite mysterious.  It's used in
+the SQLite parser as part of the virtual table syntax, for what that's
+worth.
 
-#### 4.4.26 The `%realloc` and `%free` directives
 
-The `%realloc` and `%free` directives defines function that allocate and
-free heap memory. The signatures of these functions should be the same
-as the realloc() and free() functions from the standard C library.
-
-If both of these functions are defined then these functions are used to
-allocate and free memory for supplemental parser stack space, if the
-initial parse stack space is exceeded. The initial parser stack size is
-specified by either `%stack_size` or the -DYYSTACKDEPTH compile-time
-flag. []{#errors}
-
-## 5.0 Error Processing
+## 5.0 Error Processing <a id="errors">
 
 After extensive experimentation over several years, it has been
 discovered that the error recovery strategy used by yacc is about as
-good as it gets. And so that is what Lemon uses.
+good as it gets[^⁙].  And so that is what Zitron uses.
 
-When a Lemon-generated parser encounters a syntax error, it first
-invokes the code specified by the `%syntax_error` directive, if any. It
-then enters its error recovery strategy. The error recovery strategy is
+When a Zitron-generated parser encounters a syntax error, it first
+invokes the code specified by the `%syntax_error` directive, if any.  It
+then enters its error recovery strategy.  The error recovery strategy is
 to begin popping the parsers stack until it enters a state where it is
-permitted to shift a special non-terminal symbol named "error". It
-then shifts this non-terminal and continues parsing. The `%syntax_error`
+permitted to shift a special non-terminal symbol named "error".  It
+then shifts this non-terminal and continues parsing.  The `%syntax_error`
 routine will not be called again until at least three new tokens have
 been successfully shifted.
 
-If the parser pops its stack until the stack is empty, and it still is
-unable to shift the error symbol, then the
+If the parser pops its stack until the stack is empty, and
+it still is unable to shift the error symbol, then the
 [`%parse_failure`](#parse_failure) routine is invoked and the parser
-resets itself to its start state, ready to begin parsing a new file.
+resets itself to its start state, ready to begin parsing a new string.
 This is what will happen at the very first syntax error, of course, if
 there are no instances of the "error" non-terminal in your grammar.
 
-[]{#history}
+Note that if you throw from `%syntax_error`, no recovery will
+be attempted, but the stack will not be reset either.  Calling
+`parser.reset|deinit|destroy` will take care of that for you.
 
-## 6.0 History of Lemon
+[^⁙]: The author of Zitron is [not sure he agrees with this
+assessment][jefferey].  On a long-term time horizon it would be
+quite nice to integrate that work into Zitron, perhaps with a bit of
+[Tratt][tratt] as well.
+
+[jefferey]: (https://www.cs.tufts.edu/~nr/cs257/archive/clinton-jefferey/lr-error-messages.pdf)
+[tratt]: https://tratt.net/laurie/blog/2020/automatic_syntax_error_recovery.html
+
+
+## 6.0 History of Lemon <a id="history">
 
 Lemon was originally written by Richard Hipp sometime in the late 1980s
-on a Sun4 Workstation using K&R C. There was a companion LL(1) parser
-generator program named "Lime". The Lime source code has been lost.
+on a Sun4 Workstation using K&R C.  There was a companion LL(1) parser
+generator program named "Lime".  The Lime source code has been lost.
 
 The lemon.c source file was originally many separate files that were
-compiled together to generate the "lemon" executable. Sometime in the
+compiled together to generate the "lemon" executable.  Sometime in the
 1990s, the individual source code files were combined together into the
-current single large "lemon.c" source file. You can still see traces
+current single large "lemon.c" source file.  You can still see traces
 of original filenames in the code.
 
 Since 2001, Lemon has been part of the [SQLite
@@ -1202,14 +1553,32 @@ the following files:
 - [tool/lempar.c](https://sqlite.org/src/file/tool/lempar.c)
 - [doc/lemon.html](https://sqlite.org/src/file/doc/lemon.html)
 
-[]{#copyright}
+Zitron was pulled out of the ether during the summer of 2025, in full
+obeisance to the Programmer's Credo: We do these things, not because
+they are easy, but because we thought they would be easy.
 
-## 7.0 Copyright
+The name Zitron is a sort of pan-European compromise between several
+spellings of "citron", a word which refers to a different citrus
+entirely in English, but to the lemon in those European languages where
+it doesn't sound like lemon.  This artifice is guaranteed to please no
+one, much like the EU.
+
+Fun fact: Afrikaaners call it the _suerlemoen_.  _Lemoen_ itself
+refers to the orange, a fruit the Dutch have the audacity to call
+_sinaasappel_.  I wonder how that happened.
+
+
+## 7.0 Copyright <a id="copyright">
 
 All of the source code to Lemon, including the template parser file
 "lempar.c" and this documentation file ("lemon.html") are in the
 public domain. You can use the code for any purpose and without
 attribution.
+
+Source code and other for Zitron not explicitly demarcated as public
+domain is licensed under the zero-clause BSD license.  Some of the
+files in `/samples` are gratefully borrowed from other projects,
+you may find those licenses in the `/samples/licenses` folder.
 
 The code comes with no warranty. If it breaks, you get to keep both
 pieces.

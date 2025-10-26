@@ -1204,11 +1204,11 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
     const cp = cp: {
         if (sp.type == .terminal) {
             if (lemp.tokendest.len == 0) return;
-            try out.writeAll(" => {\n");
+            try out.writeAll("        => {\n");
             lineno.* += 1;
             break :cp lemp.tokendest;
         } else if (sp.destructor.len > 0) {
-            try out.writeAll(" => {\n");
+            try out.writeAll("        => {\n");
             lineno.* += 1;
             if (!lemp.nolinenosflag) {
                 lineno.* += 1;
@@ -1216,7 +1216,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
             }
             break :cp sp.destructor;
         } else if (lemp.vardest.len > 0) {
-            try out.writeAll(" => {\n");
+            try out.writeAll("        => {\n");
             lineno.* += 1;
             break :cp lemp.vardest;
         } else {
@@ -1227,7 +1227,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
     lineno.* += mem.count(u8, cp, "\n");
     while (mem.indexOfPos(u8, cp, cursor, "$$")) |i| {
         try out.writeAll(cp[cursor..i]);
-        try out.print("(yypminor->yy{d})", .{sp.dtnum});
+        try out.print("(yypminor.yy{d})", .{sp.dtnum});
         cursor = i + 2;
     }
     try out.writeAll(cp[cursor..]);
@@ -1237,7 +1237,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
         lineno.* += 1;
         try tplt_linedir(out, lineno.*, lemp.quoted_outname);
     }
-    try out.writeAll("},\n");
+    try out.writeAll("        },\n");
     lineno.* += 1;
     return;
 }
@@ -1257,7 +1257,7 @@ fn has_destructor(sp: *Symbol, lemp: *Zitron) bool {
 ///
 /// Return `true` if the expanded code requires that "yylhsminor" local variable
 /// to be defined.
-fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
+fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     var rc = false; // True if yylhsminor is used
     var dontUseRhs0 = false; // If true, use of left-most RHS label is illegal
     var lhsused = false; // True if the LHS element has been used
@@ -1269,13 +1269,14 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
     if (is_safe) {
         @memset(&used, false);
     }
-    const alloc = lemp.allocator;
+    const alloc = zyt.allocator;
     var fallback = std.heap.stackFallback(2048, alloc);
     const f_alloc = fallback.get();
     var string_builder: ArrayList(u8) = .empty;
     defer string_builder.deinit(f_alloc);
     const writer = string_builder.writer(f_alloc);
-    if (rp.code.len == 0) {
+    const cp = std.mem.trim(u8, rp.code, "\t \n");
+    if (cp.len == 0) {
         rp.code = "\n";
         rp.noCode = true;
     } else {
@@ -1288,12 +1289,12 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
         // The left-most RHS symbol has no value.  LHS direct is ok.  But
         // we have to call the destructor on the RHS symbol first.
         lhsdirect = true;
-        if (has_destructor(rp.rhs[0], lemp)) {
+        if (has_destructor(rp.rhs[0], zyt)) {
             if (p_check1) {
                 dprint("destructor: {s} {d}\n", .{ rp.lhs.name, rp.iRule });
             }
             try writer.print(
-                "            yy_destructor(yypParser,{d},&(yymsp - {d})[1].minor);\n",
+                "yy_destructor(yypParser,{d},&(yymsp - {d})[1].minor);\n",
                 .{ rp.rhs[0].index, rp.rhs.len },
             );
             alloc.free(rp.codePrefix);
@@ -1311,15 +1312,15 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
         lhsused = true;
         used[0] = true;
         if (rp.lhs.dtnum != rp.rhs[0].dtnum) {
-            ErrorMsg(lemp.filename, rp.ruleline, "" ++
+            ErrorMsg(zyt.filename, rp.ruleline, "" ++
                 "{s}({s}) and {s}({s}) share the same label but have " ++
                 "different datatypes.", .{ rp.lhs.name, rp.lhsalias, rp.rhs[0].name, rp.rhsalias[0] });
-            lemp.errorcnt += 1;
+            zyt.errorcnt += 1;
         }
     } else {
         string_builder.clearRetainingCapacity();
-        try writer.print("/*{s}-overwrites-{s}*/", .{ rp.lhsalias, rp.rhsalias[0] });
-        if (mem.indexOf(u8, rp.code, string_builder.items)) |skip_idx| {
+        try writer.print("// {s}-overwrites-{s}\n", .{ rp.lhsalias, rp.rhsalias[0] });
+        if (mem.indexOf(u8, std.mem.trimLeft(u8, rp.code, "\n \t"), string_builder.items)) |skip_idx| {
             // The code contains a special comment that indicates that it is safe
             // for the LHS label to overwrite left-most RHS label.
             zSkip = skip_idx;
@@ -1346,28 +1347,65 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
         // Build the translated code
         var i: usize = 0;
         var start: usize = 0;
-        const cp = std.mem.trim(u8, rp.code, "\t \n");
         var special_start: usize, var special_end: usize = .{ 0, 0 };
         while (i < cp.len) : (i += 1) {
-            if (i == zSkip) {
-                special_start = i;
-                dbgassert(cp[i] == '/');
+            // Handle comments
+            if (cp[i] == '/' and i < cp.len - 1 and cp[i + 1] == '/') {
+                // Special comment?
+                if (i == zSkip) {
+                    special_start = i;
+                    i += 2;
+                    while (i < cp.len and cp[i] != '\n') : (i += 1) {}
+                    try writer.writeAll(cp[start..i]);
+                    special_end = i;
+                    i -= 1; // Read the newline next round
+                    start = i;
+                    dontUseRhs0 = true;
+                    continue;
+                } else {
+                    i += 2;
+                    while (i < cp.len and cp[i] != '\n') : (i += 1) {}
+                    i -= 1;
+                    continue;
+                }
+            }
+            // Don't expand aliases inside strings either:
+            if (cp[i] == '\\' and i < cp.len - 1 and cp[i + 1] == '\\') {
+                // Skip multiline strings
                 i += 2;
-                while (i < cp.len and (cp[i] != '/' or cp[i - 1] != '*')) : (i += 1) {}
+                while (i < cp.len and cp[i] != '\n') : (i += 1) {}
+                i -= 1;
+                continue;
+            } else if (cp[i] == '"' or cp[i] == '\'') {
+                // String or character literals (since the latter can have " in it)
+                const startchar = cp[i];
+                var prevc: u8 = 0;
                 i += 1;
-                try writer.writeAll(cp[start..i]);
-                start = i;
-                special_end = i;
-                dontUseRhs0 = true;
+                while (i < cp.len and (cp[i] != startchar or prevc == '\\')) : (i += 1) {
+                    if (cp[i] == '\n') {
+                        ErrorMsg(zyt.filename, rp.ruleline, "" ++
+                            "Zig code on this line contains an un-terminated string, or " ++
+                            "botched character literal.", .{});
+                        zyt.errorcnt += 1;
+                        i -= 1;
+                        continue;
+                    }
+                    if (prevc == '\\')
+                        prevc = 0
+                    else
+                        prevc = cp[i]; // clever
+                }
                 continue;
             }
+
             if (cp[i] == '\n') {
-                try writer.writeAll(cp[start..i]);
                 if (i == cp.len) break;
                 i += 1;
+                try writer.writeAll(cp[start..i]);
                 while (i < cp.len and (cp[i] == ' ' or cp[i] == '\t')) : (i += 1) {}
                 try writer.writeByteNTimes(' ', 3 * 4);
                 start = i;
+                i -= 1;
                 continue;
             }
             if ((isAlpha(cp[i]) or cp[i] == '@') and
@@ -1378,13 +1416,13 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
                 const at = if (cp[i] == '@') true else false;
                 if (at) i += 1;
                 var id = i;
-                // _valid_ C code ends in `;` but we want to stay in bounds anyway:
+                // _valid_ zig code ends in `;` but we want to stay in bounds anyway:
                 while (id < cp.len and isAlnum(cp[id]) or cp[id] == '_') : (id += 1) {}
                 if (strcmp(rp.lhsalias, cp[i..id])) {
                     if (at) {
-                        ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                        ErrorMsg(zyt.filename, rp.ruleline, "" ++
                             "It is invalid to @ the LHS alias: {s}", .{rp.code});
-                        lemp.errorcnt += 1;
+                        zyt.errorcnt += 1;
                     }
                     try writer.writeAll(zLhs);
                     lhsused = true;
@@ -1393,17 +1431,24 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
                 } else rhs: for (rp.rhsalias, rp.rhs, 0..) |alias, rhs, j| {
                     if (alias.len > 0 and strcmp(alias, cp[i..id])) {
                         if (j == 0 and dontUseRhs0) {
-                            ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                            ErrorMsg(zyt.filename, rp.ruleline, "" ++
                                 "Label {s} used after '{s}'.", .{
                                 rp.rhsalias[0],
                                 cp[special_start..special_end],
                             });
-                            lemp.errorcnt += 1;
+                            zyt.errorcnt += 1;
                         } else if (at) {
                             // If the argument is of the form @X then substitute
-                            // the token number of X, not the value of X
+                            // the token enum of X, not the value of X
+                            if (rp.rhs[j].type == .nonterminal) {
+                                ErrorMsg(zyt.filename, rp.ruleline, "" ++
+                                    "The @{s} conversion cannot be used on nonterminal {s}", .{
+                                    rp.rhsalias[j],
+                                    rp.rhs[j].name,
+                                });
+                            }
                             try writer.print(
-                                "(yymsp - {d})[1].major",
+                                "yyEnum((yymsp - {d})[1].major)",
                                 .{rp.rhs.len - j},
                             );
                         } else {
@@ -1411,6 +1456,9 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
                                 rhs.subsym[0].dtnum
                             else
                                 rhs.dtnum;
+                            if (dontUseRhs0) {
+                                std.debug.print("hmmmm.... {s}\n", .{cp[i..id]});
+                            }
                             try writer.print(
                                 "(yymsp - {d})[1].minor.yy{d}",
                                 .{ rp.rhs.len - j, dtnum },
@@ -1433,43 +1481,45 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
 
     // Check to make sure the LHS has been used
     if (rp.lhsalias.len > 0 and !lhsused) {
-        ErrorMsg(lemp.filename, rp.ruleline, "" ++
+        ErrorMsg(zyt.filename, rp.ruleline, "" ++
             "Label \"{s}\" for \"{s}({s})\" is never used.", .{
             rp.lhsalias,
             rp.lhs.name,
             rp.lhsalias,
         });
-        lemp.errorcnt += 1;
+        zyt.errorcnt += 1;
     }
     // Generate destructor code for RHS minor values which are not referenced.
     // Generate error messages for unused labels and duplicate labels.
+    var wrote_it: bool = false;
     for (rp.rhsalias, 0..rp.rhs.len) |alias, i| {
         if (alias.len > 0) {
             if (i > 0) {
                 if (strcmp(rp.lhsalias, alias)) {
-                    ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                    ErrorMsg(zyt.filename, rp.ruleline, "" ++
                         "{s}({s}) has the same label as the LHS ({s}) but is not the left-most " ++
                         "symbol on the RHS.", .{ rp.rhs[i].name, alias, rp.lhsalias });
-                    lemp.errorcnt += 1;
+                    zyt.errorcnt += 1;
                 } // k-k-k-quadratic
                 dupe: for (rp.rhsalias[0..i]) |alien| {
                     if (strcmp(alias, alien)) {
-                        ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                        ErrorMsg(zyt.filename, rp.ruleline, "" ++
                             "Label {s} used for multiple symbols on the RHS of a rule.", .{alias});
-                        lemp.errorcnt += 1;
+                        zyt.errorcnt += 1;
                     }
                     break :dupe;
                 }
             }
             if (!used[i]) {
-                ErrorMsg(lemp.filename, rp.ruleline, "" ++
+                ErrorMsg(zyt.filename, rp.ruleline, "" ++
                     "Label {s} for \"{s}({s})\" is never used.", .{ alias, rp.rhs[i].name, alias });
-                lemp.errorcnt += 1;
+                zyt.errorcnt += 1;
             }
-        } else if (i > 0 and has_destructor(rp.rhs[i], lemp)) {
+        } else if (i > 0 and has_destructor(rp.rhs[i], zyt)) {
             if (p_check1) {
                 dprint("destructor 2.0: {s} {d}\n", .{ rp.lhs.name, rp.iRule });
             }
+            wrote_it = true;
             try writer.print(
                 "yy_destructor(yypParser,{d},&(yymsp - {d})[1].minor);\n",
                 .{ rp.rhs[i].index, rp.rhs.len - i },
@@ -1480,6 +1530,7 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
     // If unable to write LHS values directly into the stack, write the
     // saved LHS value now.
     if (!lhsdirect) {
+        if (wrote_it) try writer.writeAll("            ");
         try writer.print("(yymsp - {d})[1].minor.yy{d} = ", .{ rp.rhs.len, rp.lhs.dtnum });
         try writer.print("{s};", .{zLhs});
     }
@@ -1494,19 +1545,19 @@ fn translate_code(lemp: *Zitron, rp: *Rule) !bool {
 //
 fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
     //
-    // Setup code prior to the #line directive
-    if (rp.codePrefix.len > 0) {
-        try out.print("{{{s}", .{rp.codePrefix});
-        lineno.* += mem.count(u8, rp.codePrefix, "\n");
-    }
     // Generate code to do the reduce action
     if (rp.code.len > 0) {
+        try out.writeAll("        => {\n            ");
+        lineno.* += 1;
+        // Setup code prior to the #line directive
+        if (rp.codePrefix.len > 0) {
+            try out.print("{s}            ", .{rp.codePrefix});
+            lineno.* += mem.count(u8, rp.codePrefix, "\n") + 1;
+        }
         if (!lemp.nolinenosflag) {
             lineno.* += 1;
             try tplt_linedir(out, rp.line, lemp.quoted_filename);
         }
-        try out.writeAll("        => {\n            ");
-        lineno.* += 1;
         try out.print("{s}", .{rp.code});
         lineno.* += mem.count(u8, rp.code, "\n") + 1;
         if (!lemp.nolinenosflag) {
@@ -1521,8 +1572,8 @@ fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
         lineno.* += mem.count(u8, rp.codeSuffix, "\n") + 1;
     }
     if (rp.codePrefix.len > 0) {
-        try out.writeAll("}\n");
-        lineno.* += 1;
+        // try out.writeAll("        }// Prefix\n");
+        // lineno.* += 1;
     }
     try out.writeAll("\n        },\n");
     lineno.* += 2;
@@ -1557,11 +1608,18 @@ fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
 
 /// Print the Token enum
 fn print_token_enum(zyt: *Zitron, out: anytype, plineno: *usize) !void {
-    const enum_int = if (zyt.token_enum_integer.len > 0) zyt.token_enum_integer else "u16";
-    try out.print(
-        "pub const {s} = enum({s}) {{\n",
-        .{ zyt.defines.get("🍋TOKEN_ENUM").?, enum_int },
-    );
+    const tok_enum = zyt.defines.get("🍋TOKEN_ENUM").?;
+    if (zyt.token_enum_integer.len > 0) {
+        try out.print(
+            "pub const {s} = enum({s}) {{\n",
+            .{ tok_enum, zyt.token_enum_integer },
+        );
+    } else {
+        try out.print(
+            "pub const {s} = enum(u{d}) {{\n",
+            .{ tok_enum, std.math.log2_int_ceil(usize, zyt.nterminal + 1) },
+        );
+    }
     plineno.* += 1;
     try out.writeAll("    end_of_input = 0,\n");
     for (zyt.symbols[1..zyt.nterminal]) |t_sym| {
@@ -1644,16 +1702,14 @@ fn print_stack_union(
             types[hash] = stddt; // borrowed for the duration
         }
     }
-    // Print out the definition of YYTOKENTYPE and YYMINORTYPE
-    const name: []const u8 = if (lemp.name.len > 0) lemp.name else "Parse";
     var lineno = plineno.*;
     // zig fmt: off
-    const t_name = if (lemp.tokentype.len > 0) lemp.tokentype else "void*";
-    try out.print("const {s}TOKENTYPE = {s};\n", .{ name, t_name }); lineno += 1;
+    const t_name = if (lemp.tokentype.len > 0) lemp.tokentype else "void";
+    try out.print("const YY_TOKEN_TYPE = {s};\n", .{ t_name }); lineno += 1;
     try out.writeAll("pub const YYMINORTYPE = minor: {\n"); lineno += 1;
     try out.writeAll("    @setRuntimeSafety(false);\n"); lineno += 1;
     try out.writeAll("    break :minor union {\n"); lineno += 1;
-    try out.print("        yy0: {s}TOKENTYPE,\n", .{name}); lineno += 1;
+    try out.writeAll("        yy0: YY_TOKEN_TYPE,\n"); lineno += 1;
     t_print: for (types, 0..) |variant, i| {
         if (variant.len == 0) continue :t_print;
         try out.print("        yy{d}: {s},\n", .{ i + 1, variant }); lineno += 1;
@@ -1669,18 +1725,20 @@ fn print_stack_union(
 
 // Return the name of a C datatype able to represent values between
 // lwr and upr, inclusive.  If pnByte!=NULL then also write the sizeof
-// for that type (1, 2, or 4) into *pnByte.
-fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8) []const u8 {
+// for that type (1, 2, or 4) into *pnByte.  If "loose" we always make
+// sure there's room for one more (else branches on switches)
+fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8, loose: bool) []const u8 {
     var zType: []const u8 = "";
     var nByte: ?u8 = null;
+    const minus: usize = if (loose) 2 else 1;
     // TODO: the shifts and then magic numbers here are ugly
     // (my fault, the original uses the magic excluslively),
     // come back and use std.math here.
     if (lwr >= 0) {
-        if (upr <= (1 << 8) - 1) {
+        if (upr <= (1 << 8) - minus) {
             zType = "u8";
             nByte = 1;
-        } else if (upr <= (1 << 16) - 1) {
+        } else if (upr <= (1 << 16) - minus) {
             zType = "u16";
             nByte = 2;
         } else {
@@ -1688,10 +1746,10 @@ fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8) []const u8 {
             nByte = 4; // redundant
         }
     } else {
-        if (lwr >= -127 and upr <= 127) {
+        if (lwr >= -127 and upr <= 128 - minus) {
             zType = "i8";
             nByte = 1;
-        } else if (lwr >= -32767 and upr < 32767) {
+        } else if (lwr >= -32767 and upr < 32768 - minus) {
             zType = "i16";
             nByte = 2;
         } else {
@@ -2085,11 +2143,11 @@ fn reportTableImpl(
 
     var szCodeType: u8 = 0;
     var szActionType: u8 = 0;
-    try out.print("const YYCODETYPE = {s};\n", .{minimum_size_type(0, zyt.nsymbol, &szCodeType)});
+    try out.print("const YYCODETYPE = {s};\n", .{minimum_size_type(0, zyt.nsymbol, &szCodeType, true)});
     lineno += 1;
     try out.print("const YYNOCODE = {d};\n", .{zyt.nsymbol});
     lineno += 1;
-    try out.print("const YYACTIONTYPE = {s};\n", .{minimum_size_type(0, zyt.maxAction, &szActionType)});
+    try out.print("const YYACTIONTYPE = {s};\n", .{minimum_size_type(0, zyt.maxAction, &szActionType, false)});
     lineno += 1;
     if (zyt.wildcard) |wild| {
         try out.print("const YY_HASWILDCARD = true;\nconst YYWILDCARD = {d};\n", .{wild.index});
@@ -2099,11 +2157,12 @@ fn reportTableImpl(
     lineno += 2;
     try print_stack_union(out, zyt, &lineno);
     lineno += 1;
+    try out.writeAll("const YYSTACKDEPTH = ");
     if (zyt.stacksize.len > 0) {
-        try out.print("const YYSTACKDEPTH = {s};\n", .{zyt.stacksize});
+        try out.print("{s};\n", .{zyt.stacksize});
         lineno += 1;
     } else {
-        try out.writeAll("const YYSTACKDEPTH = 100;\n");
+        try out.writeAll("256;\n");
         lineno += 1;
     }
     lineno += 1;
@@ -2294,7 +2353,7 @@ fn reportTableImpl(
         var sz: u8 = 0;
         try out.print(
             "const yy_shift_ofst: [{d}]{s} = .{{\n",
-            .{ n, minimum_size_type(pActtab.mnTknOfst, zyt.nterminal + zyt.nactiontab, &sz) },
+            .{ n, minimum_size_type(pActtab.mnTknOfst, zyt.nterminal + zyt.nactiontab, &sz, false) },
         );
         lineno += 1;
         zyt.tablesize += n * sz;
@@ -2337,7 +2396,7 @@ fn reportTableImpl(
         var sz: u8 = 0;
         try out.print(
             "const yy_reduce_ofst: [{d}]{s}  = .{{\n",
-            .{ n, minimum_size_type(pActtab.mnNtOfst - 1, @intCast(pActtab.mxNtOfst), &sz) },
+            .{ n, minimum_size_type(pActtab.mnNtOfst - 1, @intCast(pActtab.mxNtOfst), &sz, false) },
         );
         lineno += 1;
         zyt.tablesize += n * sz;
@@ -2457,11 +2516,11 @@ fn reportTableImpl(
             const sp = zyt.symbols[i];
             if (sp.type != .terminal) continue;
             if (once) {
-                try out.writeAll("      // TERMINAL Destructor\n");
+                try out.writeAll("        // TERMINAL Destructor\n");
                 lineno += 1;
                 once = false;
             }
-            try out.print("    {d}, // {s}\n", .{ sp.index, sp.name });
+            try out.print("        {d}, // {s}\n", .{ sp.index, sp.name });
             lineno += 1;
         }
         var j: usize = 0;
@@ -2477,7 +2536,7 @@ fn reportTableImpl(
             const sp = zyt.symbols[i];
             if (sp.type == .terminal or sp.index == 0 or sp.destructor.len > 0) continue;
             if (once) {
-                try out.writeAll("      // Default NON-TERMINAL Destructor */\n");
+                try out.writeAll("        // Default NON-TERMINAL Destructor */\n");
                 lineno += 1;
                 once = false;
             }
@@ -2609,6 +2668,7 @@ fn reportTableImpl(
                 try out.writeAll(" (NEVER REDUCES)\n");
                 lineno += 1;
             } else if (rp.doesReduce) {
+                try out.writeAll("            // ");
                 try writeRuleText(out, rp);
                 try out.writeByte('\n');
                 lineno += 1;
@@ -2757,10 +2817,7 @@ const Zitron = struct {
     token_enum: []u8,
     /// Custom backing integer for TokenKind enum type
     token_enum_integer: []u8,
-    /// Function to use to allocate stack space
-    reallocFunc: []u8,
-    /// Function to use to free stack space
-    freeFunc: []u8,
+    /// Number of parse conflicts
     nconflict: u32,
     /// Number of entries in the yy_action[] table
     nactiontab: u32,
@@ -2833,8 +2890,6 @@ const Zitron = struct {
         .outname = "",
         .quoted_outname = "",
         .tokentype = &.{},
-        .reallocFunc = &.{},
-        .freeFunc = &.{},
         .nconflict = 0,
         .nactiontab = 0,
         .nlookaheadtab = 0,
@@ -2886,9 +2941,6 @@ const Zitron = struct {
         errdefer allocator.free(gp.token_enum);
         gp.token_enum_integer = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.token_enum_integer);
-        gp.reallocFunc = try allocator.alloc(u8, 0);
-        errdefer allocator.free(gp.reallocFunc);
-        gp.freeFunc = try allocator.alloc(u8, 0);
         gp.argv = undefined; // populated by std.process.argsAlloc.
         return gp;
     }
@@ -2927,8 +2979,6 @@ const Zitron = struct {
         allocator.free(gp.quoted_filename);
         allocator.free(gp.outname);
         allocator.free(gp.quoted_outname);
-        allocator.free(gp.reallocFunc);
-        allocator.free(gp.freeFunc);
         allocator.destroy(gp);
     }
 };
@@ -4454,14 +4504,6 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     psp.declargslot = &psp.gp.vartype;
                     psp.insertLineMacro = false;
                 },
-                .realloc => {
-                    psp.declargslot = &psp.gp.reallocFunc;
-                    psp.insertLineMacro = false;
-                },
-                .free => {
-                    psp.declargslot = &psp.gp.freeFunc;
-                    psp.insertLineMacro = false;
-                },
                 .stack_size => {
                     psp.declargslot = &psp.gp.stacksize;
                     psp.insertLineMacro = false;
@@ -4752,8 +4794,6 @@ const Declaration = enum {
     extra_context,
     token_type,
     default_type,
-    realloc,
-    free,
     stack_size,
     start_symbol,
     left,
@@ -4783,8 +4823,6 @@ const directive_list = [_]struct { []const u8, Declaration }{
     .{ "extra_context", .extra_context },
     .{ "token_type", .token_type },
     .{ "default_type", .default_type },
-    .{ "realloc", .realloc },
-    .{ "free", .free },
     .{ "stack_size", .stack_size },
     .{ "start_symbol", .start_symbol },
     .{ "left", .left },
@@ -4816,7 +4854,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
             i += 1;
             continue :scanning;
         } // Skip all whitespace
-        // Skip C++ style comments
+        // Skip comments
         if (fb[i] == '/' and fb[i + 1] == '/') {
             i += 2;
             while (fb[i] != '\n' and fb[i] != 0) : (i += 1) {}
@@ -4826,7 +4864,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
                 continue :scanning;
             } else break :scanning;
         }
-        // Skip C style comments
+        // Skip C style comments (this is in the grammar file, not code)
         if (fb[i] == '/' and fb[i + 1] == '*') {
             i += 2;
             if (fb[i] == 0) break :scanning;
@@ -4855,23 +4893,24 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
             } else {
                 skip = true;
             }
-        } else if (fb[i] == '{') { // A block of C code
+        } else if (fb[i] == '{') { // A block of Zig code
             var level: usize = 1;
             i += 1;
             while (fb[i] != 0 and (level > 1 or fb[i] != '}')) : (i += 1) {
                 if (fb[i] == '\n') lineno += 1 //
                 else if (fb[i] == '{') level += 1 //
                 else if (fb[i] == '}') level -= 1 //
-                else if (fb[i] == '/' and i + 1 < fb.len and fb[i + 1] == '*') {
-                    // Skip C comments
+                else if (fb[i] == '\\' and fb[i + 1] == '\\') {
+                    // Skip multiline strings
                     i += 2;
-                    var prev: u8 = 0;
-                    while (fb[i] != 0 and (fb[i] != '/' or prev != '*')) : (i += 1) {
+                    while (fb[i] != '\n' and fb[i] != 0) : (i += 1) {}
+                    if (fb[i] != 0) {
                         if (fb[i] == '\n') lineno += 1;
-                        prev = fb[i];
-                    }
+                        i += 1;
+                        continue :scanning;
+                    } else break :scanning;
                 } else if (fb[i] == '/' and fb[i + 1] == '/') {
-                    // Skip C++ comments too
+                    // Skip comments
                     i += 2;
                     while (fb[i] != 0 and fb[i] != '\n') : (i += 1) {}
                 } else if (fb[i] == '"' or fb[i] == '\'') {
@@ -4880,7 +4919,14 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
                     var prevc: u8 = 0;
                     i += 1;
                     while (fb[i] != 0 and (fb[i] != startchar or prevc == '\\')) : (i += 1) {
-                        if (fb[i] == '\n') lineno += 1;
+                        if (fb[i] == '\n') {
+                            ErrorMsg(ps.filename, ps.tokenlineno, "" ++
+                                "Zig code on this line contains an un-terminated string, or " ++
+                                "botched character literal.", .{});
+                            ps.errorcnt += 1;
+                            // Line number is incremented here:
+                            continue :scanning;
+                        }
                         if (prevc == '\\')
                             prevc = 0
                         else
@@ -4890,7 +4936,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
             }
             if (i == fb.len and fb[i - 1] != '}') {
                 ErrorMsg(ps.filename, ps.tokenlineno, "" ++
-                    "C code starting on this line is not terminated before " ++
+                    "Zig code starting on this line is not terminated before " ++
                     "the end of the file.", .{});
                 ps.errorcnt += 1;
             } else {
@@ -4916,15 +4962,9 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
 
 //| Nicer error messages
 
-/// Return the Levenshtein edit distance between two byte slices.
-/// Operates in O(m*n) time and O(min(m,n)) extra space.
-/// Treats inputs as raw bytes (no Unicode grapheme handling).
-pub fn levenshtein(allocator: std.mem.Allocator, a_in: []const u8, b_in: []const u8) !usize {
-    // Fast paths for empties
-    if (a_in.len == 0) return b_in.len;
-    if (b_in.len == 0) return a_in.len;
-
-    // Allocate rows for the shorter string to keep memory small.
+/// Return the Levenshtein edit distance between two slices.  Uses the allocator because
+/// this is for an error message and I'm lazy.
+fn levenshtein(allocator: std.mem.Allocator, a_in: []const u8, b_in: []const u8) !usize {
     var a = a_in;
     var b = b_in;
     if (a.len > b.len) {
@@ -4957,7 +4997,7 @@ pub fn levenshtein(allocator: std.mem.Allocator, a_in: []const u8, b_in: []const
             const del = prev[j] + 1; // delete from b
             const ins = curr[j - 1] + 1; // insert into b
             const sub = prev[j - 1] + cost; // substitute
-            curr[j] = min3(del, ins, sub);
+            curr[j] = @min(del, @min(ins, sub));
         }
 
         // Swap rows
@@ -4967,10 +5007,6 @@ pub fn levenshtein(allocator: std.mem.Allocator, a_in: []const u8, b_in: []const
     }
 
     return prev[cols - 1];
-}
-
-inline fn min3(a: usize, b: usize, c: usize) usize {
-    return @min(a, @min(b, c));
 }
 
 /// Reduce the size of the action tables, if possible, by making use
@@ -5536,6 +5572,40 @@ fn stats_line(in: anytype, zLabel: []const u8, iValue: usize) !void {
     try in.print(" {d: >5}\n", .{iValue});
 }
 
+fn warmup(allocator: Allocator) !void {
+    // Set up pools.
+    action_allocator = .init(allocator);
+    Configlist_init(allocator, .init(allocator));
+    cf_ls.allocator = allocator;
+    plink_freelist = .init(allocator);
+    is_plink_freelist = true;
+    try plink_freelist.preheat(100);
+    errdefer Plink_deinit();
+    Strsafe_init(allocator);
+    Symbol_init(allocator);
+    try State_init(allocator);
+    errdefer comptime unreachable;
+}
+
+fn teardown(allocator: Allocator) void {
+    // Some rare symbols 'spill', because they can't be
+    // stored in the Symbol intern map, we we free those
+    // here.
+    while (sym_freelist) |free| {
+        free.sp.destroy(allocator);
+        sym_freelist = free.next;
+        allocator.destroy(free);
+    }
+
+    State_free();
+    Symbol_free();
+    Strsafe_free();
+    Plink_deinit();
+    is_plink_freelist = false;
+    Configlist_deinit();
+    action_allocator.deinit();
+}
+
 pub fn main() !void {
     var gpa = gpa: {
         if (is_debug) {
@@ -5549,38 +5619,8 @@ pub fn main() !void {
         if (is_debug) assert(.ok == gpa.deinit());
     }
     const allocator = if (is_debug) gpa.allocator() else gpa;
-    // Set up pools.
-    action_allocator = .init(allocator);
-    defer action_allocator.deinit();
-    Configlist_init(allocator, .init(allocator));
-    defer {
-        Configlist_deinit();
-    }
-    cf_ls.allocator = allocator;
-    plink_freelist = .init(allocator);
-    is_plink_freelist = true;
-    defer {
-        Plink_deinit();
-        is_plink_freelist = false;
-    }
-    try plink_freelist.preheat(100);
-    Strsafe_init(allocator);
-    defer Strsafe_free();
-    Symbol_init(allocator);
-    defer Symbol_free();
-    try State_init(allocator);
-    defer State_free();
-
-    defer {
-        // Some rare symbols 'spill', because they can't be
-        // stored in the Symbol intern map, we we free those
-        // here.
-        while (sym_freelist) |free| {
-            free.sp.destroy(allocator);
-            sym_freelist = free.next;
-            allocator.destroy(free);
-        }
-    }
+    try warmup(allocator);
+    defer teardown(allocator);
 
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
@@ -5617,7 +5657,7 @@ pub fn main() !void {
     lem.quoted_filename = try esc_filename(allocator, filename);
     lem.nolinenosflag = opt.no_linenos;
     lem.printPreprocessed = opt.print_pp;
-    _ = try Symbol_new("$"); // Why?
+    _ = try Symbol_new("$"); // Why? Answer: creates index 0!
     var pstate = try PState.create(allocator, lem);
     defer pstate.destroy();
     pstate.gp = lem;
