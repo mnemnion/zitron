@@ -1109,7 +1109,7 @@ fn writeToIndent(out: anytype, str: []const u8, ident: usize) !bool {
 }
 
 /// Emulates `fgets` close enough for our purposes:
-/// each call to `next` returns a line, with it's newline
+/// each call to `next` returns a line, with its newline
 /// when there is one, and advances the pointer to the
 /// template.
 const Fgets = struct {
@@ -2022,26 +2022,183 @@ fn reportTableImpl(
     } else {
         try zyt.defines.put(zyt.allocator, "🍋PARSER_NAME", try zyt.allocator.dupe(u8, "Parser"));
     }
-    if (zyt.trace_file.len > 0) {
-        // TODO: add
+    if (zyt.trace_writer.len > 0) {
+        const trace_type = mem.trim(u8, zyt.trace_writer, " ");
+        const i = std.mem.indexOfScalar(u8, zyt.trace_writer, ':') orelse 0;
+        if (i == 0) {
+            std.debug.print(
+                "Warning: %trace_writer should look like `trace: Type`, not `{s}`\n",
+                .{zyt.trace_writer},
+            );
+        }
+        const trace = trace_type[0..i];
+        { // 🍋TRACE_ACCEPT
+            const trace_accept = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\try {s}.print("{{s}}ACCEPT!\n",
+                \\    .{{yyTracePrompt}});
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_accept);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_ACCEPT", trace_accept);
+        }
+        { // 🍋TRACE_DISCARD
+            const trace_discard = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\try {s}.print("{{s}}Discard input token {{s}}\n",
+                \\    .{{yyTracePrompt}}, yyTokenName[yymajor]);
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_discard);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_DISCARD", trace_discard);
+        }
+        { // 🍋TRACE_FALLBACK
+            const trace_fallback = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\try {s}.print("{{s}}FALLBACK {{s}} => {{s}}\n",
+                \\    .{{yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[iFallback]}});
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_fallback);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_FALLBACK", trace_fallback);
+        }
+        { // 🍋TRACE_INPUT
+            const trace_input = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\if (yyact < YY_MIN_REDUCE) {{
+                \\    try {s}.print("{{s}}Input '{{s}}' in state {{d}}\n",
+                \\        .{{yyTracePrompt, yyTokenName[yymajor], yyact}},
+                \\    );
+                \\}} else {{
+                \\    try {s}.print("{{s}}Input '{{s}}' with pending reduce {{d}}\n",
+                \\       .{{yyTracePrompt, yyTokenName[yymajor], yyact - YY_MIN_REDUCE}},
+                \\    );
+                \\}}
+            ,
+                .{ trace, trace },
+            );
+            errdefer zyt.allocator.free(trace_input);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_INPUT", trace_input);
+        }
+        { // 🍋TRACE_POP
+            const trace_pop = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\{s}.print("{{s}}Popping {{s}}\n",
+                \\    .{{yyTracePrompt, yyTokenName[yytos[0].major]}},
+                \\) catch {{}};
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_pop);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_POP", trace_pop);
+        }
+        { // 🍋TRACE_REDUCE
+            const trace_reduce = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\        const yysize = yyRuleInfoNRhs[yyruleno];
+                \\        if (yysize == 0) {{
+                \\            try {s}.print("{{s}}Reduce {{d}} [{{s}}]{{s}}, pop back to state {{d}}\n",
+                \\                .{{yyTracePrompt,
+                \\                   yyruleno,
+                \\                   yyRuleName[yyruleno],
+                \\                   if (yyruleno < YYNRULE_WITH_ACTION) "" else " without external action",
+                \\                   (yypParser.tos - @abs(yysize))[0].yy_stateno,
+                \\                }},
+                \\            );
+                \\        }} else {{
+                \\           try {s}.print("{{s}}Reduce {{d}} [{{s}}]{{s}}\n",
+                \\              .{{yyTracePrompt, yyruleno, yyRuleName[yyruleno],
+                \\                  if (yyruleno < YYNRULE_WITH_ACTION) "" else " without external action"}},
+                \\           );
+                \\        }}
+            ,
+                .{ trace, trace },
+            );
+            errdefer zyt.allocator.free(trace_reduce);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_REDUCE", trace_reduce);
+        }
+        { // 🍋TRACE_RETURN
+            const trace_return = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\    var cDiv: u8 = '[';
+                \\    try {s}.print("{{s}}Return. Stack=", .{{yyTracePrompt}});
+                \\    var yy_i = yypParser.stack + 1;
+                \\    while (@intFromPtr(yy_i) <= @intFromPtr(yypParser.tos)) : ( yy_i += 1) {{
+                \\        try {s}.print("{{u}}{{s}}", .{{cDiv, yyTokenName[yy_i[0].major]}});
+                \\        cDiv = ' ';
+                \\    }}
+                \\    try {s}.writeAll("]\n");
+            ,
+                .{ trace, trace, trace },
+            );
+            errdefer zyt.allocator.free(trace_return);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_RETURN", trace_return);
+        }
+        { // 🍋TRACE_SHIFT
+            const trace_shift = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\if (yyNewState < YYNSTATE) {{
+                \\    {s}.print("{{s}}{{s}} '{{s}}', go to state {{d}}\n",
+                \\        .{{yyTracePrompt, zTag, yyTokenName[yypParser.tos[0].major], yyNewState}},
+                \\    ) catch {{}};
+                \\}} else {{
+                \\    {s}.print("{{s}}{{s}} '{{s}}', pending reduce {{d}}\n",
+                \\       .{{yyTracePrompt, zTag, yyTokenName[yypParser.tos[0].major], yy_sint(yyNewState) - YY_MIN_REDUCE}},
+                \\    ) catch {{}};
+                \\}}
+            ,
+                .{ trace, trace },
+            );
+            errdefer zyt.allocator.free(trace_shift);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_SHIFT", trace_shift);
+        }
+
+        { // 🍋TRACE_STACK_OVERFLOW
+            const trace_stack_overflow = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\{s}.print("{{s}}Stack Overflow!\n",
+                \\    .{{yyTracePrompt}}) catch {{}};
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_stack_overflow);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_STACK_OVERFLOW", trace_stack_overflow);
+        }
+
+        { // 🍋TRACE_SYNTAX_ERROR
+            const trace_syntax_error = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\try {s}.print("{{s}}Syntax Error!\n",
+                \\    .{{yyTracePrompt}});
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_syntax_error);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_SYNTAX_ERROR", trace_syntax_error);
+        }
+
+        { // 🍋TRACE_WILDCARD
+            const trace_wildcard = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\try {s}.print("{{s}}WILDCARD {{s}} => {{s}}\n",
+                \\    .{{yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[YYWILDCARD]}});
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_wildcard);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_WILDCARD", trace_wildcard);
+        }
+        // #ifndef NDEBUG
+        //           if( yyTraceFILE ){
+        //             fprintf(yyTraceFILE, "%sWILDCARD %s => %s\n",
+        //                yyTracePrompt, yyTokenName[yy_lookahead],
+        //                yyTokenName[YYWILDCARD]);
+        //           }
+        // #endif /* NDEBUG */
     }
-    // TODO: There will be equivalents of this, I think.
-    //
-    // if (zyt.reallocFunc.len > 0) {
-    //     try out.print("#define YYREALLOC {s}\n", .{zyt.reallocFunc}); lineno += 1;
-    // } else {
-    //     try out.writeAll("#define YYREALLOC realloc\n"); lineno += 1;
-    // }
-    // if (zyt.freeFunc.len > 0) {
-    //     try out.print("#define YYFREE {s}\n", .{zyt.freeFunc}); lineno += 1;
-    // } else {
-    //     try out.writeAll("#define YYFREE free\n"); lineno += 1;
-    // }
-    // if (zyt.reallocFunc.len > 0 and zyt.freeFunc.len > 0) {
-    //     try out.writeAll("#define YYDYNSTACK 1\n"); lineno += 1;
-    // } else {
-    //     try out.writeAll("#define YYDYNSTACK 0\n"); lineno += 1;
-    // }
     if (zyt.ctx.len > 0) {
         var ctx = mem.trim(u8, zyt.ctx, " ");
         const i = std.mem.indexOfScalar(u8, zyt.ctx, ':') orelse 0;
@@ -2158,15 +2315,12 @@ fn reportTableImpl(
     try tplt_xfer(zyt.name, &in, out, &lineno);
 
     // Generate the defines
-
+    // zig fmt: off
     var szCodeType: u8 = 0;
     var szActionType: u8 = 0;
-    try out.print("const YYCODETYPE = {s};\n", .{minimum_size_type(0, zyt.nsymbol, &szCodeType, true)});
-    lineno += 1;
-    try out.print("const YYNOCODE = {d};\n", .{zyt.nsymbol});
-    lineno += 1;
-    try out.print("const YYACTIONTYPE = {s};\n", .{minimum_size_type(0, zyt.maxAction, &szActionType, false)});
-    lineno += 1;
+    try out.print("const YYCODETYPE = {s};\n", .{minimum_size_type(0, zyt.nsymbol, &szCodeType, true)}); lineno += 1;
+    try out.print("const YYNOCODE = {d};\n", .{zyt.nsymbol}); lineno += 1;
+    try out.print("const YYACTIONTYPE = {s};\n", .{minimum_size_type(0, zyt.maxAction, &szActionType, false)}); lineno += 1;
     if (zyt.wildcard) |wild| {
         try out.print("const YY_HASWILDCARD = true;\nconst YYWILDCARD = {d};\n", .{wild.index});
     } else {
@@ -2174,36 +2328,28 @@ fn reportTableImpl(
     }
     lineno += 2;
     try print_stack_union(out, zyt, &lineno);
-    lineno += 1;
     try out.writeAll("const YYSTACKDEPTH = ");
     if (zyt.stacksize.len > 0) {
-        try out.print("{s};\n", .{zyt.stacksize});
-        lineno += 1;
+        try out.print("{s};\n", .{zyt.stacksize}); lineno += 1;
     } else {
-        try out.writeAll("256;\n");
-        lineno += 1;
+        try out.writeAll("256;\n"); lineno += 1;
     }
-    lineno += 1;
     if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
-        try out.writeAll("const YYHAS_ERRORSYMBOL = true;\n");
-        try out.print("const YYERRORSYMBOL = {d};\n", .{errsym.index});
-        lineno += 1;
-        try out.print("const YYERRSYMDT = @FieldType(YYMINORTYPE, \"yy{d}\");\n", .{errsym.dtnum});
-        lineno += 1;
+        try out.writeAll("const YYHAS_ERRORSYMBOL = true;\n"); lineno += 1;
+        try out.print("const YYERRORSYMBOL = {d};\n", .{errsym.index}); lineno += 1;
+        try out.print("const YYERRSYMDT = @FieldType(YYMINORTYPE, \"yy{d}\");\n", .{errsym.dtnum}); lineno += 1;
     } else {} else {
-        try out.writeAll("const YYHAS_ERRORSYMBOL = false;\n");
+        try out.writeAll("const YYHAS_ERRORSYMBOL = false;\n"); lineno += 1;
     }
     // TODO: need %trace_writer directive
-    try out.writeAll("const YY_TRACE = false;\n");
-    lineno += 1;
+    try out.writeAll("const YY_TRACE = false;\n"); lineno += 1;
     try out.writeAll("const YYFALLBACK = ");
     if (zyt.has_fallback) {
         try out.writeAll("true");
     } else {
         try out.writeAll("false");
     }
-    try out.writeAll(";\n");
-    lineno += 1;
+    try out.writeAll(";\n"); lineno += 1;
     // zig fmt: on
     // Compute the action table, but do not output it yet.  The action
     // table must be computed before generating the YYNSTATE macro because
@@ -2839,7 +2985,7 @@ const Zitron = struct {
     /// Custom backing integer for TokenKind enum type
     token_enum_integer: []u8,
     /// Variable containing an Io.Writer for tracing
-    trace_file: []u8,
+    trace_writer: []u8,
     /// Number of parse conflicts
     nconflict: u32,
     /// Number of entries in the yy_action[] table
@@ -2897,7 +3043,7 @@ const Zitron = struct {
         .ctx = &.{},
         .token_enum = &.{},
         .token_enum_integer = &.{},
-        .trace_file = &.{},
+        .trace_writer = &.{},
         .vartype = &.{},
         .start = &.{},
         .stacksize = &.{},
@@ -2965,8 +3111,8 @@ const Zitron = struct {
         errdefer allocator.free(gp.token_enum);
         gp.token_enum_integer = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.token_enum_integer);
-        gp.trace_file = try allocator.alloc(u8, 0);
-        errdefer allocator.free(gp.trace_file);
+        gp.trace_writer = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.trace_writer);
         gp.argv = undefined; // populated by std.process.argsAlloc.
         return gp;
     }
@@ -3001,7 +3147,7 @@ const Zitron = struct {
         allocator.free(gp.tokendest);
         allocator.free(gp.token_enum);
         allocator.free(gp.token_enum_integer);
-        allocator.free(gp.trace_file);
+        allocator.free(gp.trace_writer);
         allocator.free(gp.vardest);
         allocator.free(gp.quoted_filename);
         allocator.free(gp.outname);
@@ -4503,6 +4649,10 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                     psp.declargslot = &psp.gp.token_enum_integer;
                     psp.insertLineMacro = false;
                 },
+                .trace_writer => {
+                    psp.declargslot = &psp.gp.trace_writer;
+                    psp.insertLineMacro = false;
+                },
                 .syntax_error => {
                     psp.declargslot = &psp.gp.@"error";
                 },
@@ -4813,6 +4963,7 @@ const Declaration = enum {
     default_destructor,
     token_enum,
     token_enum_integer,
+    trace_writer,
     syntax_error,
     parse_accept,
     parse_failure,
@@ -4842,6 +4993,7 @@ const directive_list = [_]struct { []const u8, Declaration }{
     .{ "default_destructor", .default_destructor },
     .{ "token_enum", .token_enum },
     .{ "token_enum_integer", .token_enum_integer },
+    .{ "trace_writer", .trace_writer },
     .{ "syntax_error", .syntax_error },
     .{ "parse_accept", .parse_accept },
     .{ "parse_failure", .parse_failure },

@@ -98,8 +98,10 @@ const YYNOERRORRECOVERY = !@hasDecl(@This(), "zitron_no_error_recovery");
 /// Set a value for zitron_track_max_stack_depth to track the maximum stack depth on the Parser instance.
 const YYTRACKMAXSTACKDEPTH = @hasDecl(@This(), "zitron_track_max_stack_depth");
 
-// TODO: stub for coverage (no idea how I plan to handle it, but probably want to)
+/// Set a value for zitron_coverage to enable coverage tracing.
 const YYCOVERAGE = @hasDecl(@This(), "zitron_coverage");
+
+const yyTracePrompt = if (@hasDecl(@This(), "zitron_trace_prompt")) @This().zitron_trace_prompt else "";
 
 // Next are the tables used to determine what action to take based on the
 // current state and lookahead token.  These tables are used to implement
@@ -350,18 +352,12 @@ const yy_assert = std.debug.assert;
 /// is popped from the stack, then call it.
 fn yy_pop_parser_stack(yypParser: *🍋PARSER_NAME) void {
     yy_assert(@intFromPtr(yypParser.tos) > @intFromPtr(yypParser.stack));
+    var yytos = yypParser.tos;
     yypParser.tos -= 1;
     if (comptime !NDEBUG) {
         🍋TRACE_POP
     }
-    // #ifndef NDEBUG
-    //   if( yyTraceFILE ){
-    //     fprintf(yyTraceFILE,"%sPopping %s\n",
-    //       yyTracePrompt,
-    //       yyTokenName[yytos->major]);
-    //   }
-    // #endif
-    yy_destructor(yypParser, yypParser.tos[0].major, &yypParser.tos[0].minor);
+    yy_destructor(yypParser, yytos[0].major, &yytos[0].minor);
 }
 
 
@@ -376,13 +372,6 @@ fn yy_parse_finalize(yypParser: *🍋PARSER_NAME) void {
         if (comptime !NDEBUG) {
             🍋TRACE_POP
         }
-        // #ifndef NDEBUG
-        //     if( yyTraceFILE ){
-        //       fprintf(yyTraceFILE,"%sPopping %s\n",
-        //         yyTracePrompt,
-        //         yyTokenName[yytos->major]);
-        //     }
-        // #endif
         if (yytos[0].major >= YY_MIN_DSTRCTR) {
             yy_destructor(yypParser, yytos[0].major, &yytos[0].minor);
             yytos -= 1;
@@ -468,12 +457,6 @@ fn yy_find_shift_action(
                     if (comptime !NDEBUG) {
                         🍋TRACE_FALLBACK
                     }
-                    // #ifndef NDEBUG
-                    //         if( yyTraceFILE ){
-                    //           fprintf(yyTraceFILE, "%sFALLBACK %s => %s\n",
-                    //              yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[iFallback]);
-                    //         }
-                    // #endif
                     yy_assert(yyFallback[iFallback] == 0) ; // Fallback loop must terminate */
                     yy_ilook = iFallback;
                     continue;
@@ -486,13 +469,6 @@ fn yy_find_shift_action(
                     if (comptime !NDEBUG) {
                         🍋TRACE_WILDCARD
                     }
-                    // #ifndef NDEBUG
-                    //           if( yyTraceFILE ){
-                    //             fprintf(yyTraceFILE, "%sWILDCARD %s => %s\n",
-                    //                yyTracePrompt, yyTokenName[yy_lookahead],
-                    //                yyTokenName[YYWILDCARD]);
-                    //           }
-                    // #endif /* NDEBUG */
                     return yy_action[j];
                 }
             }
@@ -543,11 +519,6 @@ fn yyStackOverflow(yypParser: *🍋PARSER_NAME) !void {
     if (comptime !NDEBUG) {
         🍋TRACE_STACK_OVERFLOW
     }
-    // #ifndef NDEBUG
-    //    if( yyTraceFILE ){
-    //      fprintf(yyTraceFILE,"%sStack Overflow!\n",yyTracePrompt);
-    //    }
-    // #endif
     while (@intFromPtr(yypParser.tos) > @intFromPtr(yypParser.stack)) yy_pop_parser_stack(yypParser);
     // Here code is inserted which will execute if the parser
     // stack ever overflows.
@@ -570,23 +541,16 @@ fn yyTraceShift(yypParser: *🍋PARSER_NAME, yyNewState: usize, zTag: []const u8
         🍋TRACE_SHIFT
     }
 }
-// #ifndef NDEBUG
-// static void yyTraceShift(🍋PARSER_NAME *yypParser, int yyNewState, const char *zTag){
-//   if( yyTraceFILE ){
-//     if( yyNewState<YYNSTATE ){
-//       fprintf(yyTraceFILE,"%s%s '%s', go to state %d\n",
-//          yyTracePrompt, zTag, yyTokenName[yypParser->yytos->major],
-//          yyNewState);
-//     }else{
-//       fprintf(yyTraceFILE,"%s%s '%s', pending reduce %d\n",
-//          yyTracePrompt, zTag, yyTokenName[yypParser->yytos->major],
-//          yyNewState - YY_MIN_REDUCE);
-//     }
-//   }
-// }
-// #else
-// # define yyTraceShift(X,Y,Z)
-// #endif
+
+inline fn yy_sint(i: anytype) @Type(.{ .int = .{
+    .bits = @typeInfo(@TypeOf(i)).int.bits + 1,
+    .signedness = .signed,
+} }) {
+    if (@typeInfo(@TypeOf(i)).int.signedness == .signed) {
+        @compileError("Value is already a signed type");
+    }
+    return @intCast(i);
+}
 
 /// Perform a shift action.
 fn yy_shift(
@@ -837,20 +801,10 @@ fn yyParse(
         yyendofinput = (yymajor==0);
     }
     yyact = yypParser.tos[0].yy_stateno;
+
     if (comptime !NDEBUG) {
         🍋TRACE_INPUT
     }
-    // #ifndef NDEBUG
-    //   if( yyTraceFILE ){
-    //     if( yyact < YY_MIN_REDUCE ){
-    //       fprintf(yyTraceFILE,"%sInput '%s' in state %d\n",
-    //               yyTracePrompt,yyTokenName[yymajor],yyact);
-    //     }else{
-    //       fprintf(yyTraceFILE,"%sInput '%s' with pending reduce %d\n",
-    //               yyTracePrompt,yyTokenName[yymajor],yyact-YY_MIN_REDUCE);
-    //     }
-    //   }
-    // #endif
 
     while (true) { // Exit by "break"
         yy_assert(@intFromPtr(yypParser.tos) >= @intFromPtr(yypParser.stack));
@@ -858,27 +812,10 @@ fn yyParse(
         yyact = yy_find_shift_action(yymajor, yyact);
         if( yyact >= YY_MIN_REDUCE ){
             const yyruleno = yyact - YY_MIN_REDUCE; // Reduce by this rule
+            yy_assert(yyruleno < yyRuleName.len);
             if (comptime !NDEBUG) {
                 🍋TRACE_REDUCE
             }
-            // #ifndef NDEBUG
-            //       yy_assert( yyruleno<(int)(sizeof(yyRuleName)/sizeof(yyRuleName[0])) );
-            //       if( yyTraceFILE ){
-            //         int yysize = yyRuleInfoNRhs[yyruleno];
-            //         if( yysize ){
-            //           fprintf(yyTraceFILE, "%sReduce %d [%s]%s, pop back to state %d.\n",
-            //             yyTracePrompt,
-            //             yyruleno, yyRuleName[yyruleno],
-            //             yyruleno<YYNRULE_WITH_ACTION ? "" : " without external action",
-            //             yypParser->yytos[yysize].yy_stateno);
-            //         }else{
-            //           fprintf(yyTraceFILE, "%sReduce %d [%s]%s.\n",
-            //             yyTracePrompt, yyruleno, yyRuleName[yyruleno],
-            //             yyruleno<YYNRULE_WITH_ACTION ? "" : " without external action");
-            //         }
-            //       }
-            // #endif /* NDEBUG */
-
             // Check that the stack is large enough to grow by a single entry
             // if the RHS of the rule is empty.  This ensures that there is room
             // enough on the stack to push the LHS value.
@@ -913,12 +850,6 @@ fn yyParse(
             if (comptime !NDEBUG) {
                 🍋TRACE_SYNTAX_ERROR
             }
-            // #ifndef NDEBUG
-            //       if( yyTraceFILE ){
-            //         fprintf(yyTraceFILE,"%sSyntax Error!\n",yyTracePrompt);
-            //       }
-            // #endif
-
             // A syntax error has occurred.
             // The response to an error depends upon whether or not the
             // grammar defines an error token "ERROR".
@@ -947,12 +878,6 @@ fn yyParse(
                     if (comptime !NDEBUG) {
                         🍋TRACE_DISCARD
                     }
-                    // #ifndef NDEBUG
-                    //         if( yyTraceFILE ){
-                    //           fprintf(yyTraceFILE,"%sDiscard input token %s\n",
-                    //              yyTracePrompt,yyTokenName[yymajor]);
-                    //         }
-                    // #endif
                     yy_destructor(yypParser, yymajor, &yyminorunion);
                     yymajor = YYNOCODE;
                 } else {
@@ -1015,18 +940,6 @@ fn yyParse(
     if (!NDEBUG) {
         🍋TRACE_RETURN
     }
-    // #ifndef NDEBUG
-    //   if( yyTraceFILE ){
-    //     yyStackEntry *yy_i;
-    //     char cDiv = '[';
-    //     fprintf(yyTraceFILE,"%sReturn. Stack=",yyTracePrompt);
-    //     for(yy_i=&yypParser->yystack[1]; yy_i<=yypParser->yytos; yy_i++){
-    //       fprintf(yyTraceFILE,"%c%s", cDiv, yyTokenName[yy_i->major]);
-    //       cDiv = ' ';
-    //     }
-    //     fprintf(yyTraceFILE,"]\n");
-    //   }
-    // #endif
     return;
 }
 

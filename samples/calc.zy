@@ -18,9 +18,15 @@ pub const Token = struct {
 
 const WeedWhacker = opaque {};
 
+threadlocal var trace_me: *std.Io.Writer = undefined;
+
+const zitron_trace_prompt = "-> ";
+
 }
 
 %extra_context {answer: f64}
+
+%trace_writer "trace_me: *std.Io.Writer"
 
 %token_type "Token"
 // %token_enum_integer u8
@@ -52,11 +58,13 @@ term(A) ::= term(B) TIMES factor(C). { A = B * C; }
 term(A) ::= term(B) DIVIDE factor(C). { A = B / C; }
 
 /* Note: it is illegal to refer to B in the below, after
-** encountering the magic comment.  Why?  Ask DRH! */
+** encountering the magic comment.  Why?  Ask DRH!
+** I presume it doing double-duty as an erasure guard is why.*/
 term(A) ::= factor(B). {
     A = B;
     // A-overwrites-B
 }
+
 
 %type NUMBER {f64}
 
@@ -115,6 +123,9 @@ pub const Tokenizer = struct {
 };
 
 test "1 + 2" {
+    var stderr_buffer: [1024]u8 = undefined;
+    var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
+    trace_me = &stderr_writer.interface;
     var parser = try Parser.create(std.testing.allocator, 0.0);
     defer parser.destroy();
     var tok = Tokenizer.init("1 + (2 * 2 - 2)");
@@ -124,6 +135,7 @@ test "1 + 2" {
         try parser.finalize();
     }
     try std.testing.expectApproxEqAbs(3.0, parser.answer, 0.0001);
+    try trace_me.flush();
 }
 
 }

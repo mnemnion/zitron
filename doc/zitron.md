@@ -160,34 +160,36 @@ brief explanation of what each does by typing
 
        lemon "-?"
 
-As of this writing, the following command-line options are supported:
+<tk the canonical source is in the Zitron notes, do not modify!>
 
-- **-b** Show only the basis for each parser state in the report file.
-- **-c** Do not compress the generated action tables. The parser will be
-  a little larger and slower, but it will detect syntax errors sooner.
-- **-d***directory* Write all output files into *directory*. Normally,
-  output files are written into the directory that contains the input
-  grammar file.
-- **-D*name*** Define C preprocessor macro *name*. This macro is usable
-  by "[`%ifdef`](#pifdef)", "[`%ifndef`](#pifdef)", and
-  "[`%if`](#pifdef) lines in the grammar file.
-- **-E** Run the "%if" preprocessor step only and print the revised
-  grammar file.
-- **-g** Do not generate a parser. Instead write the input grammar to
-  standard output with all comments, actions, and other extraneous text
-  removed.
-- **-h --help** Print this help file and exit.
-- **-l** Omit "#line" directives in the generated parser C code.
-- **-m** Cause the output C source code to be compatible with the
-  "makeheaders" program.
-- **-p** Display all conflicts that are resolved by [precedence rules](#precrules).
-- **-q** Suppress generation of the report file.
-- **-r** Do not sort or renumber the parser states as part of
-  optimization.
-- **-s** Show parser statistics before exiting.
-- **-T*file*** Use *file* as the template for the generated C-code
-  parser implementation.
-- **-x** Print the Lemon version number.
+- **-b, --basis** Show only the basis for each parser state in the report file.
+- **-c, --no-compress** Do not compress the generated action tables. The parser will be
+    a little larger and slower, but it will detect syntax errors sooner.
+- **-d, --directory _directory_** Write all output files into _directory_. Normally,
+    output files are written into the directory that contains the input
+    grammar file.
+- **-D, --define _name_** Define C-like preprocessor macro _name_.  This macro is usable
+    by [`%ifdef`](#pifdef), [`%ifndef`](#pifdef), and [`%if`](#pifdef) lines in
+    the grammar file.  It is legal to define a name more than once.
+- **-e --enum-file**  Emit the token enum as its own file.
+- **-g --no-gen**  Do not generate a parser. Instead write the input grammar to
+    standard output with all comments, actions, and other extraneous text
+    removed.
+- **-h --help**  Print this help and exit.
+- **-l --lines** Add "#line" comments in the generated parser's Zig code.
+- **-P --pp-only** Run the "%if" preprocessor step only and print the revised
+    grammar file.
+- **-p --precedence** Display all conflicts that are resolved by [precedence rules](#precrules).
+- **-q --quiet** Suppress generation of the report file.
+- **-r --no-renumber** Do not sort or renumber the parser states as part of
+    optimization.
+- **-s --show-stats** Show parser statistics before exiting.
+- **-S**  Generate the *.sql file describing the parser tables.
+- **-T, --template _file_** Use *file* as the template for the generated C-code
+    parser implementation.
+- **-U, --undefine _name_** Undefine C-like preprocessor macro _name_.  It is legal to
+    undefine a nonexistent name, but warned against.
+- **-v, --version** Print the Zitron version number.
 
 
 ### 3.2 The Parser Interface <a id="interface">
@@ -198,8 +200,8 @@ a parser.  This section describes the public interface of that file.
 
 <tk continue>
 
-Before a program begins using a Lemon-generated parser, the program must
-first create the parser.  Unless otherwise specified (see below), this
+Before a program begins using a Zitron-generated parser, the program must
+first create the parser.  Unless [otherwise specified](#name), this
 will be called `Parser`.  Created like so:
 
 ```zig
@@ -418,7 +420,7 @@ Lemon, I firmly believe that the Lemon way of doing things is better.
 *Updated as of 2016-02-16:* The text above was written in the 1990s. We
 are told that Bison has lately been enhanced to support the
 tokenizer-calls-parser paradigm used by Lemon, eliminating the need for
-global variables.  .
+global variables.
 
 
 ### 3.4 Building and using the "zitron" or "zitron.exe" Executable <a id="build">
@@ -894,6 +896,7 @@ Zitron supports the following special directives:
 - [`%token_enum`](#token_enum)
 - [`%token_enum_integer`](#token_enum)
 - [`%token_type`](#token_type)
+-  [%trace_writer](#trace_writer)
 - [`%type`](#ptype)
 - [`%wildcard`](#pwildcard)
 
@@ -1482,8 +1485,47 @@ whose data type requires 1K of storage, then your 100 entry parser stack
 will require 100K of heap space.  If you are willing and able to pay that
 price, fine.  You just need to know.
 
+#### 4.4.25 The `%trace_writer` directive <a id="trace_writer">
 
-#### 4.4.25 The `%wildcard` directive <a id="pwildcard">
+This directs Zitron to add tracing to the generated grammar.  This
+will only be active in Debug release modes.  Tracing can be very loud,
+so this directive is a good candidate for turning on and off using an
+[`%ifdef`](#pifdef) macro.
+
+Use is as follows: add the directive like so:
+
+     %trace_writer "trace_me: *std.Io.Writer"
+
+With whatever type and name you'll use for tracing.  Then in an
+[`%include`](#include) block, add something like this:
+
+```zig
+threadlocal var trace_me: *std.Io.Writer = undefined;
+```
+
+Which you can set up in a [`%code`](#code) block thus:
+
+```zig
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    trace_me = &stdout_writer.interface;
+```
+
+Don't forget to flush!
+
+With some creativity, you'll find that you can define a build option
+which both sets a macro to enable a `%trace_writer`, and comptime-gates
+the code which exercises it.
+
+The trace output is comprehensive, or if you prefer, verbose.  It's
+intended to be consulted in tandem with the `.out` file produced by
+Zitron, to diagnose mysterious parser behaviors, ideally in small
+fragments of input.
+
+One more thing: if you define a string `zitron_trace_prompt`, that
+string will be prepended to every trace line.
+
+#### 4.4.26 The `%wildcard` directive <a id="pwildcard">
 
 The `%wildcard` directive is followed by a single token name and a
 period.  This directive specifies that the identified token should match
