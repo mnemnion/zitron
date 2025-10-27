@@ -1082,6 +1082,32 @@ fn reportOutputImpl(lemp: *Zitron, writer: anytype) !void {
     }
 }
 
+/// Write the contents of `str` to `out`, indenting by `ident` spaces.
+/// The write always ends with  `\n`.  Returns `true` if it wrote a
+/// newline not present in the original.
+fn writeToIndent(out: anytype, str: []const u8, ident: usize) !bool {
+    if (str.len == 0) return false;
+    try out.splatByteAll(' ', ident);
+    var start: usize = 0;
+    while (start < str.len and (str[start] == ' ' or str[start] == '\t')) : (start += 1) {}
+    if (start == str.len) return false; // ?? ¯\_(ツ)_/¯
+    while (std.mem.indexOfScalarPos(u8, str, start, '\n')) |i| {
+        const next = @min(i + 1, str.len);
+        try out.writeAll(str[start..next]);
+        start = next;
+        while (start < str.len and (str[start] == ' ' or str[start] == '\t')) : (start += 1) {}
+        if (start < str.len) try out.splatByteAll(' ', ident);
+    }
+    while (start < str.len and (str[start] == ' ' or str[start] == '\t')) : (start += 1) {}
+    try out.writeAll(str[start..]);
+    if (str[str.len - 1] != '\n') {
+        try out.writeByte('\n');
+        return true;
+    } else {
+        return false;
+    }
+}
+
 /// Emulates `fgets` close enough for our purposes:
 /// each call to `next` returns a line, with it's newline
 /// when there is one, and advances the pointer to the
@@ -1223,6 +1249,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
             unreachable;
         }
     };
+    // TODO: We could indent this. I guess...
     var cursor: usize = 0;
     lineno.* += mem.count(u8, cp, "\n");
     while (mem.indexOfPos(u8, cp, cursor, "$$")) |i| {
@@ -1397,17 +1424,6 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                 }
                 continue;
             }
-
-            if (cp[i] == '\n') {
-                if (i == cp.len) break;
-                i += 1;
-                try writer.writeAll(cp[start..i]);
-                while (i < cp.len and (cp[i] == ' ' or cp[i] == '\t')) : (i += 1) {}
-                try writer.writeByteNTimes(' ', 3 * 4);
-                start = i;
-                i -= 1;
-                continue;
-            }
             if ((isAlpha(cp[i]) or cp[i] == '@') and
                 (i == 0 or (!isAlnum(cp[i - 1]) and cp[i] - 1 != '_')))
             {
@@ -1489,9 +1505,13 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
         });
         zyt.errorcnt += 1;
     }
+
     // Generate destructor code for RHS minor values which are not referenced.
+    // In modifying this code to generate Zig, it became clear that the throw-friendly
+    // way to trigger end-state destructors is to `defer` them.  So we just write out
+    // any `codePrefix` we already have, first:
+    try writer.print("{s}", .{rp.codePrefix});
     // Generate error messages for unused labels and duplicate labels.
-    var wrote_it: bool = false;
     for (rp.rhsalias, 0..rp.rhs.len) |alias, i| {
         if (alias.len > 0) {
             if (i > 0) {
@@ -1519,18 +1539,17 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
             if (p_check1) {
                 dprint("destructor 2.0: {s} {d}\n", .{ rp.lhs.name, rp.iRule });
             }
-            wrote_it = true;
             try writer.print(
-                "yy_destructor(yypParser,{d},&(yymsp - {d})[1].minor);\n",
+                "defer yy_destructor(yypParser,{d},&(yymsp - {d})[1].minor);\n",
                 .{ rp.rhs[i].index, rp.rhs.len - i },
             );
         }
     }
-
+    rp.codePrefix = try Strsafe(string_builder.items);
+    string_builder.clearRetainingCapacity();
     // If unable to write LHS values directly into the stack, write the
     // saved LHS value now.
     if (!lhsdirect) {
-        if (wrote_it) try writer.writeAll("            ");
         try writer.print("(yymsp - {d})[1].minor.yy{d} = ", .{ rp.rhs.len, rp.lhs.dtnum });
         try writer.print("{s};", .{zLhs});
     }
@@ -1547,19 +1566,19 @@ fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
     //
     // Generate code to do the reduce action
     if (rp.code.len > 0) {
-        try out.writeAll("        => {\n            ");
+        try out.writeAll("        => {\n");
         lineno.* += 1;
         // Setup code prior to the #line directive
         if (rp.codePrefix.len > 0) {
-            try out.print("{s}            ", .{rp.codePrefix});
-            lineno.* += mem.count(u8, rp.codePrefix, "\n") + 1;
+            const extra: usize = if (try writeToIndent(out, rp.codePrefix, 12)) 1 else 0;
+            lineno.* += mem.count(u8, rp.codePrefix, "\n") + extra;
         }
         if (!lemp.nolinenosflag) {
             lineno.* += 1;
             try tplt_linedir(out, rp.line, lemp.quoted_filename);
         }
-        try out.print("{s}", .{rp.code});
-        lineno.* += mem.count(u8, rp.code, "\n") + 1;
+        const extra: usize = if (try writeToIndent(out, rp.code, 12)) 1 else 0;
+        lineno.* += mem.count(u8, rp.code, "\n") + extra;
         if (!lemp.nolinenosflag) {
             lineno.* += 1;
             try tplt_linedir(out, lineno.*, lemp.quoted_outname);
@@ -1568,15 +1587,11 @@ fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
 
     // Generate breakdown code that occurs after the #line directive
     if (rp.codeSuffix.len > 0) {
-        try out.print("\n            {s}", .{rp.codeSuffix});
-        lineno.* += mem.count(u8, rp.codeSuffix, "\n") + 1;
+        const extra: usize = if (try writeToIndent(out, rp.codeSuffix, 12)) 1 else 0;
+        lineno.* += mem.count(u8, rp.codeSuffix, "\n") + extra;
     }
-    if (rp.codePrefix.len > 0) {
-        // try out.writeAll("        }// Prefix\n");
-        // lineno.* += 1;
-    }
-    try out.writeAll("\n        },\n");
-    lineno.* += 2;
+    try out.writeAll("        },\n");
+    lineno.* += 1;
     return;
 }
 
@@ -2007,6 +2022,9 @@ fn reportTableImpl(
     } else {
         try zyt.defines.put(zyt.allocator, "🍋PARSER_NAME", try zyt.allocator.dupe(u8, "Parser"));
     }
+    if (zyt.trace_file.len > 0) {
+        // TODO: add
+    }
     // TODO: There will be equivalents of this, I think.
     //
     // if (zyt.reallocFunc.len > 0) {
@@ -2175,6 +2193,9 @@ fn reportTableImpl(
     } else {} else {
         try out.writeAll("const YYHAS_ERRORSYMBOL = false;\n");
     }
+    // TODO: need %trace_writer directive
+    try out.writeAll("const YY_TRACE = false;\n");
+    lineno += 1;
     try out.writeAll("const YYFALLBACK = ");
     if (zyt.has_fallback) {
         try out.writeAll("true");
@@ -2817,6 +2838,8 @@ const Zitron = struct {
     token_enum: []u8,
     /// Custom backing integer for TokenKind enum type
     token_enum_integer: []u8,
+    /// Variable containing an Io.Writer for tracing
+    trace_file: []u8,
     /// Number of parse conflicts
     nconflict: u32,
     /// Number of entries in the yy_action[] table
@@ -2874,6 +2897,7 @@ const Zitron = struct {
         .ctx = &.{},
         .token_enum = &.{},
         .token_enum_integer = &.{},
+        .trace_file = &.{},
         .vartype = &.{},
         .start = &.{},
         .stacksize = &.{},
@@ -2941,6 +2965,8 @@ const Zitron = struct {
         errdefer allocator.free(gp.token_enum);
         gp.token_enum_integer = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.token_enum_integer);
+        gp.trace_file = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.trace_file);
         gp.argv = undefined; // populated by std.process.argsAlloc.
         return gp;
     }
@@ -2975,6 +3001,7 @@ const Zitron = struct {
         allocator.free(gp.tokendest);
         allocator.free(gp.token_enum);
         allocator.free(gp.token_enum_integer);
+        allocator.free(gp.trace_file);
         allocator.free(gp.vardest);
         allocator.free(gp.quoted_filename);
         allocator.free(gp.outname);
@@ -6041,7 +6068,7 @@ const StrSafe = struct {
 };
 
 fn Strsafe_init(allocator: Allocator) void {
-    if (is_a_strsafe) return; // I don't think this happens..
+    dbgassert(!is_a_strsafe);
     defer is_a_strsafe = true;
     str_safe = .init(allocator);
 }
@@ -6128,30 +6155,27 @@ fn Symbol_find(str: []const u8) ?*Symbol {
     return symbol_map.safe.get(str);
 }
 
-// TODO: It's just default that we need, I could probably
-// cache that pointer on the lemon and use it instead.
+// NOTE: This is sorted after fetching, which invalidates the
+// use of Symbol_find.
 fn Symbol_arrayof() []*Symbol {
     dbgassert(is_symbol_map);
     return symbol_map.safe.values();
 }
 
-// /* Compare two symbols for sorting purposes.  Return negative,
-// ** zero, or positive if a is less then, equal to, or greater
-// ** than b.
-// **
-// ** Symbols that begin with upper case letters (terminals or tokens)
-// ** must sort before symbols that begin with lower case letters
-// ** (non-terminals).  And MULTITERMINAL symbols (created using the
-// ** %token_class directive) must sort at the very end. Other than
-// ** that, the order does not matter.
-// **
-// ** We find experimentally that leaving the symbols in their original
-// ** order (the order they appeared in the grammar file) gives the
-// ** smallest parser tables in SQLite.
-// */
-
 //| [5840]
-//
+/// Compare two symbols for sorting purposes.  Return negative,
+/// zero, or positive if a is less then, equal to, or greater
+/// than b.
+///
+/// Symbols that begin with upper case letters (terminals or tokens)
+/// must sort before symbols that begin with lower case letters
+/// (non-terminals).  And MULTITERMINAL symbols (created using the
+/// %token_class directive) must sort at the very end. Other than
+/// that, the order does not matter.
+///
+/// We find experimentally that leaving the symbols in their original
+/// order (the order they appeared in the grammar file) gives the
+/// smallest parser tables in SQLite.
 fn Symbol_lessThanFn(_: void, a: *Symbol, b: *Symbol) bool {
     const a_val: u8 = if (a.type == .multiterminal) 3 else if (a.name[0] > 'Z') 2 else 1;
     const b_val: u8 = if (b.type == .multiterminal) 3 else if (b.name[0] > 'Z') 2 else 1;

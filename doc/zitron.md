@@ -23,7 +23,7 @@ public domain.  The repo generally is licensed under the zero-clause BSD
 license, which amounts to the same thing.
 
 The author would like to express his deep appreciation for the work of
-[D. Richard Hipp and HWACI](https://www.hwaci.com/drh/index.html), in
+[D. Richard Hipp and Hwaci](https://www.hwaci.com/drh/index.html), in
 providing robust and powerful software free to the world.  In his work
 and in his example, there is much for the student to learn.
 
@@ -176,6 +176,7 @@ As of this writing, the following command-line options are supported:
 - **-g** Do not generate a parser. Instead write the input grammar to
   standard output with all comments, actions, and other extraneous text
   removed.
+- **-h --help** Print this help file and exit.
 - **-l** Omit "#line" directives in the generated parser C code.
 - **-m** Cause the output C source code to be compatible with the
   "makeheaders" program.
