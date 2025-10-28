@@ -16,17 +16,18 @@ pub const Token = struct {
     }
 };
 
-const WeedWhacker = opaque {};
-
+%ifdef TRACE
 threadlocal var trace_me: *std.Io.Writer = undefined;
 
 const zitron_trace_prompt = "-> ";
-
+%endif
 }
 
 %extra_context {answer: f64}
 
+%ifdef TRACE
 %trace_writer "trace_me: *std.Io.Writer"
+%endif
 
 %token_type "Token"
 // %token_enum_integer u8
@@ -123,9 +124,11 @@ pub const Tokenizer = struct {
 };
 
 test "1 + 2" {
+%ifdef TRACE
     var stderr_buffer: [1024]u8 = undefined;
     var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
     trace_me = &stderr_writer.interface;
+%endif
     var parser = try Parser.create(std.testing.allocator, 0.0);
     defer parser.destroy();
     var tok = Tokenizer.init("1 + (2 * 2 - 2)");
@@ -135,7 +138,9 @@ test "1 + 2" {
         try parser.finalize();
     }
     try std.testing.expectApproxEqAbs(3.0, parser.answer, 0.0001);
+%ifdef TRACE
     try trace_me.flush();
+%endif
 }
 
 }

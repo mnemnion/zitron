@@ -5374,11 +5374,10 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
     var opt: Options = .{};
+    defer opt.deinit(allocator);
     {
         opt.azDefine = try allocator.alloc([]const u8, 0);
-        errdefer allocator.free(opt.azDefine);
         opt.bDefineUsed = try allocator.alloc(bool, 0);
-        errdefer allocator.free(opt.bDefineUsed);
         try OptInit(&opt, args, allocator);
     }
     if (opt.version) {

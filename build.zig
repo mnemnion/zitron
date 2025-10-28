@@ -43,12 +43,22 @@ pub fn build(b: *std.Build) void {
     z_opt.addOption(
         bool,
         "no_compress",
-        b.option(bool, "no_compress", "don't compress tables") orelse false,
+        b.option(bool, "no_compress", "Don't compress tables") orelse false,
+    );
+    z_opt.addOption(
+        bool,
+        "report",
+        b.option(bool, "report", "Generate a report instead of a grammar file") orelse false,
+    );
+    z_opt.addOption(
+        bool,
+        "enum_file",
+        b.option(bool, "enum_file", "Generate the token enum in its own file") orelse false,
     );
     z_opt.addOption(
         bool,
         "line_numbers",
-        b.option(bool, "line_numbers", "print line number comments") orelse false,
+        b.option(bool, "line_numbers", "Print line number comments") orelse false,
     );
     z_opt.addOption(
         bool,
@@ -58,29 +68,33 @@ pub fn build(b: *std.Build) void {
     z_opt.addOption(
         bool,
         "quiet",
-        b.option(bool, "quiet", "quiet output") orelse false,
+        b.option(bool, "quiet", "Quiet output") orelse false,
     );
     z_opt.addOption(
         bool,
         "statistics",
-        b.option(bool, "statistics", "print statistics") orelse false,
+        b.option(bool, "statistics", "Print statistics") orelse false,
     );
     z_opt.addOption(
         bool,
         "sql",
-        b.option(bool, "sql", "print grammar as [name].sql file") orelse false,
+        b.option(bool, "sql", "Print grammar as [name].sql file") orelse false,
     );
     z_opt.addOption(
         bool,
         "only_basis",
-        b.option(bool, "only_basis", "print only the basis in report") orelse false,
+        b.option(bool, "only_basis", "Print only the basis in report") orelse false,
     );
     z_opt.addOption(
         bool,
         "no_resort",
-        b.option(bool, "no_resort", "do not sort or renumber states") orelse false,
+        b.option(bool, "no_resort", "Do not sort or renumber states") orelse false,
     );
-    z_opt.addOption([][]const u8, "define_macro", &.{});
+    z_opt.addOption(
+        ?[]const []const u8,
+        "define",
+        b.option([]const []const u8, "define", "Define a preprocessor macro"),
+    );
 
     const zitron_template = b.option(
         []const u8,

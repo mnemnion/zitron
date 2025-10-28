@@ -731,21 +731,21 @@ fn Plink_delete(plp_delete: ?*PLink) void {
 /// name comes from malloc() and must be freed by the calling
 /// function.  Quote outname for line directives, and assign the
 /// filenames to the correct fields of `lemp`.
-fn assign_outname(lemp: *Zitron, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
-    if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
+fn assign_outname(zyt: *Zitron, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
+    if (zyt.outname.len > 0) zyt.allocator.free(zyt.outname);
     if (escape) {
-        if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
+        if (zyt.quoted_outname.len > 0) zyt.allocator.free(zyt.quoted_outname);
     }
-    lemp.outname = try file_makename(lemp, suffix, output_dir);
-    if (escape) lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
+    zyt.outname = try file_makename(zyt, suffix, output_dir);
+    if (escape) zyt.quoted_outname = try esc_filename(zyt.allocator, zyt.outname);
 }
 
-fn file_makename(lemp: *Zitron, suffix: []const u8, output_dir: ?[]const u8) OOM![]const u8 {
+fn file_makename(zyt: *Zitron, suffix: []const u8, output_dir: ?[]const u8) OOM![]const u8 {
     var buf = ArrayList(u8){};
-    errdefer buf.deinit(lemp.allocator);
+    errdefer buf.deinit(zyt.allocator);
 
-    var w = buf.writer(lemp.allocator);
-    var filename = lemp.filename;
+    var w = buf.writer(zyt.allocator);
+    var filename = zyt.filename;
 
     if (output_dir) |dir| {
         if (std.mem.lastIndexOfScalar(u8, filename, '/')) |i| {
@@ -760,7 +760,7 @@ fn file_makename(lemp: *Zitron, suffix: []const u8, output_dir: ?[]const u8) OOM
 
     try w.print("{s}{s}", .{ filename, suffix });
 
-    return buf.toOwnedSlice(lemp.allocator);
+    return buf.toOwnedSlice(zyt.allocator);
 }
 
 /// Open a file with a name based on the name of the input file,
@@ -820,23 +820,23 @@ fn rule_print(writer: anytype, rp: *Rule) !void {
 
 /// Duplicate the input file without comments and without actions
 /// on rules
-fn Reprint(lemp: *Zitron) !void {
+fn Reprint(zyt: *Zitron) !void {
     var stdout_buffer: [4096]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const out = &stdout_writer.interface;
-    try out.print("// Reprint of input file {s}.\n// Symbols:\n", .{lemp.quoted_filename});
+    try out.print("// Reprint of input file {s}.\n// Symbols:\n", .{zyt.quoted_filename});
     var maxlen: usize = 10;
-    for (lemp.symbols[0..lemp.nsymbol]) |sp| {
+    for (zyt.symbols[0..zyt.nsymbol]) |sp| {
         const len = sp.name.len;
         if (len > maxlen) maxlen = len;
     }
     const ncolumns = @max(1, 76 / (maxlen + 5));
-    const skip = (lemp.nsymbol + ncolumns - 1) / ncolumns;
+    const skip = (zyt.nsymbol + ncolumns - 1) / ncolumns;
     for (0..skip) |i| {
         try out.writeAll("//");
         var j: usize = i;
-        while (j < lemp.nsymbol) : (j += skip) {
-            const sp = lemp.symbols[j];
+        while (j < zyt.nsymbol) : (j += skip) {
+            const sp = zyt.symbols[j];
             dbgassert(sp.index == j);
             const ptsym = if (maxlen < sp.name.len) sp.name[0..maxlen] else sp.name;
             try out.print(" {d: >3} ", .{j});
@@ -847,7 +847,7 @@ fn Reprint(lemp: *Zitron) !void {
             try out.writeByte('\n');
         }
     }
-    var m_rp: ?*Rule = lemp.rule;
+    var m_rp: ?*Rule = zyt.rule;
     while (m_rp) |rp| : (m_rp = rp.next) {
         try rule_print(out, rp);
         try out.writeByte('.');
@@ -982,14 +982,14 @@ fn PrintAction(
 }
 
 /// Generate the "*.out" log file
-fn ReportOutput(lemp: *Zitron) !void {
-    const m_fh = try file_open(lemp, ".out", false, .{});
+fn ReportOutput(zyt: *Zitron) !void {
+    const m_fh = try file_open(zyt, ".out", false, .{});
     if (m_fh) |fh| {
         defer fh.close();
         var out_buffer: [4096]u8 = undefined;
         var f_writer = fh.writer(&out_buffer);
         const out = &f_writer.interface;
-        try reportOutputImpl(lemp, out);
+        try reportOutputImpl(zyt, out);
         try out.flush();
     } else {
         return; // No file handle
@@ -997,11 +997,11 @@ fn ReportOutput(lemp: *Zitron) !void {
 }
 
 /// Write the report to the provided writer.
-fn reportOutputImpl(lemp: *Zitron, writer: anytype) !void {
-    for (0..lemp.nxstate) |i| {
-        const stp = lemp.sorted[i];
+fn reportOutputImpl(zyt: *Zitron, writer: anytype) !void {
+    for (0..zyt.nxstate) |i| {
+        const stp = zyt.sorted[i];
         try writer.print("State {d}:\n", .{stp.statenum});
-        var m_cfp: ?*Config = if (!lemp.opt.only_basis) stp.cfp else stp.bp;
+        var m_cfp: ?*Config = if (!zyt.opt.only_basis) stp.cfp else stp.bp;
         while (m_cfp) |cfp| {
             var buf: [20]u8 = .{0} ** 20;
             if (cfp.dot == cfp.rp.rhs.len) {
@@ -1012,7 +1012,7 @@ fn reportOutputImpl(lemp: *Zitron, writer: anytype) !void {
             }
             try ConfigPrint(writer, cfp);
             try writer.writeByte('\n');
-            if (!lemp.opt.only_basis) {
+            if (!zyt.opt.only_basis) {
                 m_cfp = cfp.next;
             } else {
                 m_cfp = cfp.bp;
@@ -1021,23 +1021,23 @@ fn reportOutputImpl(lemp: *Zitron, writer: anytype) !void {
         try writer.writeByte('\n');
         var m_ap = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
-            if (try PrintAction(writer, ap, 30, lemp.opt.show_precedence_conflict)) try writer.writeByte('\n');
+            if (try PrintAction(writer, ap, 30, zyt.opt.show_precedence_conflict)) try writer.writeByte('\n');
         }
         try writer.writeByte('\n');
     }
     try writer.writeAll("----------------------------------------------------\n");
     try writer.writeAll("Symbols:\n");
     try writer.writeAll("The first-set of non-terminals is shown after the name.\n\n");
-    for (lemp.symbols[0..lemp.nsymbol], 0..) |sp, i| {
+    for (zyt.symbols[0..zyt.nsymbol], 0..) |sp, i| {
         try writer.print("  {d:>3}: {s}", .{ i, sp.name });
         if (sp.type == .nonterminal) {
             try writer.writeByte(':');
             if (sp.lambda) {
                 try writer.writeAll(" <lambda>");
             }
-            for (0..lemp.nterminal) |j| {
+            for (0..zyt.nterminal) |j| {
                 if (sp.firstset.len > 0 and sp.firstset[j]) {
-                    try writer.print(" {s}", .{lemp.symbols[j].name});
+                    try writer.print(" {s}", .{zyt.symbols[j].name});
                 }
             }
         }
@@ -1050,8 +1050,8 @@ fn reportOutputImpl(lemp: *Zitron, writer: anytype) !void {
     try writer.writeAll("The following symbols never carry semantic content.\n\n");
     {
         var n: usize = 0;
-        for (0..lemp.nsymbol) |i| {
-            const sp = lemp.symbols[i];
+        for (0..zyt.nsymbol) |i| {
+            const sp = zyt.symbols[i];
             if (sp.bContent) continue;
             const w = sp.name.len;
             if (n > 0 and n + w > 75) {
@@ -1070,7 +1070,7 @@ fn reportOutputImpl(lemp: *Zitron, writer: anytype) !void {
     try writer.writeAll("----------------------------------------------------\n");
     try writer.writeAll("Rules:\n");
     {
-        var m_rp: ?*Rule = lemp.rule;
+        var m_rp: ?*Rule = zyt.rule;
         while (m_rp) |rp| : (m_rp = rp.next) {
             try writer.print("{d:>4}: ", .{rp.iRule});
             try rule_print(writer, rp);
@@ -1187,18 +1187,29 @@ fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
 
 /// Retrieve the template.  First item of the tuple is `true` if the
 /// second must be freed.
-fn tplt_open(lemp: *Zitron) !struct { bool, [:0]const u8 } {
-    // TODO: We embed the template, so: in 'classic mode', we first check for
-    // the existence of lempar.c, and if we have it, we use it.  If not, we
-    // return the embedded version.
-    // --
-    // In 'modern' mode, we accept an argument for the template, which we check
-    // here if set, and it's an error not to find it.  Otherwise we return the
-    // embed. (remember: classic mode also has the template name argument).
-    //
+fn tplt_open(zyt: *Zitron) !struct { bool, [:0]const u8 } {
+    if (zyt.opt.user_templatename.len > 0) {
+        const file = if (std.fs.cwd().openFile(zyt.opt.user_templatename, .{})) |f| file: {
+            break :file f;
+        } else |err| {
+            std.debug.print("Template file open error {s}", .{@errorName(err)});
+            exit(@truncate(@intFromError(err)));
+        };
+        defer file.close();
+        const end_pos = try file.getEndPos();
+        const filebuf = try zyt.allocator.allocSentinel(u8, end_pos, 0);
+        defer zyt.allocator.free(filebuf);
+        const read_bytes = try file.readAll(filebuf);
+        if (read_bytes < end_pos) {
+            std.debug.print(
+                "Didnt read to end of file {s}\n",
+                .{zyt.opt.user_templatename},
+            );
+            std.process.exit(1);
+        }
+        return .{ true, filebuf };
+    }
     const z_template = @embedFile("z_template");
-    _ = lemp;
-    if (false) return error.OutOfMemory;
     return .{ false, z_template };
 }
 
@@ -1208,7 +1219,7 @@ fn tplt_linedir(out: anytype, lineno: usize, quoted_filename: []const u8) !void 
 }
 
 /// Print a string to the file and keep the linenumber up to date.
-fn tplt_print(out: anytype, lemp: *Zitron, str: []const u8, lineno: *usize) !void {
+fn tplt_print(out: anytype, zyt: *Zitron, str: []const u8, lineno: *usize) !void {
     if (str.len == 0) return;
     const line_count = mem.count(u8, str, "\n");
     lineno.* += line_count;
@@ -1217,9 +1228,9 @@ fn tplt_print(out: anytype, lemp: *Zitron, str: []const u8, lineno: *usize) !voi
         try out.writeByte('\n');
         lineno.* += 1;
     }
-    if (lemp.linenosflag) {
+    if (zyt.linenosflag) {
         lineno.* += 1;
-        try tplt_linedir(out, lineno.*, lemp.quoted_outname);
+        try tplt_linedir(out, lineno.*, zyt.quoted_outname);
     }
 }
 
@@ -1227,25 +1238,25 @@ fn tplt_print(out: anytype, lemp: *Zitron, str: []const u8, lineno: *usize) !voi
 // The following routine emits code for the destructor for the
 // symbol sp
 //
-fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize) !void {
+fn emit_destructor_code(out: anytype, sp: *Symbol, zyt: *Zitron, lineno: *usize) !void {
     const cp = cp: {
         if (sp.type == .terminal) {
-            if (lemp.tokendest.len == 0) return;
+            if (zyt.tokendest.len == 0) return;
             try out.writeAll("        => {\n");
             lineno.* += 1;
-            break :cp lemp.tokendest;
+            break :cp zyt.tokendest;
         } else if (sp.destructor.len > 0) {
             try out.writeAll("        => {\n");
             lineno.* += 1;
-            if (lemp.linenosflag) {
+            if (zyt.linenosflag) {
                 lineno.* += 1;
-                try tplt_linedir(out, sp.destLineno.?, lemp.quoted_filename);
+                try tplt_linedir(out, sp.destLineno.?, zyt.quoted_filename);
             }
             break :cp sp.destructor;
-        } else if (lemp.vardest.len > 0) {
+        } else if (zyt.vardest.len > 0) {
             try out.writeAll("        => {\n");
             lineno.* += 1;
-            break :cp lemp.vardest;
+            break :cp zyt.vardest;
         } else {
             unreachable;
         }
@@ -1261,9 +1272,9 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
     try out.writeAll(cp[cursor..]);
     try out.writeByte('\n');
     lineno.* += 1;
-    if (lemp.linenosflag) {
+    if (zyt.linenosflag) {
         lineno.* += 1;
-        try tplt_linedir(out, lineno.*, lemp.quoted_outname);
+        try tplt_linedir(out, lineno.*, zyt.quoted_outname);
     }
     try out.writeAll("        },\n");
     lineno.* += 1;
@@ -1272,11 +1283,11 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
 
 /// Return TRUE (non-zero) if the given symbol has a destructor.
 ///
-fn has_destructor(sp: *Symbol, lemp: *Zitron) bool {
+fn has_destructor(sp: *Symbol, zyt: *Zitron) bool {
     if (sp.type == .terminal) {
-        return lemp.tokendest.len > 0;
+        return zyt.tokendest.len > 0;
     } else {
-        return lemp.vardest.len > 0 or sp.destructor.len > 0;
+        return zyt.vardest.len > 0 or sp.destructor.len > 0;
     }
 }
 
@@ -1563,7 +1574,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
 // Generate code which executes when the rule "rp" is reduced.  Write
 // the code to "out".  Make sure lineno stays up-to-date.
 //
-fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
+fn emit_code(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !void {
     //
     // Generate code to do the reduce action
     if (rp.code.len > 0) {
@@ -1574,15 +1585,15 @@ fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
             const extra: usize = if (try writeToIndent(out, rp.codePrefix, 12)) 1 else 0;
             lineno.* += mem.count(u8, rp.codePrefix, "\n") + extra;
         }
-        if (lemp.linenosflag) {
+        if (zyt.linenosflag) {
             lineno.* += 1;
-            try tplt_linedir(out, rp.line, lemp.quoted_filename);
+            try tplt_linedir(out, rp.line, zyt.quoted_filename);
         }
         const extra: usize = if (try writeToIndent(out, rp.code, 12)) 1 else 0;
         lineno.* += mem.count(u8, rp.code, "\n") + extra;
-        if (lemp.linenosflag) {
+        if (zyt.linenosflag) {
             lineno.* += 1;
-            try tplt_linedir(out, lineno.*, lemp.quoted_outname);
+            try tplt_linedir(out, lineno.*, zyt.quoted_outname);
         }
     }
 
@@ -1655,7 +1666,7 @@ fn print_stack_union(
     /// The output stream
     out: anytype,
     /// The main info structure for this parser
-    lemp: *Zitron,
+    zyt: *Zitron,
     /// Pointer to the line number
     plineno: *usize,
 ) !void {
@@ -1668,9 +1679,9 @@ fn print_stack_union(
     //| free the array of pointers.  Let's find out.
 
     //  Allocate and initialize types[] and allocate stddt[]
-    const arraysize = lemp.nsymbol * 2; // Room for hash collisions
-    const types = try lemp.allocator.alloc([]const u8, arraysize);
-    defer lemp.allocator.free(types);
+    const arraysize = zyt.nsymbol * 2; // Room for hash collisions
+    const types = try zyt.allocator.alloc([]const u8, arraysize);
+    defer zyt.allocator.free(types);
     @memset(types, "");
     // We don't need stddt, it's just a holding cell for a null-terminated
     // whitespace-trimmed string.  We can just borrow all that.  We reuse
@@ -1685,18 +1696,18 @@ fn print_stack_union(
     //  used for terminal symbols.  If there is no %default_type defined then
     //  0 is also used as the .dtnum value for nonterminals which do not specify
     //  a datatype using the %type directive.
-    hash: for (lemp.symbols[0..lemp.nsymbol]) |sp| {
-        if (sp == lemp.errsym) {
+    hash: for (zyt.symbols[0..zyt.nsymbol]) |sp| {
+        if (sp == zyt.errsym) {
             sp.dtnum = arraysize + 1;
             continue :hash;
         }
-        if (sp.type != .nonterminal or (sp.datatype.len == 0 and lemp.vartype.len == 0)) {
+        if (sp.type != .nonterminal or (sp.datatype.len == 0 and zyt.vartype.len == 0)) {
             sp.dtnum = 0; // Redundant I think
             continue :hash;
         }
-        const d_raw = if (sp.datatype.len > 0) sp.datatype else lemp.vartype;
+        const d_raw = if (sp.datatype.len > 0) sp.datatype else zyt.vartype;
         const stddt = mem.trim(u8, d_raw, C_SPACE);
-        if (lemp.tokentype.len > 0 and std.mem.eql(u8, lemp.tokentype, stddt)) {
+        if (zyt.tokentype.len > 0 and std.mem.eql(u8, zyt.tokentype, stddt)) {
             sp.dtnum = 0;
             continue :hash;
         }
@@ -1720,7 +1731,7 @@ fn print_stack_union(
     }
     var lineno = plineno.*;
     // zig fmt: off
-    const t_name = if (lemp.tokentype.len > 0) lemp.tokentype else "void";
+    const t_name = if (zyt.tokentype.len > 0) zyt.tokentype else "void";
     try out.print("const YY_TOKEN_TYPE = {s};\n", .{ t_name }); lineno += 1;
     try out.writeAll("pub const YYMINORTYPE = minor: {\n"); lineno += 1;
     try out.writeAll("    @setRuntimeSafety(false);\n"); lineno += 1;
@@ -1730,7 +1741,7 @@ fn print_stack_union(
         if (variant.len == 0) continue :t_print;
         try out.print("        yy{d}: {s},\n", .{ i + 1, variant }); lineno += 1;
     }
-    if (lemp.errsym) |errsym| if (errsym.useCnt > 0) {
+    if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
         try out.print("        yy{d}: usize,\n", .{errsym.dtnum}); lineno += 1;
     };
     try out.writeAll("    };\n};\n");
@@ -1823,7 +1834,7 @@ fn writeRuleText(out: anytype, rp: *Rule) !void {
     }
 }
 
-fn ReportSql(lemp: *Zitron, sql: anytype) !void {
+fn ReportSql(zyt: *Zitron, sql: anytype) !void {
     try sql.writeAll("BEGIN;\n" ++
         "CREATE TABLE symbol(\n" ++
         "  id INTEGER PRIMARY KEY,\n" ++
@@ -1832,13 +1843,13 @@ fn ReportSql(lemp: *Zitron, sql: anytype) !void {
         "  fallback INTEGER REFERENCES symbol" ++
         " DEFERRABLE INITIALLY DEFERRED\n" ++
         ");\n");
-    for (0..lemp.nsymbol) |i| {
-        const sp = lemp.symbols[i];
+    for (0..zyt.nsymbol) |i| {
+        const sp = zyt.symbols[i];
         try sql.print(
             "" ++
                 "INSERT INTO symbol(id,name,isTerminal,fallback)" ++
                 "VALUES({d},'{s}',{s}",
-            .{ i, sp.name, if (i < lemp.nterminal) "TRUE" else "FALSE" },
+            .{ i, sp.name, if (i < zyt.nterminal) "TRUE" else "FALSE" },
         );
         if (sp.fallback) |fp| {
             try sql.print(",{d});\n", .{fp.index});
@@ -1857,7 +1868,7 @@ fn ReportSql(lemp: *Zitron, sql: anytype) !void {
         "  sym INTEGER REFERENCES symbol(id)\n" ++
         ");\n");
     var i: usize = 0;
-    var m_rp: ?*Rule = lemp.rule;
+    var m_rp: ?*Rule = zyt.rule;
     // zig fmt: off
     while (m_rp) |rp| : ({i += 1; m_rp = rp.next;}) {
         // zig fmt: on
@@ -1920,39 +1931,35 @@ fn macroReplace(zyt: *Zitron, in: [:0]const u8) ![:0]const u8 {
 
 /// Generate C code for the parser
 fn ReportTable(
-    lemp: *Zitron,
-    /// Output in makeheaders format if true
-    mhflag: bool,
-    /// Generate the *.sql file too
-    sqlflag: bool,
+    zyt: *Zitron,
 ) !void {
-    lemp.minShiftReduce = lemp.nstate;
-    lemp.errAction = lemp.minShiftReduce + lemp.nrule;
-    lemp.accAction = lemp.errAction + 1;
-    lemp.noAction = lemp.accAction + 1;
-    lemp.minReduce = lemp.noAction + 1;
-    lemp.maxAction = lemp.minReduce + lemp.nrule;
+    zyt.minShiftReduce = zyt.nstate;
+    zyt.errAction = zyt.minShiftReduce + zyt.nrule;
+    zyt.accAction = zyt.errAction + 1;
+    zyt.noAction = zyt.accAction + 1;
+    zyt.minReduce = zyt.noAction + 1;
+    zyt.maxAction = zyt.minReduce + zyt.nrule;
 
-    const free_buffer, const in = try tplt_open(lemp);
-    defer if (free_buffer) lemp.allocator.free(in);
-    if (sqlflag) {
-        const m_sql_fh = try file_open(lemp, ".sql", false, .{});
+    const free_buffer, const in = try tplt_open(zyt);
+    defer if (free_buffer) zyt.allocator.free(in);
+    if (zyt.opt.sql_flag) {
+        const m_sql_fh = try file_open(zyt, ".sql", false, .{});
         if (m_sql_fh) |fh| {
             defer fh.close();
             var out_buffer: [4096]u8 = undefined;
             var f_writer = fh.writer(&out_buffer);
             const out = &f_writer.interface;
-            try ReportSql(lemp, out);
+            try ReportSql(zyt, out);
             try out.flush();
         } else return; // No file handle
     }
-    const m_out_fh = try file_open(lemp, ".zig", true, .{});
+    const m_out_fh = try file_open(zyt, ".zig", true, .{});
     if (m_out_fh) |fh| {
         defer fh.close();
         var out_buffer: [4096]u8 = undefined;
         var f_writer = fh.writer(&out_buffer);
         const out = &f_writer.interface;
-        try reportTableImpl(lemp, in, out, mhflag);
+        try reportTableImpl(zyt, in, out);
         try out.flush();
     } else {
         return; // No file handle
@@ -1963,7 +1970,6 @@ fn reportTableImpl(
     zyt: *Zitron,
     in_template: [:0]const u8,
     out: anytype,
-    mhflag: bool,
 ) !void {
     // defer zyt.allocator.free(in);
     // var in = in_template;
@@ -2293,7 +2299,7 @@ fn reportTableImpl(
     lineno += 1;
     try tplt_xfer(zyt.name, &in, out, &lineno);
     // TODO: something other than mhflag obviously
-    if (mhflag) {
+    if (zyt.opt.enum_file) {
         const t_name = zyt.defines.get("🍋TOKEN_ENUM").?;
         try out.print(
             "pub const {s} = @import(\"{s}.zig\").{s};\n",
@@ -3423,11 +3429,11 @@ const ActTable = struct {
 /// symbol the first RHS symbol with a defined precedence.  If there
 /// are not RHS symbols with a defined precedence, the precedence
 /// symbol field is left blank.
-fn FindRulePrecedences(lem: *Zitron) void {
+fn FindRulePrecedences(zyt: *Zitron) void {
     // TODO: yacc uses the rightmost symbol apparently.  Do we want
     // that to be an option?  I think the precedence disambiguator is
     // enough..
-    var maybe_rp: ?*Rule = lem.rule;
+    var maybe_rp: ?*Rule = zyt.rule;
     while (maybe_rp) |rp| : (maybe_rp = rp.next) {
         if (rp.precsym == null) {
             var i: usize = 0;
@@ -3454,20 +3460,20 @@ fn FindRulePrecedences(lem: *Zitron) void {
 /// Then go back and compute the first sets of every nonterminal.
 /// The first set is the set of all terminal symbols which can begin
 /// a string generated by that nonterminal.
-fn FindFirstSets(lemp: *Zitron) !void {
-    for (lemp.symbols) |sym| {
+fn FindFirstSets(zyt: *Zitron) !void {
+    for (zyt.symbols) |sym| {
         dbgassert(sym.lambda == false);
     }
-    for (lemp.nterminal..lemp.nsymbol) |i| {
-        const sym = lemp.symbols[i];
+    for (zyt.nterminal..zyt.nsymbol) |i| {
+        const sym = zyt.symbols[i];
         dbgassert(sym.type == .nonterminal);
-        sym.firstset = try lemp.allocator.alloc(bool, set_size);
+        sym.firstset = try zyt.allocator.alloc(bool, set_size);
     }
     // First compute all lambdas
     var progress: bool = true;
     while (progress) {
         progress = false;
-        var rp: ?*Rule = lemp.rule;
+        var rp: ?*Rule = zyt.rule;
         walk: while (rp) |rule| : (rp = rule.next) {
             if (rule.lhs.lambda) continue :walk;
             var i: usize = 0;
@@ -3487,7 +3493,7 @@ fn FindFirstSets(lemp: *Zitron) !void {
     progress = true;
     while (progress) {
         progress = false;
-        var rp: ?*Rule = lemp.rule;
+        var rp: ?*Rule = zyt.rule;
         while (rp) |rule| : (rp = rule.next) {
             const s1 = rule.lhs;
             rhs: for (rule.rhs) |s2| {
@@ -3517,38 +3523,38 @@ fn FindFirstSets(lemp: *Zitron) !void {
 // are added to between some states so that the LR(1) follow sets
 // can be computed later.
 //
-fn FindStates(lemp: *Zitron) !void {
+fn FindStates(zyt: *Zitron) !void {
     const sp: *Symbol = sp: {
-        if (lemp.start.len > 0) {
-            const maybe_sp = Symbol_find(lemp.start);
+        if (zyt.start.len > 0) {
+            const maybe_sp = Symbol_find(zyt.start);
             if (maybe_sp) |_| {
-                break :sp lemp.startRule.lhs;
+                break :sp zyt.startRule.lhs;
             } else {
-                ErrorMsg(lemp.filename, 0, "" ++
+                ErrorMsg(zyt.filename, 0, "" ++
                     "The specified start symbol \"{s}\" is not " ++
                     "in a nonterminal of the grammar.  \"{s}\" will be used as the start " ++
-                    "symbol instead.", .{ lemp.start, lemp.startRule.lhs.name });
-                lemp.errorcnt += 1;
-                break :sp lemp.startRule.lhs;
+                    "symbol instead.", .{ zyt.start, zyt.startRule.lhs.name });
+                zyt.errorcnt += 1;
+                break :sp zyt.startRule.lhs;
             }
         } else {
             // OG checks if startRule pointer is defined, we (and it) ensure
             // that it is before we get here.
-            break :sp lemp.startRule.lhs;
+            break :sp zyt.startRule.lhs;
         }
     };
     // Make sure the start symbol doesn't occur on the right-hand side of
     // any rule.  Report an error if it does.  (YACC would generate a new
     // start symbol in this case.)
-    var rp: ?*Rule = lemp.rule;
+    var rp: ?*Rule = zyt.rule;
     while (rp) |rule| : (rp = rule.next) {
         for (rule.rhs) |rhs| {
             if (rhs == sp) {
-                ErrorMsg(lemp.filename, 0, "" ++
+                ErrorMsg(zyt.filename, 0, "" ++
                     "The start symbol \"{s}\" occurs on the " ++
                     "right-hand side of a rule. This will result in a parser which " ++
                     "does not work properly.", .{sp.name});
-                lemp.errorcnt += 1;
+                zyt.errorcnt += 1;
             }
             //| NOTE: the previous comparison says FIX ME:  Deal with multiterminals.
             //| I think this is the fix, but we leave it out of lemon classic because
@@ -3557,17 +3563,17 @@ fn FindStates(lemp: *Zitron) !void {
             if (!lemon_classic) if (rhs.type == .multiterminal) {
                 // Token class: could have the same name.
                 if (mem.eql(rhs.name, sp.name)) {
-                    ErrorMsg(lemp.filename, 0, "" ++
+                    ErrorMsg(zyt.filename, 0, "" ++
                         "The start symbol has a synonym declared as a token class. This will " ++
                         "result in a parser which does not work properly.", .{});
-                    lemp.errorcnt += 1;
+                    zyt.errorcnt += 1;
                 }
                 for (rhs.subsym) |subsym| {
                     if (subsym == sp) {
-                        ErrorMsg(lemp.filename, 0, "" ++
+                        ErrorMsg(zyt.filename, 0, "" ++
                             "The start symbol {s} appears as a terminal in a multiterminal. " ++
                             "This was thought to be impossible.", .{sp.name});
-                        lemp.errorcnt += 1;
+                        zyt.errorcnt += 1;
                     }
                 }
             };
@@ -3586,7 +3592,7 @@ fn FindStates(lemp: *Zitron) !void {
     // Compute the first state.  All other states will be
     // computed automatically during the computation of the first one.
     // The returned pointer to the first state is not used.
-    _ = try getstate(lemp);
+    _ = try getstate(zyt);
 }
 
 threadlocal var state_count: usize = 0;
@@ -3594,7 +3600,7 @@ threadlocal var state_count: usize = 0;
 // [967]
 // Return a pointer to a state which is described by the configuration
 // list which has been built from calls to Configlist_add.
-fn getstate(lemp: *Zitron) Allocator.Error!*State {
+fn getstate(zyt: *Zitron) Allocator.Error!*State {
     // Extract the sorted basis of the new state.  The basis was constructed
     // by prior calls to "Configlist_addbasis()".
     Configlist_sortbasis();
@@ -3632,14 +3638,14 @@ fn getstate(lemp: *Zitron) Allocator.Error!*State {
             maybe_x = x.bp;
             maybe_y = y.bp;
         }
-        Configlist_eat(Configlist_return(), lemp.allocator);
+        Configlist_eat(Configlist_return(), zyt.allocator);
         return stp;
     } else {
         // This really is a new state.  Construct all the details
         if (p_check1) {
             dprint("  state not found\n", .{});
         }
-        try Configlist_closure(lemp); //  Compute the configuration closure */
+        try Configlist_closure(zyt); //  Compute the configuration closure */
         Configlist_sort(); //  Sort the configuration closure */
         const cfp = Configlist_return().?; //  Get a pointer to the config list */
         if (p_check1) {
@@ -3655,11 +3661,11 @@ fn getstate(lemp: *Zitron) Allocator.Error!*State {
         const stp = try State_new(); //  A new state structure */
         stp.bp = bp;
         stp.cfp = cfp;
-        stp.statenum = lemp.nstate;
-        lemp.nstate += 1;
+        stp.statenum = zyt.nstate;
+        zyt.nstate += 1;
         stp.ap = null;
         dbgassert(try State_insert(stp, bp));
-        try buildshifts(lemp, stp);
+        try buildshifts(zyt, stp);
         return stp;
     }
 }
@@ -3678,7 +3684,7 @@ fn same_symbol(a: *const Symbol, b: *const Symbol) bool {
     return true;
 }
 
-fn buildshifts(lemp: *Zitron, stp: *State) !void {
+fn buildshifts(zyt: *Zitron, stp: *State) !void {
     var maybe_cfp: ?*Config = stp.cfp; // For looping thru the config closure of "stp"
     // Initialize with a conveniently available symbol, this is never used:
     // (So we don't do it)
@@ -3724,7 +3730,7 @@ fn buildshifts(lemp: *Zitron, stp: *State) !void {
         }
         // /* Get a pointer to the state described by the basis configuration set
         // ** constructed in the preceding loop */
-        const newstp = try getstate(lemp);
+        const newstp = try getstate(zyt);
         // /* The state "newstp" is reached from the state "stp" by a shift action
         // ** on the symbol "sp" */
         if (sp.type == .multiterminal) {
@@ -3745,11 +3751,11 @@ fn buildshifts(lemp: *Zitron, stp: *State) !void {
 ///
 /// Construct the propagation links
 ///
-fn FindLinks(lemp: *Zitron) !void {
+fn FindLinks(zyt: *Zitron) !void {
     // Housekeeping detail:
     // Add to every propagate link a pointer back to the state to
     // which the link is attached.
-    for (lemp.sorted) |stp| {
+    for (zyt.sorted) |stp| {
         var maybe_cfp: ?*Config = stp.cfp;
         while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
             if (p_check1) {
@@ -3760,7 +3766,7 @@ fn FindLinks(lemp: *Zitron) !void {
     }
     // Convert all backlinks into forward links.  Only the forward
     // links are used in the follow-set computation.
-    for (lemp.sorted) |stp| {
+    for (zyt.sorted) |stp| {
         var maybe_cfp: ?*Config = stp.cfp;
         while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
             if (p_check1) {
@@ -3784,8 +3790,8 @@ fn FindLinks(lemp: *Zitron) !void {
 ///
 /// A followset is the set of all symbols which can come immediately
 /// after a configuration.
-fn FindFollowSets(lemp: *Zitron) void {
-    for (lemp.sorted) |stp| {
+fn FindFollowSets(zyt: *Zitron) void {
+    for (zyt.sorted) |stp| {
         var maybe_cfp: ?*Config = stp.cfp;
         while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
             cfp.status = .incomplete;
@@ -3795,7 +3801,7 @@ fn FindFollowSets(lemp: *Zitron) void {
     var progress = true;
     while (progress) {
         progress = false;
-        for (lemp.sorted) |stp| {
+        for (zyt.sorted) |stp| {
             var maybe_cfp: ?*Config = stp.cfp;
             states: while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
                 if (cfp.status == .complete) continue :states;
@@ -3827,20 +3833,20 @@ fn FindFollowSets(lemp: *Zitron) void {
 
 // Compute the reduce actions, and resolve conflicts.
 //
-fn FindActions(lemp: *Zitron) !void {
+fn FindActions(zyt: *Zitron) !void {
     // Add all of the reduce actions
     // A reduce action is added for each element of the followset of
     // a configuration which has its dot at the extreme right.
     //
-    for (lemp.sorted) |stp| { // Loop over all states
+    for (zyt.sorted) |stp| { // Loop over all states
         var maybe_cfp: ?*Config = stp.cfp;
         while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) { // Loop over all configurations
             if (cfp.rp.rhs.len == cfp.dot) { // Is dot at extreme right?
-                for (0..lemp.nterminal) |j| {
+                for (0..zyt.nterminal) |j| {
                     if (cfp.fws[j]) {
                         //  Add a reduce action to the state "stp" which will reduce by the
                         //  rule "cfp->rp" if the lookahead symbol is "lemp->symbols[j]"
-                        try Action.addRule(&stp.ap, .reduce, lemp.symbols[j], cfp.rp);
+                        try Action.addRule(&stp.ap, .reduce, zyt.symbols[j], cfp.rp);
                     }
                 }
             }
@@ -3848,21 +3854,21 @@ fn FindActions(lemp: *Zitron) !void {
     }
     //  Add the accepting token
     const sp: *Symbol = sym: {
-        if (lemp.start.len > 0) {
-            const sp_start = Symbol_find(lemp.start);
+        if (zyt.start.len > 0) {
+            const sp_start = Symbol_find(zyt.start);
             if (sp_start) |sps| {
                 break :sym sps;
             } else {
-                break :sym lemp.startRule.lhs;
+                break :sym zyt.startRule.lhs;
             }
-        } else break :sym lemp.startRule.lhs;
+        } else break :sym zyt.startRule.lhs;
     };
     // Add to the first state (which is always the starting state of the
     // finite state machine) an action to ACCEPT if the lookahead is the
     // start nonterminal.
-    try Action.addRule(&lemp.sorted[0].ap, .accept, sp, null);
+    try Action.addRule(&zyt.sorted[0].ap, .accept, sp, null);
     //   Resolve conflicts
-    for (lemp.sorted) |stp| {
+    for (zyt.sorted) |stp| {
         stp.ap = if (stp.ap) |ap| Action.sort(ap) else null;
         var m_ap: ?*Action = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
@@ -3873,7 +3879,7 @@ fn FindActions(lemp: *Zitron) !void {
                 if (p_check1) {
                     dprint("find state: before .{s} .{s}\n", .{ @tagName(ap.type), @tagName(nap.?.type) });
                 }
-                lemp.nconflict += resolve_conflict(ap, nap.?);
+                zyt.nconflict += resolve_conflict(ap, nap.?);
                 if (p_check1) {
                     dprint("find state: after .{s} .{s}\n", .{ @tagName(ap.type), @tagName(nap.?.type) });
                 }
@@ -3881,20 +3887,20 @@ fn FindActions(lemp: *Zitron) !void {
         }
     }
     // Report an error for each rule that can never be reduced.
-    var m_rp: ?*Rule = lemp.rule;
+    var m_rp: ?*Rule = zyt.rule;
     while (m_rp) |rp| : (m_rp = rp.next) rp.canReduce = false;
-    for (lemp.sorted) |stp| {
+    for (zyt.sorted) |stp| {
         var m_ap = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
             if (ap.type == .reduce) ap.x.rp.?.canReduce = true;
         }
     }
-    m_rp = lemp.rule;
+    m_rp = zyt.rule;
     while (m_rp) |rp| : (m_rp = rp.next) {
         if (rp.canReduce) continue;
-        ErrorMsg(lemp.filename, rp.ruleline, "" ++
+        ErrorMsg(zyt.filename, rp.ruleline, "" ++
             "This rule can not be reduced.\n", .{});
-        lemp.errorcnt += 1;
+        zyt.errorcnt += 1;
     }
 }
 
@@ -5184,14 +5190,14 @@ fn levenshtein(allocator: std.mem.Allocator, a_in: []const u8, b_in: []const u8)
 /// In this version, we take the most frequent REDUCE action and make
 /// it the default.  Except, there is no default if the wildcard token
 /// is a possible look-ahead.
-fn CompressTables(lemp: *Zitron) !void {
-    states: for (lemp.sorted) |stp| {
+fn CompressTables(zyt: *Zitron) !void {
+    states: for (zyt.sorted) |stp| {
         var nbest: usize = 0;
         var rbest: ?*Rule = null;
         var usesWildcard = false;
         var m_ap: ?*Action = stp.ap;
         actions: while (m_ap) |ap| : (m_ap = ap.next) {
-            if (ap.type == .shift and ap.sp == lemp.wildcard) {
+            if (ap.type == .shift and ap.sp == zyt.wildcard) {
                 usesWildcard = true;
             }
             if (ap.type != .reduce) continue :actions;
@@ -5223,7 +5229,7 @@ fn CompressTables(lemp: *Zitron) !void {
             m_ap = stp.ap;
             const stderr = std.io.getStdErr().writer();
             while (m_ap) |ap| : (m_ap = ap.next) {
-                _ = try PrintAction(stderr, ap, 0, lemp.opt.show_precedence_conflict);
+                _ = try PrintAction(stderr, ap, 0, zyt.opt.show_precedence_conflict);
             }
             m_ap = stp.ap;
         }
@@ -5234,7 +5240,7 @@ fn CompressTables(lemp: *Zitron) !void {
         }
         dbgassert(m_ap != null);
         if (p_check1) dprint("old symbol name {s}\n", .{m_ap.?.sp.name});
-        m_ap.?.sp = lemp.symbols[lemp.nsymbol];
+        m_ap.?.sp = zyt.symbols[zyt.nsymbol];
         dbgassert(strcmp(m_ap.?.sp.name, "{default}"));
         if (p_check1) dprint("new symbol name {s}\n", .{m_ap.?.sp.name});
         m_ap = m_ap.?.next;
@@ -5257,7 +5263,7 @@ fn CompressTables(lemp: *Zitron) !void {
     // Make a second pass over all states and actions.  Convert
     // every action that is a SHIFT to an autoReduce state into
     // a SHIFTREDUCE action.
-    for (lemp.sorted) |stp| {
+    for (zyt.sorted) |stp| {
         var m_ap: ?*Action = stp.ap;
         actions: while (m_ap) |ap| : (m_ap = ap.next) {
             if (ap.type != .shift) continue :actions;
@@ -5274,7 +5280,7 @@ fn CompressTables(lemp: *Zitron) !void {
     // then we can go ahead and convert the action to be the same as the
     // action for the RHS of the rule.
     //
-    for (lemp.sorted) |stp| {
+    for (zyt.sorted) |stp| {
         var m_ap: ?*Action = stp.ap;
         var nextap: ?*Action = null;
         actions: while (m_ap) |ap| : (m_ap = nextap) {
@@ -5287,7 +5293,7 @@ fn CompressTables(lemp: *Zitron) !void {
                 // Only apply this optimization to non-terminals.  It would be OK to
                 // apply it to terminal symbols too, but that makes the parser tables
                 // larger.
-                if (ap.sp.index < lemp.nterminal) continue :actions;
+                if (ap.sp.index < zyt.nterminal) continue :actions;
             }
             // If we reach this point, it means the optimization can be applied
             nextap = ap;
@@ -5325,8 +5331,8 @@ const NO_OFFSET = -2147483647;
 // Renumber and resort states so that states with fewer choices
 // occur at the end.  Except, keep state 0 as the first state.
 //
-fn ResortStates(lemp: *Zitron) void {
-    for (lemp.sorted) |stp| {
+fn ResortStates(zyt: *Zitron) void {
+    for (zyt.sorted) |stp| {
         if (p_check1) {
             dprint("state before resort: {d}\n", .{stp.statenum});
         }
@@ -5338,11 +5344,11 @@ fn ResortStates(lemp: *Zitron) void {
         stp.iNtOfst = NO_OFFSET;
         var m_ap = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
-            const m_iAction = compute_action(lemp, ap);
+            const m_iAction = compute_action(zyt, ap);
             if (m_iAction) |iAction| {
-                if (ap.sp.index < lemp.nterminal) {
+                if (ap.sp.index < zyt.nterminal) {
                     stp.nTknAct += 1;
-                } else if (ap.sp.index < lemp.nsymbol) {
+                } else if (ap.sp.index < zyt.nsymbol) {
                     stp.nNtAct += 1;
                 } else {
                     dbgassert(!stp.autoreduce or stp.pDefltReduce == ap.x.rp);
@@ -5351,40 +5357,40 @@ fn ResortStates(lemp: *Zitron) void {
             }
         }
     }
-    std.mem.sort(*State, lemp.sorted[1..], {}, stateResortCompare);
-    for (lemp.sorted, 0..) |stp, i| {
+    std.mem.sort(*State, zyt.sorted[1..], {}, stateResortCompare);
+    for (zyt.sorted, 0..) |stp, i| {
         if (p_check1) {
             dprint("statenum was #{d}, now #{d}\n", .{ stp.statenum, i });
         }
         stp.statenum = @intCast(i);
     }
-    lemp.nxstate = lemp.nstate;
-    while (lemp.nxstate > 1 and lemp.sorted[lemp.nxstate - 1].autoreduce) {
-        lemp.nxstate -= 1;
+    zyt.nxstate = zyt.nstate;
+    while (zyt.nxstate > 1 and zyt.sorted[zyt.nxstate - 1].autoreduce) {
+        zyt.nxstate -= 1;
     }
 }
 
 // Given an action, compute the integer value for that action
 // which is to be put in the action table of the generated machine.
 // Return negative if no action should be generated.
-fn compute_action(lemp: *Zitron, ap: *Action) ?u32 {
+fn compute_action(zyt: *Zitron, ap: *Action) ?u32 {
     return act: switch (ap.type) {
         .shift => break :act ap.x.stp.statenum,
         .shiftreduce => {
             // Since a SHIFT is inherent after a prior REDUCE, convert any
             // SHIFTREDUCE action with a nonterminal on the LHS into a simple
             // REDUCE action:
-            if (ap.sp.index >= lemp.nterminal and
-                (lemp.errsym == null or ap.sp.index != lemp.errsym.?.index))
+            if (ap.sp.index >= zyt.nterminal and
+                (zyt.errsym == null or ap.sp.index != zyt.errsym.?.index))
             {
-                break :act lemp.minReduce + ap.x.rp.?.iRule;
+                break :act zyt.minReduce + ap.x.rp.?.iRule;
             } else {
-                break :act lemp.minShiftReduce + ap.x.rp.?.iRule;
+                break :act zyt.minShiftReduce + ap.x.rp.?.iRule;
             }
         },
-        .reduce => break :act lemp.minReduce + ap.x.rp.?.iRule,
-        .@"error" => break :act lemp.errAction,
-        .accept => break :act lemp.accAction,
+        .reduce => break :act zyt.minReduce + ap.x.rp.?.iRule,
+        .@"error" => break :act zyt.errAction,
+        .accept => break :act zyt.accAction,
         else => break :act null,
     };
 }
@@ -5392,12 +5398,12 @@ fn compute_action(lemp: *Zitron, ap: *Action) ?u32 {
 /// Compute the action table, but do not output it yet.  The action
 /// table must be computed before generating the YYNSTATE macro because
 /// we need to know how many states can be eliminated.
-fn Compute_actiontable(lemp: *Zitron) !*ActTable {
-    const ax = try lemp.allocator.alloc(AxSet, lemp.nxstate * 2);
-    defer lemp.allocator.free(ax);
+fn Compute_actiontable(zyt: *Zitron) !*ActTable {
+    const ax = try zyt.allocator.alloc(AxSet, zyt.nxstate * 2);
+    defer zyt.allocator.free(ax);
     @memset(ax, .empty);
-    for (0..lemp.nxstate) |i| {
-        const stp = lemp.sorted[i];
+    for (0..zyt.nxstate) |i| {
+        const stp = zyt.sorted[i];
         const ix2 = 2 * i;
         ax[ix2].stp = stp;
         ax[ix2].isTkn = true;
@@ -5410,7 +5416,7 @@ fn Compute_actiontable(lemp: *Zitron) !*ActTable {
     var mxNtOfst: int, var mnNtOfst: int = .{ 0, 0 };
     // In an effort to minimize the action table size, use the heuristic
     // of placing the largest action sets first */
-    for (0..lemp.nxstate * 2) |i| ax[i].iOrder = @intCast(i);
+    for (0..zyt.nxstate * 2) |i| ax[i].iOrder = @intCast(i);
     mem.sort(AxSet, ax, {}, axset_compare);
     if (p_check1) {
         dprint("Action table: ", .{});
@@ -5418,21 +5424,21 @@ fn Compute_actiontable(lemp: *Zitron) !*ActTable {
             dprint("{d} ", .{an_x.iOrder});
         }
         dprint("\n", .{});
-        dprint("nterminal {d} nsymbol {d}\n", .{ lemp.nterminal, lemp.nsymbol });
+        dprint("nterminal {d} nsymbol {d}\n", .{ zyt.nterminal, zyt.nsymbol });
     }
-    const pActtab = try ActTable.create(lemp.allocator, lemp.nsymbol, lemp.nterminal);
+    const pActtab = try ActTable.create(zyt.allocator, zyt.nsymbol, zyt.nterminal);
     errdefer pActtab.destroy();
     var i: usize = 0;
-    while (i < lemp.nxstate * 2 and ax[i].nAction > 0) : (i += 1) {
+    while (i < zyt.nxstate * 2 and ax[i].nAction > 0) : (i += 1) {
         const stp = ax[i].stp;
         if (ax[i].isTkn) {
             var m_ap: ?*Action = stp.ap;
             var j: usize = 0;
             actions: while (m_ap) |ap| : (m_ap = ap.next) {
-                if (ap.sp.index >= lemp.nterminal) continue :actions;
+                if (ap.sp.index >= zyt.nterminal) continue :actions;
                 if (p_check1) j += 1;
                 if (p_debug) dprint("adding >= nterminal type {s}\n", .{@tagName(ap.type)});
-                const m_action = compute_action(lemp, ap);
+                const m_action = compute_action(zyt, ap);
                 if (m_action) |action| {
                     try pActtab.action(ap.sp.index, @intCast(action));
                 }
@@ -5453,11 +5459,11 @@ fn Compute_actiontable(lemp: *Zitron) !*ActTable {
                 if (p_check1) {
                     dprint(" {s}", .{ap.sp.name});
                 }
-                if (ap.sp.index < lemp.nterminal) continue :actions;
-                if (ap.sp.index == lemp.nsymbol) continue :actions;
+                if (ap.sp.index < zyt.nterminal) continue :actions;
+                if (ap.sp.index == zyt.nsymbol) continue :actions;
                 if (p_check1) j += 1;
                 if (p_debug) dprint("adding < nterminal type {s}\n", .{@tagName(ap.type)});
-                const m_action = compute_action(lemp, ap);
+                const m_action = compute_action(zyt, ap);
                 if (m_action) |action| {
                     try pActtab.action(ap.sp.index, @intCast(action));
                 }
@@ -5496,8 +5502,8 @@ fn Compute_actiontable(lemp: *Zitron) !*ActTable {
 
 const Options = struct {
     version: bool = false,
-    rpflag: bool = false,
-    mhflag: bool = false,
+    rpflag: bool = config.report,
+    enum_file: bool = config.enum_file,
     no_compress: bool = config.no_compress,
     print_pp: bool = false,
     linenos: bool = config.line_numbers,
@@ -5553,10 +5559,37 @@ fn OptNArgs(args: [][:0]u8) usize {
 
 /// Print the command line with a caret pointing to the k-th character
 /// of the n-th field.
-fn errline(args: [][:0]u8, i: usize) void {
-    _ = .{ args, i };
-}
+fn errline(args: []const []const u8, n: usize, k: usize) void {
+    var spcnt: usize = 0;
+    var i: usize = 0;
 
+    if (args.len > 0) {
+        const idx = if (mem.lastIndexOfScalar(u8, args[0], '/')) |id| id + 1 else 0;
+        std.debug.print("{s}", .{args[0][idx..]});
+        spcnt = args[0][idx..].len + 1;
+        i = 1;
+    } else {
+        spcnt = 0;
+    }
+
+    while (i < n and i < args.len) : (i += 1) {
+        std.debug.print(" {s}", .{args[i]});
+        spcnt += args[i].len + 1;
+    }
+
+    spcnt += k;
+
+    while (i < args.len) : (i += 1) {
+        std.debug.print(" {s}", .{args[i]});
+    }
+
+    if (spcnt < 20) {
+        std.debug.print("\n{s: >[len]}^-- here\n\n", .{ .s = "", .len = spcnt });
+    } else {
+        const adj = spcnt - 7;
+        std.debug.print("\n{s: >[len]}here --^\n\n", .{ .s = "", .len = adj });
+    }
+}
 fn handleflags(opt: *Options, flag: u8, arg: []const u8, set: bool, allocator: Allocator) !usize {
     switch (flag) {
         'b' => opt.only_basis = set,
@@ -5564,6 +5597,9 @@ fn handleflags(opt: *Options, flag: u8, arg: []const u8, set: bool, allocator: A
         'd' => opt.output_directory = arg,
         'D' => {
             if (arg.len > 0) {
+                for (opt.azDefine) |d| {
+                    if (strcmp(d, arg)) return 0;
+                }
                 opt.azDefine = try allocator.realloc(opt.azDefine, opt.azDefine.len + 1);
                 opt.azDefine[opt.azDefine.len - 1] = arg;
                 opt.bDefineUsed = try allocator.realloc(opt.bDefineUsed, opt.bDefineUsed.len + 1);
@@ -5586,12 +5622,9 @@ fn handleflags(opt: *Options, flag: u8, arg: []const u8, set: bool, allocator: A
             }
         },
         'E' => opt.print_pp = set,
-        'f' => {}, // Ignored,
         'g' => opt.rpflag = set,
-        'I' => {},
-        'm' => opt.mhflag = set,
+        'm' => opt.enum_file = set,
         'l' => opt.linenos = set,
-        'O' => {},
         'p' => opt.show_precedence_conflict = set,
         'q' => opt.quiet = set,
         'r' => opt.no_resort = set,
@@ -5599,7 +5632,6 @@ fn handleflags(opt: *Options, flag: u8, arg: []const u8, set: bool, allocator: A
         'S' => opt.sql_flag = set,
         'x' => opt.version = set,
         'T' => opt.user_templatename = arg,
-        'W' => {},
         else => return 1,
     }
     return 0;
@@ -5615,55 +5647,87 @@ fn handleswitch(opt: *Options, arg: []const u8, allocator: Allocator) !usize {
 
 fn OptInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !void {
     errdefer opt.deinit(allocator);
-    if (lemon_classic) {
-        var errcnt: usize = 0;
-        var last_err: usize = 0;
-        for (args, 0..) |arg, i| {
-            if (arg.len < 2) {
-                errcnt += 1;
-                continue;
-            }
-            if (arg[0] == '+' or arg[0] == '-') {
-                errcnt += try handleflags(opt, arg[1], arg[2..], arg[0] == '-', allocator);
-            } else if (mem.indexOfScalar(u8, arg, '=')) |_| {
-                errcnt += try handleswitch(opt, arg, allocator);
-            }
-            if (errcnt > last_err) {
-                last_err = errcnt;
-                errline(args, i);
-            }
+    if (config.define) |defines| {
+        const n = opt.azDefine.len;
+        opt.azDefine = try allocator.realloc(opt.azDefine, n + defines.len);
+        opt.bDefineUsed = try allocator.realloc(opt.bDefineUsed, n + defines.len);
+        dbgassert(opt.azDefine.len == opt.bDefineUsed.len);
+        for (defines, 0..) |d, i| {
+            opt.azDefine[n + i] = d;
+            opt.bDefineUsed[n + i] = false;
         }
-        if (errcnt > 0) {
-            OptPrint(args);
-        }
-        return;
-    } else {
-        @compileError("Implement not-lemon-classic options parser\n");
     }
+    var errcnt: usize = 0;
+    var last_err: usize = 0;
+    for (args, 0..) |arg, i| {
+        if (arg.len < 2) {
+            errcnt += 1;
+            continue;
+        }
+        if (arg[0] == '+' or arg[0] == '-') {
+            errcnt += try handleflags(opt, arg[1], arg[2..], arg[0] == '-', allocator);
+        } else if (mem.indexOfScalar(u8, arg, '=')) |_| {
+            errcnt += try handleswitch(opt, arg, allocator);
+        }
+        if (errcnt > last_err) {
+            if (last_err == 0) {
+                dprint("Error in command line arguments:\n", .{});
+            }
+            last_err = errcnt;
+            errline(args, i, 0);
+        }
+    }
+    if (errcnt > 0) {
+        OptPrint(args);
+    }
+    return;
 }
 
 const help_string =
-    \\Valid command line options for "{s}" are:
-    \\  -b           Print only the basis in report.
-    \\  -c           Don't compress the action table.
-    \\  -d<string>   Output directory.  Default '.'
-    \\  -D<string>   Define an %ifdef macro.
-    \\  -E           Print input file after preprocessing.
-    \\  -f<string>   Ignored.  (Placeholder for -f compiler options.)
-    \\  -g           Print grammar without actions.
-    \\  -I<string>   Ignored.  (Placeholder for '-I' compiler options.)
-    \\  -m           Output a makeheaders compatible file.
-    \\  -l           Do not print #line statements.
-    \\  -O<string>   Ignored.  (Placeholder for '-O' compiler options.)
-    \\  -p           Show conflicts resolved by precedence rules
-    \\  -q           (Quiet) Don't print the report file.
-    \\  -r           Do not sort or renumber states
-    \\  -s           Print parser stats to standard output.
-    \\  -S           Generate the *.sql file describing the parser tables.
-    \\  -x           Print the version number.
-    \\  -T<string>   Specify a template file.
-    \\  -U<string>   Undefine a macro.
-    \\  -W<string>   Ignored.  (Placeholder for '-W' compiler options.)
+    \\Valid commands for {s} are:
+    \\
+    \\ -b, --basis               Show only the basis for each parser state in the report file.
+    \\
+    \\ -c, --no-compress         Do not compress the generated action tables. The parser will be
+    \\                           a little larger and slower, but it will detect syntax errors sooner.
+    \\
+    \\ -d, --directory directory Write all output files into "directory". Normally,
+    \\                           output files are written into the directory that contains the input
+    \\                           grammar file.
+    \\
+    \\ -D, --define name         Define C-like preprocessor macro "name".  This macro is usable
+    \\                           by %ifdef, %ifndef, and %if lines in the grammar file.
+    \\                           It is legal to define a name more than once.
+    \\
+    \\ -e --enum-file            Emit the token enum as its own file.
+    \\
+    \\ -g --no-gen               Do not generate a parser. Instead write the input grammar to
+    \\                           standard output with all comments, actions, and other extraneous text
+    \\                           removed.
+    \\
+    \\ -l --lines                Add "// #line" comments in the generated parser's Zig code.
+    \\
+    \\ -P --pp-only              Run the "%if" preprocessor step only and print the revised
+    \\                           grammar file.
+    \\
+    \\ -p --precedence           Display all conflicts that are resolved by [precedence rules].
+    \\
+    \\ -q --quiet                Suppress generation of the report file.
+    \\
+    \\ -r --no-renumber          Do not sort or renumber the parser states as part of
+    \\                           optimization.
+    \\
+    \\ -s --show-stats           Show parser statistics before exiting.
+    \\
+    \\ -S --sql                  Generate the *.sql file describing the parser tables.
+    \\
+    \\ -T, --template file       Use "file" as the template for the generated C-code
+    \\                           parser implementation.
+    \\
+    \\ -U, --undefine name       Undefine C-like preprocessor macro "name".  It is legal to
+    \\                           undefine a nonexistent name, but warned against.
+    \\
+    \\ -v, --version             Print the Zitron version number.
 ;
 
 fn OptPrint(args: [][:0]u8) noreturn {
@@ -5782,11 +5846,10 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
     var opt: Options = .{};
+    defer opt.deinit(allocator);
     {
         opt.azDefine = try allocator.alloc([]const u8, 0);
-        errdefer allocator.free(opt.azDefine);
         opt.bDefineUsed = try allocator.alloc(bool, 0);
-        errdefer allocator.free(opt.bDefineUsed);
         try OptInit(&opt, args, allocator);
     }
     if (opt.version) {
@@ -5803,65 +5866,65 @@ pub fn main() !void {
     }
     std.mem.sort([]const u8, opt.azDefine, {}, strLessThan);
     const filename: []const u8 = OptArg(args, 0);
-    var lem = lemon: {
+    var zyt = lemon: {
         errdefer opt.deinit(allocator);
         break :lemon try Zitron.create(allocator);
     };
-    defer lem.destroy(allocator);
-    lem.opt = opt;
-    lem.argv = args;
-    lem.filename = filename;
-    lem.quoted_filename = try esc_filename(allocator, filename);
-    lem.linenosflag = opt.linenos;
-    lem.printPreprocessed = opt.print_pp;
+    defer zyt.destroy(allocator);
+    zyt.opt = opt;
+    zyt.argv = args;
+    zyt.filename = filename;
+    zyt.quoted_filename = try esc_filename(allocator, filename);
+    zyt.linenosflag = opt.linenos;
+    zyt.printPreprocessed = opt.print_pp;
     _ = try Symbol_new("$"); // Why? Answer: creates index 0!
-    var pstate = try PState.create(allocator, lem);
+    var pstate = try PState.create(allocator, zyt);
     defer pstate.destroy();
-    pstate.gp = lem;
+    pstate.gp = zyt;
     pstate.filename = filename;
 
     try Parse(pstate);
-    if (lem.printPreprocessed or lem.errorcnt > 0) {
+    if (zyt.printPreprocessed or zyt.errorcnt > 0) {
         logger.err("exiting due to preprocess only or too many errors", .{});
-        exit(@truncate(lem.errorcnt));
+        exit(@truncate(zyt.errorcnt));
     }
-    if (lem.nrule == 0) {
+    if (zyt.nrule == 0) {
         logger.err("Empty grammar.", .{});
         exit(1);
     }
-    lem.errsym = Symbol_find("error");
+    zyt.errsym = Symbol_find("error");
 
     // Count and index the symbols of the grammar
     _ = try Symbol_new("{default}");
-    lem.symbols = Symbol_arrayof();
-    sort(*Symbol, lem.symbols, {}, Symbol_lessThanFn);
-    if (p_symbols) for (lem.symbols) |symbol| {
+    zyt.symbols = Symbol_arrayof();
+    sort(*Symbol, zyt.symbols, {}, Symbol_lessThanFn);
+    if (p_symbols) for (zyt.symbols) |symbol| {
         std.debug.print("{s} ", .{symbol.name});
     };
-    for (lem.symbols, 0..) |sym, i| {
+    for (zyt.symbols, 0..) |sym, i| {
         sym.index = @intCast(i);
     }
     {
-        var i: u32 = @intCast(lem.symbols.len);
-        while (lem.symbols[i - 1].type == .multiterminal) : (i -= 1) {}
-        dbgassert(strcmp(lem.symbols[i - 1].name, "{default}"));
-        lem.nsymbol = i - 1;
+        var i: u32 = @intCast(zyt.symbols.len);
+        while (zyt.symbols[i - 1].type == .multiterminal) : (i -= 1) {}
+        dbgassert(strcmp(zyt.symbols[i - 1].name, "{default}"));
+        zyt.nsymbol = i - 1;
         i = 1;
-        while (isUpper(lem.symbols[i].name[0])) : (i += 1) {}
-        lem.nterminal = i;
+        while (isUpper(zyt.symbols[i].name[0])) : (i += 1) {}
+        zyt.nterminal = i;
     }
-    sequenceRules(lem);
+    sequenceRules(zyt);
     if (p_check1 or p_symbols) {
-        dprint("Sorted rules: {s}\n", .{lem.filename});
-        var rp: ?*Rule = lem.rule;
+        dprint("Sorted rules: {s}\n", .{zyt.filename});
+        var rp: ?*Rule = zyt.rule;
         var i: usize = 0;
         while (rp) |rule| : (rp = rule.next) {
             dprint("~~~ {s} ({d})\n", .{ rule.lhs.name, rule.iRule });
             i += 1;
         }
         dprint("Rule count: {d}\n", .{i});
-        dprint("nsymbol {d} nterminal {d}\n", .{ lem.nsymbol, lem.nterminal });
-        for (lem.symbols[0..lem.nsymbol]) |symbol| {
+        dprint("nsymbol {d} nterminal {d}\n", .{ zyt.nsymbol, zyt.nterminal });
+        for (zyt.symbols[0..zyt.nsymbol]) |symbol| {
             dprint("{s} ", .{symbol.name});
         }
         dprint("\n", .{});
@@ -5869,16 +5932,16 @@ pub fn main() !void {
     // [1726]
     // /* Generate a reprint of the grammar, if requested on the command line */
     if (opt.rpflag) {
-        try Reprint(lem);
+        try Reprint(zyt);
     } else {
-        SetSize(lem.nterminal + 1);
+        SetSize(zyt.nterminal + 1);
         // Find the precedence for every production rule (that has one)
-        FindRulePrecedences(lem);
+        FindRulePrecedences(zyt);
         // Compute the lambda-nonterminals and the first-sets for every
         // nonterminal
-        try FindFirstSets(lem);
+        try FindFirstSets(zyt);
         if (p_check1) {
-            var rp: ?*Rule = lem.rule;
+            var rp: ?*Rule = zyt.rule;
             while (rp) |rule| : (rp = rule.next) {
                 const s1 = rule.lhs;
                 dprint("lhs: {s} ({d})", .{ s1.name, s1.index });
@@ -5898,14 +5961,14 @@ pub fn main() !void {
                 }
             }
         }
-        dbgassert(lem.nstate == 0);
+        dbgassert(zyt.nstate == 0);
         // Compute all LR(0) states.  Also record follow-set propagation
         // links so that the follow-set can be computed later
-        try FindStates(lem);
-        lem.sorted = State_arrayof();
-        dbgassert(lem.sorted.len == lem.nstate);
+        try FindStates(zyt);
+        zyt.sorted = State_arrayof();
+        dbgassert(zyt.sorted.len == zyt.nstate);
         if (p_check1) {
-            for (lem.sorted, 0..) |stp, i| {
+            for (zyt.sorted, 0..) |stp, i| {
                 dprint("State {d} #{d}: ", .{ i, stp.statenum });
                 if (stp.bp) |bp| {
                     dprint("{s}", .{bp.rp.lhs.name});
@@ -5916,9 +5979,9 @@ pub fn main() !void {
             }
         }
         // /* Tie up loose ends on the propagation links */
-        try FindLinks(lem);
+        try FindLinks(zyt);
         if (p_check1) {
-            for (lem.sorted) |stp| {
+            for (zyt.sorted) |stp| {
                 var maybe_cfp: ?*Config = stp.cfp;
                 while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
                     dprint("cfp: {s}:{d} fplp count: ", .{ cfp.rp.lhs.name, cfp.rp.index });
@@ -5932,14 +5995,14 @@ pub fn main() !void {
             }
         }
         // Compute the follow set of every reducible configuration
-        FindFollowSets(lem);
+        FindFollowSets(zyt);
 
         // Compute the action tables
-        try FindActions(lem);
+        try FindActions(zyt);
         // Compress the action tables
-        if (!opt.no_compress) try CompressTables(lem);
+        if (!opt.no_compress) try CompressTables(zyt);
         if (p_check1) {
-            for (lem.sorted[0..lem.nstate]) |stp| {
+            for (zyt.sorted[0..zyt.nstate]) |stp| {
                 dprint("State {d}:", .{stp.statenum});
                 var m_ap: ?*Action = stp.ap;
                 while (m_ap) |ap| : (m_ap = ap.next) {
@@ -5951,39 +6014,39 @@ pub fn main() !void {
         // Reorder and renumber the states so that states with fewer choices
         // occur at the end.  This is an optimization that helps make the
         // generated parser tables smaller.
-        if (!opt.no_resort) ResortStates(lem);
+        if (!opt.no_resort) ResortStates(zyt);
         // Generate a report of the parser generated.  (the "y.output" file)
-        if (!opt.quiet) try ReportOutput(lem);
+        if (!opt.quiet) try ReportOutput(zyt);
         // Generate the source code for the parser.
-        try ReportTable(lem, opt.mhflag, opt.sql_flag);
+        try ReportTable(zyt);
         // Produce a header file for use by the scanner.  (This step is
         // omitted if the "-m" option is used because makeheaders will
         // generate the file for us.)
         // TODO: this is now the "make token its own file flag", act
         // accordingly
-        if (opt.mhflag) try ReportHeader(lem);
+        if (opt.enum_file) try ReportHeader(zyt);
     }
     if (opt.statistics) {
         var stdin_buffer: [1024]u8 = undefined;
         var stdin_writer = std.fs.File.stdin().writer(&stdin_buffer);
         const in = &stdin_writer.interface;
         try in.writeAll("Parser statistics:\n");
-        try stats_line(in, "terminal symbols", lem.nterminal);
-        try stats_line(in, "non-terminal symbols", lem.nsymbol - lem.nterminal);
-        try stats_line(in, "total symbols", lem.nsymbol);
-        try stats_line(in, "rules", lem.nrule);
-        try stats_line(in, "states", lem.nxstate);
-        try stats_line(in, "conflicts", lem.nconflict);
-        try stats_line(in, "action table entries", lem.nactiontab);
-        try stats_line(in, "lookahead table entries", lem.nlookaheadtab);
-        try stats_line(in, "total table size (bytes)", lem.tablesize);
+        try stats_line(in, "terminal symbols", zyt.nterminal);
+        try stats_line(in, "non-terminal symbols", zyt.nsymbol - zyt.nterminal);
+        try stats_line(in, "total symbols", zyt.nsymbol);
+        try stats_line(in, "rules", zyt.nrule);
+        try stats_line(in, "states", zyt.nxstate);
+        try stats_line(in, "conflicts", zyt.nconflict);
+        try stats_line(in, "action table entries", zyt.nactiontab);
+        try stats_line(in, "lookahead table entries", zyt.nlookaheadtab);
+        try stats_line(in, "total table size (bytes)", zyt.tablesize);
         try in.flush();
     }
-    if (lem.nconflict > 0) {
-        dprint("{d} parsing conflicts.\n", .{lem.nconflict});
+    if (zyt.nconflict > 0) {
+        dprint("{d} parsing conflicts.\n", .{zyt.nconflict});
     }
     // return 0 on success, 1 on failure.
-    if (lem.errorcnt > 0 or lem.nconflict > 0) exit(1);
+    if (zyt.errorcnt > 0 or zyt.nconflict > 0) exit(1);
     std.process.cleanExit();
 }
 
@@ -6099,14 +6162,14 @@ fn mergeSortFn(
     }.msort;
 }
 
-fn sequenceRules(lem: *Zitron) void {
+fn sequenceRules(zyt: *Zitron) void {
     // Assign sequential rule numbers.  Start with 0.  Put rules that have no
     // reduce action C-code associated with them last, so that the switch()
     // statement that selects reduction actions will have a smaller jump table.
     // NOTE: the original code does all this assigning, then sorts. I don't
     // see why, since we create the order right here.  We can just:
     var rnum: u32 = 0;
-    var rp: ?*Rule = lem.rule;
+    var rp: ?*Rule = zyt.rule;
     var action_head: ?*Rule = null;
     var action_tail: ?*Rule = null;
     var no_act_head: ?*Rule = null;
@@ -6136,22 +6199,22 @@ fn sequenceRules(lem: *Zitron) void {
     } // Cut the tails:
     if (action_tail) |act_tail| act_tail.next = null;
     if (no_act_tail) |no_act| no_act.next = null;
-    lem.nruleWithAction = rnum;
+    zyt.nruleWithAction = rnum;
     rp = no_act_head; // This works correctly even if there are no no-action rules
     while (rp) |rule| : (rp = rule.next) {
         dbgassert(rule.code.len == 0);
         rule.iRule = rnum;
         rnum += 1;
     }
-    lem.startRule = lem.rule;
+    zyt.startRule = zyt.rule;
     // We must have at least one rule, or we bailed already, so this works too:
-    lem.rule = if (action_head) |act_head| act_head else no_act_head.?;
+    zyt.rule = if (action_head) |act_head| act_head else no_act_head.?;
     if (action_head) |_| {
         // Means we have an action_tail too.  Not necessarily a no_act_head,
         // but this is fine:
         action_tail.?.next = no_act_head;
     } // Sorted!
-    rp = lem.startRule;
+    rp = zyt.startRule;
     if (builtin.mode == .Debug) while (rp) |rule| : (rp = rule.next) {
         if (rule.next) |next| {
             dbgassert(rule.iRule + 1 == next.iRule);
@@ -6463,7 +6526,7 @@ fn Configcmp(a: *Config, b: *Config) bool {
 }
 
 /// Compute the closure of the configuration list
-fn Configlist_closure(lemp: *Zitron) !void {
+fn Configlist_closure(zyt: *Zitron) !void {
     var this_cfp: ?*Config = cf_ls.current;
     var scan_count: usize = 0;
     scan: while (this_cfp) |cfp| : (this_cfp = cfp.next) {
@@ -6476,10 +6539,10 @@ fn Configlist_closure(lemp: *Zitron) !void {
         if (dot >= rp.rhs.len) continue :scan;
         const sp = rp.rhs[dot];
         if (sp.type == .nonterminal) {
-            if (sp.rule == null and sp != lemp.errsym) {
-                ErrorMsg(lemp.filename, 0, "" ++
+            if (sp.rule == null and sp != zyt.errsym) {
+                ErrorMsg(zyt.filename, 0, "" ++
                     "Nonterminal \"{s}\" has no rules.", .{sp.name});
-                lemp.errorcnt += 1;
+                zyt.errorcnt += 1;
             }
             var this_newrp = sp.rule;
             while (this_newrp) |newrp| : (this_newrp = newrp.nextlhs) {
