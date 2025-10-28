@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const config = @import("config");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArrayHashMap = std.ArrayHashMapUnmanaged;
@@ -1216,7 +1217,7 @@ fn tplt_print(out: anytype, lemp: *Zitron, str: []const u8, lineno: *usize) !voi
         try out.writeByte('\n');
         lineno.* += 1;
     }
-    if (!lemp.nolinenosflag) {
+    if (lemp.linenosflag) {
         lineno.* += 1;
         try tplt_linedir(out, lineno.*, lemp.quoted_outname);
     }
@@ -1236,7 +1237,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
         } else if (sp.destructor.len > 0) {
             try out.writeAll("        => {\n");
             lineno.* += 1;
-            if (!lemp.nolinenosflag) {
+            if (lemp.linenosflag) {
                 lineno.* += 1;
                 try tplt_linedir(out, sp.destLineno.?, lemp.quoted_filename);
             }
@@ -1260,7 +1261,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, lemp: *Zitron, lineno: *usize
     try out.writeAll(cp[cursor..]);
     try out.writeByte('\n');
     lineno.* += 1;
-    if (!lemp.nolinenosflag) {
+    if (lemp.linenosflag) {
         lineno.* += 1;
         try tplt_linedir(out, lineno.*, lemp.quoted_outname);
     }
@@ -1573,13 +1574,13 @@ fn emit_code(out: anytype, rp: *Rule, lemp: *Zitron, lineno: *usize) !void {
             const extra: usize = if (try writeToIndent(out, rp.codePrefix, 12)) 1 else 0;
             lineno.* += mem.count(u8, rp.codePrefix, "\n") + extra;
         }
-        if (!lemp.nolinenosflag) {
+        if (lemp.linenosflag) {
             lineno.* += 1;
             try tplt_linedir(out, rp.line, lemp.quoted_filename);
         }
         const extra: usize = if (try writeToIndent(out, rp.code, 12)) 1 else 0;
         lineno.* += mem.count(u8, rp.code, "\n") + extra;
-        if (!lemp.nolinenosflag) {
+        if (lemp.linenosflag) {
             lineno.* += 1;
             try tplt_linedir(out, lineno.*, lemp.quoted_outname);
         }
@@ -2047,7 +2048,7 @@ fn reportTableImpl(
             const trace_discard = try std.fmt.allocPrint(
                 zyt.allocator,
                 \\try {s}.print("{{s}}Discard input token {{s}}\n",
-                \\    .{{yyTracePrompt}}, yyTokenName[yymajor]);
+                \\                            .{{ yyTracePrompt, yyTokenName[yymajor] }});
             ,
                 .{trace},
             );
@@ -2058,7 +2059,7 @@ fn reportTableImpl(
             const trace_fallback = try std.fmt.allocPrint(
                 zyt.allocator,
                 \\try {s}.print("{{s}}FALLBACK {{s}} => {{s}}\n",
-                \\    .{{yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[iFallback]}});
+                \\                            .{{ yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[iFallback] }});
             ,
                 .{trace},
             );
@@ -2069,14 +2070,14 @@ fn reportTableImpl(
             const trace_input = try std.fmt.allocPrint(
                 zyt.allocator,
                 \\if (yyact < YY_MIN_REDUCE) {{
-                \\    try {s}.print("{{s}}Input '{{s}}' in state {{d}}\n",
-                \\        .{{yyTracePrompt, yyTokenName[yymajor], yyact}},
-                \\    );
-                \\}} else {{
-                \\    try {s}.print("{{s}}Input '{{s}}' with pending reduce {{d}}\n",
-                \\       .{{yyTracePrompt, yyTokenName[yymajor], yyact - YY_MIN_REDUCE}},
-                \\    );
-                \\}}
+                \\            try {s}.print("{{s}}Input '{{s}}' in state {{d}}\n",
+                \\                .{{ yyTracePrompt, yyTokenName[yymajor], yyact }},
+                \\            );
+                \\        }} else {{
+                \\            try {s}.print("{{s}}Input '{{s}}' with pending reduce {{d}}\n",
+                \\               .{{ yyTracePrompt, yyTokenName[yymajor], yyact - YY_MIN_REDUCE }},
+                \\            );
+                \\        }}
             ,
                 .{ trace, trace },
             );
@@ -2087,8 +2088,8 @@ fn reportTableImpl(
             const trace_pop = try std.fmt.allocPrint(
                 zyt.allocator,
                 \\{s}.print("{{s}}Popping {{s}}\n",
-                \\    .{{yyTracePrompt, yyTokenName[yytos[0].major]}},
-                \\) catch {{}};
+                \\            .{{ yyTracePrompt, yyTokenName[yytos[0].major] }},
+                \\        ) catch {{}};
             ,
                 .{trace},
             );
@@ -2098,22 +2099,22 @@ fn reportTableImpl(
         { // 🍋TRACE_REDUCE
             const trace_reduce = try std.fmt.allocPrint(
                 zyt.allocator,
-                \\        const yysize = yyRuleInfoNRhs[yyruleno];
-                \\        if (yysize == 0) {{
-                \\            try {s}.print("{{s}}Reduce {{d}} [{{s}}]{{s}}, pop back to state {{d}}\n",
-                \\                .{{yyTracePrompt,
-                \\                   yyruleno,
-                \\                   yyRuleName[yyruleno],
-                \\                   if (yyruleno < YYNRULE_WITH_ACTION) "" else " without external action",
-                \\                   (yypParser.tos - @abs(yysize))[0].yy_stateno,
-                \\                }},
-                \\            );
-                \\        }} else {{
-                \\           try {s}.print("{{s}}Reduce {{d}} [{{s}}]{{s}}\n",
-                \\              .{{yyTracePrompt, yyruleno, yyRuleName[yyruleno],
-                \\                  if (yyruleno < YYNRULE_WITH_ACTION) "" else " without external action"}},
-                \\           );
-                \\        }}
+                \\const yysize = yyRuleInfoNRhs[yyruleno];
+                \\                if (yysize == 0) {{
+                \\                    try {s}.print("{{s}}Reduce {{d}} [{{s}}]{{s}}, pop back to state {{d}}\n",
+                \\                        .{{ yyTracePrompt,
+                \\                           yyruleno,
+                \\                           yyRuleName[yyruleno],
+                \\                           if (yyruleno < YYNRULE_WITH_ACTION) "" else " without external action",
+                \\                           (yypParser.tos - @abs(yysize))[0].stateno,
+                \\                        }},
+                \\                    );
+                \\                }} else {{
+                \\                   try {s}.print("{{s}}Reduce {{d}} [{{s}}]{{s}}\n",
+                \\                      .{{ yyTracePrompt, yyruleno, yyRuleName[yyruleno],
+                \\                          if (yyruleno < YYNRULE_WITH_ACTION) "" else " without external action" }},
+                \\                   );
+                \\                }}
             ,
                 .{ trace, trace },
             );
@@ -2123,14 +2124,14 @@ fn reportTableImpl(
         { // 🍋TRACE_RETURN
             const trace_return = try std.fmt.allocPrint(
                 zyt.allocator,
-                \\    var cDiv: u8 = '[';
-                \\    try {s}.print("{{s}}Return. Stack=", .{{yyTracePrompt}});
-                \\    var yy_i = yypParser.stack + 1;
-                \\    while (@intFromPtr(yy_i) <= @intFromPtr(yypParser.tos)) : ( yy_i += 1) {{
-                \\        try {s}.print("{{u}}{{s}}", .{{cDiv, yyTokenName[yy_i[0].major]}});
-                \\        cDiv = ' ';
-                \\    }}
-                \\    try {s}.writeAll("]\n");
+                \\var cDiv: u8 = '[';
+                \\        try {s}.print("{{s}}Return. Stack=", .{{yyTracePrompt}});
+                \\        var yy_i = yypParser.stack + 1;
+                \\        while (@intFromPtr(yy_i) <= @intFromPtr(yypParser.tos)) : ( yy_i += 1) {{
+                \\            try {s}.print("{{u}}{{s}}", .{{ cDiv, yyTokenName[yy_i[0].major] }});
+                \\            cDiv = ' ';
+                \\        }}
+                \\        try {s}.writeAll("]\n");
             ,
                 .{ trace, trace, trace },
             );
@@ -2141,14 +2142,14 @@ fn reportTableImpl(
             const trace_shift = try std.fmt.allocPrint(
                 zyt.allocator,
                 \\if (yyNewState < YYNSTATE) {{
-                \\    {s}.print("{{s}}{{s}} '{{s}}', go to state {{d}}\n",
-                \\        .{{yyTracePrompt, zTag, yyTokenName[yypParser.tos[0].major], yyNewState}},
-                \\    ) catch {{}};
-                \\}} else {{
-                \\    {s}.print("{{s}}{{s}} '{{s}}', pending reduce {{d}}\n",
-                \\       .{{yyTracePrompt, zTag, yyTokenName[yypParser.tos[0].major], yy_sint(yyNewState) - YY_MIN_REDUCE}},
-                \\    ) catch {{}};
-                \\}}
+                \\            {s}.print("{{s}}{{s}} '{{s}}', go to state {{d}}\n",
+                \\                .{{ yyTracePrompt, zTag, yyTokenName[yypParser.tos[0].major], yyNewState }},
+                \\            ) catch {{}};
+                \\        }} else {{
+                \\            {s}.print("{{s}}{{s}} '{{s}}', pending reduce {{d}}\n",
+                \\               .{{ yyTracePrompt, zTag, yyTokenName[yypParser.tos[0].major], yy_sint(yyNewState) - YY_MIN_REDUCE }},
+                \\            ) catch {{}};
+                \\        }}
             ,
                 .{ trace, trace },
             );
@@ -2159,8 +2160,7 @@ fn reportTableImpl(
         { // 🍋TRACE_STACK_OVERFLOW
             const trace_stack_overflow = try std.fmt.allocPrint(
                 zyt.allocator,
-                \\{s}.print("{{s}}Stack Overflow!\n",
-                \\    .{{yyTracePrompt}}) catch {{}};
+                \\{s}.print("{{s}}Stack Overflow!\n", .{{yyTracePrompt}}) catch {{}};
             ,
                 .{trace},
             );
@@ -2171,8 +2171,7 @@ fn reportTableImpl(
         { // 🍋TRACE_SYNTAX_ERROR
             const trace_syntax_error = try std.fmt.allocPrint(
                 zyt.allocator,
-                \\try {s}.print("{{s}}Syntax Error!\n",
-                \\    .{{yyTracePrompt}});
+                \\try {s}.print("{{s}}Syntax Error!\n", .{{yyTracePrompt}});
             ,
                 .{trace},
             );
@@ -2184,20 +2183,13 @@ fn reportTableImpl(
             const trace_wildcard = try std.fmt.allocPrint(
                 zyt.allocator,
                 \\try {s}.print("{{s}}WILDCARD {{s}} => {{s}}\n",
-                \\    .{{yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[YYWILDCARD]}});
+                \\                            .{{ yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[YYWILDCARD] }});
             ,
                 .{trace},
             );
             errdefer zyt.allocator.free(trace_wildcard);
             try zyt.defines.put(zyt.allocator, "🍋TRACE_WILDCARD", trace_wildcard);
         }
-        // #ifndef NDEBUG
-        //           if( yyTraceFILE ){
-        //             fprintf(yyTraceFILE, "%sWILDCARD %s => %s\n",
-        //                yyTracePrompt, yyTokenName[yy_lookahead],
-        //                yyTokenName[YYWILDCARD]);
-        //           }
-        // #endif /* NDEBUG */
     }
     if (zyt.ctx.len > 0) {
         var ctx = mem.trim(u8, zyt.ctx, " ");
@@ -2863,8 +2855,6 @@ fn reportTableImpl(
     try tplt_print(out, zyt, zyt.accept, &lineno);
     try tplt_xfer(zyt.name, &in, out, &lineno);
 
-    try out.writeAll("// zig fmt: on\n");
-    lineno += 1;
     // Append any addition code the user desires
     try tplt_print(out, zyt, zyt.extracode, &lineno);
 }
@@ -2998,8 +2988,8 @@ const Zitron = struct {
     printPreprocessed: bool,
     /// True if any %fallback is seen in the grammar
     has_fallback: bool,
-    /// True if #line statements should not be printed
-    nolinenosflag: bool,
+    /// True if #line statements should be printed
+    linenosflag: bool,
     /// Command-line arguments
     argv: [][:0]u8,
 
@@ -3066,7 +3056,7 @@ const Zitron = struct {
         .tablesize = 0,
         .printPreprocessed = false,
         .has_fallback = false,
-        .nolinenosflag = false,
+        .linenosflag = false,
         .argv = &.{},
     };
 
@@ -4784,7 +4774,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 // NOTE: This is a difficult translation, because we eschew two
                 // Cisms: the null sentinel, and (consequently) bare char *. So
                 // idiomatic Zig looks quite different.
-                var zBuffer: [50]u8 = undefined; // Line macro buffer
+                var zBuffer: [64]u8 = undefined; // Line macro buffer
                 // The code assumes declargslot is pointing at something, so null should be
                 // unreachable here:
                 const declargslot = psp.declargslot.?;
@@ -4799,12 +4789,12 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 // we do not have.
                 var n = zOld.len + zNew.len;
                 // Do we need a line macro?
-                const addLineMacro = !psp.gp.nolinenosflag and
+                const addLineMacro = psp.gp.linenosflag and
                     psp.insertLineMacro and
                     psp.tokenlineno > 1 and
                     (psp.decllinenoslot == null or psp.decllinenoslot.?.* != 0);
                 if (addLineMacro) {
-                    zLine = std.fmt.bufPrint(&zBuffer, "#line {d} ", .{psp.tokenlineno}) catch |err| slice: {
+                    zLine = std.fmt.bufPrint(&zBuffer, "// #line {d} ", .{psp.tokenlineno}) catch |err| slice: {
                         // Should be literally impossible but ¯\_(ツ)_/¯
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "Buffer overflow on #line directive print: {s}", .{@errorName(err)});
@@ -5508,15 +5498,15 @@ const Options = struct {
     version: bool = false,
     rpflag: bool = false,
     mhflag: bool = false,
-    no_compress: bool = false,
+    no_compress: bool = config.no_compress,
     print_pp: bool = false,
-    no_linenos: bool = false,
-    show_precedence_conflict: bool = false,
-    quiet: bool = false,
-    statistics: bool = false,
-    sql_flag: bool = false,
-    only_basis: bool = false,
-    no_resort: bool = false,
+    linenos: bool = config.line_numbers,
+    show_precedence_conflict: bool = config.show_precedence_conflict,
+    quiet: bool = config.quiet,
+    statistics: bool = config.statistics,
+    sql_flag: bool = config.sql,
+    only_basis: bool = config.only_basis,
+    no_resort: bool = config.no_resort,
     user_templatename: []const u8 = "",
     output_directory: []const u8 = "",
     azDefine: [][]const u8 = undefined,
@@ -5560,20 +5550,8 @@ fn OptNArgs(args: [][:0]u8) usize {
     }
     return cnt;
 }
-// int OptNArgs(void){
-//   int cnt = 0;
-//   int dashdash = 0;
-//   int i;
-//   if( g_argv!=0 && g_argv[0]!=0 ){
-//     for(i=1; g_argv[i]; i++){
-//       if( dashdash || !ISOPT(g_argv[i]) ) cnt++;
-//       if( strcmp(g_argv[i],"--")==0 ) dashdash = 1;
-//     }
-//   }
-//   return cnt;
-// }
 
-/// Print the command line with a carrot pointing to the k-th character
+/// Print the command line with a caret pointing to the k-th character
 /// of the n-th field.
 fn errline(args: [][:0]u8, i: usize) void {
     _ = .{ args, i };
@@ -5612,7 +5590,7 @@ fn handleflags(opt: *Options, flag: u8, arg: []const u8, set: bool, allocator: A
         'g' => opt.rpflag = set,
         'I' => {},
         'm' => opt.mhflag = set,
-        'l' => opt.no_linenos = set,
+        'l' => opt.linenos = set,
         'O' => {},
         'p' => opt.show_precedence_conflict = set,
         'q' => opt.quiet = set,
@@ -5834,7 +5812,7 @@ pub fn main() !void {
     lem.argv = args;
     lem.filename = filename;
     lem.quoted_filename = try esc_filename(allocator, filename);
-    lem.nolinenosflag = opt.no_linenos;
+    lem.linenosflag = opt.linenos;
     lem.printPreprocessed = opt.print_pp;
     _ = try Symbol_new("$"); // Why? Answer: creates index 0!
     var pstate = try PState.create(allocator, lem);

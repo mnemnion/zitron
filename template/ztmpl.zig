@@ -191,7 +191,7 @@ const yyFallback = [_]YYCODETYPE{
 /// SHIFTREDUCE.
 const yyStackEntry = struct {
     /// The state-number, or reduce action in SHIFTREDUCE.
-    yy_stateno: YYACTIONTYPE,
+    stateno: YYACTIONTYPE,
     /// The major token value.  This is the code number for the token at this stack level.
     major: YYCODETYPE,
     /// The user-supplied minor token value.  This is the value of the token.
@@ -246,7 +246,7 @@ pub const 🍋PARSER_NAME = struct {
         yypParser.stack_end = yypParser.stack + (yypParser.stk0.len - 1);
         yypParser.errcnt = -1; // TODO: Deal with NOERRORRECOVERY
         yypParser.tos = yypParser.stack;
-        yypParser.stack[0].yy_stateno = 0;
+        yypParser.stack[0].stateno = 0;
         yypParser.stack[0].major = 0;
         yypParser.stack[0].minor = undefined; // This is ok
     }
@@ -422,7 +422,7 @@ fn yyParseCoverage(yy_out: anytype, yy_print: bool) !usize {
                 .{yy_stateno, yyTokenName[yy_ilookahead], if (yy_missed) "ok" else "missed",},);
             }
         }
-  }
+    }
     return yy_nmissed;
 }
 
@@ -449,7 +449,7 @@ fn yy_find_shift_action(
         yy_assert(yy_ilook < YYNTOKEN);
         yy_i += yy_ilook;
         yy_assert(yy_i < YY_NLOOKAHEAD);
-        if(yy_lookahead[yy_i] != yy_ilook) {
+        if (yy_lookahead[yy_i] != yy_ilook) {
             if (comptime YYFALLBACK) {
                 yy_assert(yy_ilook < yyFallback.len);
                 const iFallback: YYCODETYPE = yyFallback[yy_ilook];
@@ -473,7 +473,7 @@ fn yy_find_shift_action(
                 }
             }
             return yy_default[yy_stateno];
-        }else{
+        } else {
             yy_assert(yy_i < yy_action.len);
             return yy_action[yy_i];
         }
@@ -562,7 +562,7 @@ fn yy_shift(
     yyMajor: YYCODETYPE,
     /// The minor token to shift in
     yyMinor: YY_TOKEN_TYPE,
-) void {
+) !void {
     yypParser.tos += 1;
     // #ifdef YYTRACKMAXSTACKDEPTH
     //     if( (int)(yypParser->yytos - yypParser->yystack)>yypParser->yyhwm ){
@@ -584,7 +584,7 @@ fn yy_shift(
     if (yy_new > YY_MAX_SHIFT) {
         yy_new += YY_MIN_REDUCE - YY_MIN_SHIFTREDUCE;
     }
-    yytos[0].yy_stateno = yy_new;
+    yytos[0].stateno = yy_new;
     yytos[0].major = yyMajor;
     yytos[0].minor.yy0 = yyMinor;
     yyTraceShift(yypParser, yy_new, "Shift");
@@ -652,7 +652,7 @@ fn yy_reduce(
     }
     yy_assert(yyruleno < yyRuleInfoLhs.len);
     const yygoto = yyRuleInfoLhs[yyruleno];
-    const yyact = yy_find_reduce_action((yymsp - @abs(yysize))[0].yy_stateno, yygoto);
+    const yyact = yy_find_reduce_action((yymsp - @abs(yysize))[0].stateno, yygoto);
 
     // There are no SHIFTREDUCE actions on nonterminals because the table
     // generator has simplified them to pure REDUCE actions.
@@ -663,7 +663,7 @@ fn yy_reduce(
 
     yymsp = yymsp + 1 - @abs(yysize);
     yypParser.tos = yymsp;
-    yymsp[0].yy_stateno = yyact;
+    yymsp[0].stateno = yyact;
     yymsp[0].major = yygoto;
     yyTraceShift(yypParser, yyact, "... then shift");
     🍋ARG_STORE
@@ -800,7 +800,7 @@ fn yyParse(
     if (comptime (!YYHAS_ERRORSYMBOL and !YYNOERRORRECOVERY)) {
         yyendofinput = (yymajor==0);
     }
-    yyact = yypParser.tos[0].yy_stateno;
+    yyact = yypParser.tos[0].stateno;
 
     if (comptime !NDEBUG) {
         🍋TRACE_INPUT
@@ -808,7 +808,7 @@ fn yyParse(
 
     while (true) { // Exit by "break"
         yy_assert(@intFromPtr(yypParser.tos) >= @intFromPtr(yypParser.stack));
-        yy_assert(yyact == yypParser.tos[0].yy_stateno);
+        yy_assert(yyact == yypParser.tos[0].stateno);
         yyact = yy_find_shift_action(yymajor, yyact);
         if( yyact >= YY_MIN_REDUCE ){
             const yyruleno = yyact - YY_MIN_REDUCE; // Reduce by this rule
@@ -835,7 +835,7 @@ fn yyParse(
             }
             yyact = try yy_reduce(yypParser, yyruleno, yymajor, yyminor);
         } else if (yyact <= YY_MAX_SHIFTREDUCE) {
-            yy_shift(yypParser, yyact, yymajor, yyminor);
+            try yy_shift(yypParser, yyact, yymajor, yyminor);
             if (comptime !YYNOERRORRECOVERY) {
                 yypParser.yyerrcnt -= 1;
             }
@@ -882,7 +882,7 @@ fn yyParse(
                     yymajor = YYNOCODE;
                 } else {
                     while (yypParser.tos > yypParser.stack) {
-                        yyact = yy_find_reduce_action(yypParser.tos[0].yy_stateno, @This().YYERRORSYMBOL);
+                        yyact = yy_find_reduce_action(yypParser.tos[0].stateno, @This().YYERRORSYMBOL);
                         if (yyact <= YY_MAX_SHIFTREDUCE) break;
                         yy_pop_parser_stack(yypParser);
                     }
@@ -894,13 +894,13 @@ fn yyParse(
                         }
                         yymajor = YYNOCODE;
                     } else if (yymx != @This().YYERRORSYMBOL) {
-                        yy_shift(yypParser, yyact, @This().YYERRORSYMBOL, yyminor);
+                        try yy_shift(yypParser, yyact, @This().YYERRORSYMBOL, yyminor);
                     }
                 }
                 yypParser.errcnt = 3;
                 yyerrorhit = true;
                 if (yymajor == YYNOCODE) break;
-                yyact = yypParser.tos[0].yy_stateno;
+                yyact = yypParser.tos[0].stateno;
             } else if (comptime YYNOERRORRECOVERY) {
                 // If the YYNOERRORRECOVERY macro is defined, then do not attempt to
                 // do any kind of error recovery.  Instead, simply invoke the syntax
@@ -943,3 +943,6 @@ fn yyParse(
     return;
 }
 
+// zig fmt: on
+
+//********************* Home of %code blocks **********************************

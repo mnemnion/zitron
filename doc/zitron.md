@@ -1127,6 +1127,28 @@ Note that the argument to `%ifdef` and `%ifndef` is intended to be a
 single preprocessor symbol name, not a general expression.  Use the
 `%if` directive for general expressions.
 
+Zitron note: since Lemon is a generator of C code, the documentation
+for these directives (verbatim above) presume a knowledge of the C
+preprocessor which Zig authors may or may not possess.  I want to add
+explicitly that these directives are _pre-processed_, they can appear
+anywhere, including weird places like inside [`%include`](#pinclude)
+code blocks.  Any which evaluate to false are replaced byte-for-byte
+with spaces, with newlines intact, and only then is the input file
+parsed.
+
+Due to Zig's insistence that whitespace on both sides of an operator
+must be all-or-nothing, there is no valid Zig code which starts a line
+with `%anything`, so it's not even possible to collide these directives
+with real code.  Not that this would be likely if it were not for that
+rule, but it's nice that it simply doesn't work.
+
+Zig gets along just fine without a preprocessor, but this kind
+of code-generating little language can strain comptime's ability
+to make code which is universally-valid without this.  In
+particular, use of `%if(n)def` can be helpful combined with the
+[`%trace_writer`](#trace_writer) directive: that directive itself,
+and all support code to enable tracing, can be gated behind a macro
+definition.
 
 #### 4.4.9 The `%include` directive <a id="pinclude">
 

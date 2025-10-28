@@ -6,6 +6,9 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
+    //| Lemon: a faithful port of lemon.c.  This will
+    //| emit precisely the same output as the original.
+
     const lemon_template = b.option(
         []const u8,
         "l_template",
@@ -32,6 +35,53 @@ pub fn build(b: *std.Build) void {
         lemon_run_cmd.addArgs(args);
     }
 
+    //| Zitron: the port of Lemon to emit Zig.
+
+    // All flags which make sense are also build options.
+
+    const z_opt = b.addOptions();
+    z_opt.addOption(
+        bool,
+        "no_compress",
+        b.option(bool, "no_compress", "don't compress tables") orelse false,
+    );
+    z_opt.addOption(
+        bool,
+        "line_numbers",
+        b.option(bool, "line_numbers", "print line number comments") orelse false,
+    );
+    z_opt.addOption(
+        bool,
+        "show_precedence_conflict",
+        b.option(bool, "show_precedence_conflict", "Print precedence conflicts") orelse false,
+    );
+    z_opt.addOption(
+        bool,
+        "quiet",
+        b.option(bool, "quiet", "quiet output") orelse false,
+    );
+    z_opt.addOption(
+        bool,
+        "statistics",
+        b.option(bool, "statistics", "print statistics") orelse false,
+    );
+    z_opt.addOption(
+        bool,
+        "sql",
+        b.option(bool, "sql", "print grammar as [name].sql file") orelse false,
+    );
+    z_opt.addOption(
+        bool,
+        "only_basis",
+        b.option(bool, "only_basis", "print only the basis in report") orelse false,
+    );
+    z_opt.addOption(
+        bool,
+        "no_resort",
+        b.option(bool, "no_resort", "do not sort or renumber states") orelse false,
+    );
+    z_opt.addOption([][]const u8, "define_macro", &.{});
+
     const zitron_template = b.option(
         []const u8,
         "template",
@@ -44,12 +94,15 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    zitron_mod.addOptions("config", z_opt);
+
     const zitron_exe = b.addExecutable(.{
         .name = "zitron",
         .root_module = zitron_mod,
     });
 
     zitron_exe.root_module.addAnonymousImport("z_template", .{ .root_source_file = b.path(zitron_template) });
+    zitron_exe.root_module.addOptions("config", z_opt);
 
     b.installArtifact(zitron_exe);
 
