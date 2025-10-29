@@ -4126,9 +4126,9 @@ const PpState = enum {
 /// Evaluate the text as a boolean expression.  Return true or false.
 /// Actually (zig edition): returns one or zero, because the consumer uses the
 /// result variable to track nested ifdefs.
-fn eval_preprocessor_boolean(opt: *Options, z: []const u8, lineno: usize) u8 {
+fn eval_preprocessor_boolean(opt: *Options, errcnt: *usize, z: []const u8, lineno: usize) u8 {
     var dummy: usize = 0;
-    return if (eval_impl(opt, z, lineno, &dummy) catch unreachable) 1 else 0;
+    return if (eval_impl(opt, errcnt, z, lineno, &dummy) catch unreachable) 1 else 0;
 }
 
 // TODO: Re-evaluate all of this once have a reproducing case for the
@@ -4137,7 +4137,7 @@ fn eval_preprocessor_boolean(opt: *Options, z: []const u8, lineno: usize) u8 {
 /// `progress` is some wacky thing, we're imitating the all-powerful
 /// C integer. If 0 we're not in a recursive call, if positive, we
 /// are.
-fn eval_impl(opt: *Options, z: []const u8, lineno: usize, progress: *usize) !bool {
+fn eval_impl(opt: *Options, errcnt: *usize, z: []const u8, lineno: usize, progress: *usize) !bool {
     var neg: bool = false; // Term is negated
     var res: bool = false; // Result
     var okTerm: bool = true; // Ok to have a term
@@ -4177,7 +4177,7 @@ fn eval_impl(opt: *Options, z: []const u8, lineno: usize, progress: *usize) !boo
                             n -= 1;
                             if (n == 0) {
                                 var prog: usize = i;
-                                res = eval_impl(opt, z[i..k], lineno, &prog) catch {
+                                res = eval_impl(opt, errcnt, z[i..k], lineno, &prog) catch {
                                     i = prog;
                                     continue :goto .pp_syntax_error;
                                 };
@@ -4227,9 +4227,10 @@ fn eval_impl(opt: *Options, z: []const u8, lineno: usize, progress: *usize) !boo
                 dprint("%%if syntax error on line {d}.\n", .{lineno});
                 // We already sliced z down to one line, so this is fine
                 dprint("  {s} <-- syntax error here\n", .{z[i..]});
+                errcnt.* += 1;
             } else {
                 progress.* += i;
-                return error.ThisWasCWhatAreYouGonnaDo;
+                return error.ScrollUp52LinesToContinue;
             }
         },
     }
@@ -4240,7 +4241,7 @@ fn eval_impl(opt: *Options, z: []const u8, lineno: usize, progress: *usize) !boo
 /// azDefine[0] through azDefine[nDefine-1] contains the names of all defined
 /// macros.  This routine looks for "%ifdef" and "%ifndef" and "%endif" and
 /// comments them out.  Text in between is also commented out as appropriate.
-fn preprocess_input(opt: *Options, z: [:0]u8) void {
+fn preprocess_input(opt: *Options, errcnt: *usize, z: [:0]u8) void {
     var exclude: isize = 0; // Handles nested %ifdefs so not boolean
     var start: usize = 0;
     var lineno: usize = 1;
@@ -4248,10 +4249,17 @@ fn preprocess_input(opt: *Options, z: [:0]u8) void {
     var i = start;
     var j = start;
     const zl = z.len;
+    var level: isize = 0;
+    var level_lineno: usize = 1;
     scan: while (z[i] != 0) : (i += 1) {
         if (z[i] == '\n') lineno += 1;
         if (z[i] != '%' or (i > 0 and z[i - 1] != '\n')) continue :scan;
         if (i + 6 <= zl and strcmp(z[i..][0..6], "%endif") and isSpace(z[i + 6])) {
+            level -= 1;
+            if (level < 0) {
+                dprint("unmatched %endif on line {d}\n", .{lineno});
+                errcnt.* += 1;
+            }
             if (exclude != 0) {
                 exclude -= 1;
                 if (exclude == 0) {
@@ -4282,6 +4290,8 @@ fn preprocess_input(opt: *Options, z: [:0]u8) void {
                 strcmp(z[i..][0..4], "%if ") or
                 strcmp(z[i..][0..8], "%ifndef ")))
         {
+            level += 1;
+            level_lineno = lineno;
             if (exclude != 0) {
                 exclude += 1;
             } else {
@@ -4291,7 +4301,7 @@ fn preprocess_input(opt: *Options, z: [:0]u8) void {
                 const isNot = j == i + 7;
                 while (z[j] != 0 and z[j] != '\n') : (j += 1) {}
                 if (p_check1) dprint("preprocessor evaluates '{s}' ", .{z[iBool..j]});
-                exclude = eval_preprocessor_boolean(opt, z[iBool..j], lineno);
+                exclude = eval_preprocessor_boolean(opt, errcnt, z[iBool..j], lineno);
                 if (p_check1) dprint("as {} ", .{exclude == 1});
                 if (!isNot) exclude = if (exclude != 0) 0 else 1;
                 if (p_check1) dprint("then {}\n", .{exclude == 1});
@@ -4306,11 +4316,18 @@ fn preprocess_input(opt: *Options, z: [:0]u8) void {
     }
     if (exclude != 0) {
         dprint("unterminated %ifdef starting on line {d}\n", .{start_lineno});
-        std.process.exit(1);
+        errcnt.* += 1;
+    } else if (level > 0) {
+        if (level == 1) {
+            dprint("missing %endif starting on line {d}\n", .{level_lineno});
+        } else {
+            dprint("missing {d} %endifs, last starts on line {d}\n", .{ level, level_lineno });
+        }
+        errcnt.* += 1;
     }
 }
 
-/// In spite of its name, this function is really a scanner.  It read
+/// In spite of its name, this function is really a scanner.  It reads
 /// in the entire input file (all at once) then tokenizes it.  Each
 /// token is passed to the function "parseonetoken" which builds all
 /// the appropriate data structures in the global state vector "gp".
@@ -4335,7 +4352,14 @@ fn Parse(psp: *PState) !void {
         std.process.exit(1);
     }
     // /* Make an initial pass through the file to handle %ifdef and %ifndef */
-    preprocess_input(&psp.gp.opt, filebuf);
+    preprocess_input(&psp.gp.opt, &psp.gp.errorcnt, filebuf);
+    for (psp.gp.opt.bDefineUsed, 0..) |used, i| {
+        if (!used) {
+            std.debug.print("Macro define {s} defined, but not used.\n", .{psp.gp.opt.azDefine[i]});
+            psp.gp.errorcnt += 1;
+        }
+    }
+    if (psp.gp.errorcnt > 0) return;
     if (psp.gp.printPreprocessed) {
         var stdout_buffer: [1024]u8 = undefined;
         var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
