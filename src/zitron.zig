@@ -5625,15 +5625,23 @@ const opt_map = std.StaticStringMap(OptionKind).initComptime(option_list);
 
 /// Return the argument of an option which takes one, or a
 /// useful error otherwise.
-fn optionArgument(args: [][:0]u8, n: *usize, i: usize) ![:0]const u8 {
-    if (i < args[n.*].len - 1) {
-        if (args[n.*][i + 1] == '=') {
-            return args[n.*][i + 2 .. :0];
+fn optionArgument(args: [][:0]u8, n: *usize, i: *usize) ![:0]const u8 {
+    if (i.* < args[n.*].len - 1) {
+        if (args[n.*][i.* + 1] == '=') {
+            if (i.* + 2 < args[n.*].len) {
+                const start = i.* + 2;
+                i.* = args[n.*].len;
+                return args[n.*][start.. :0];
+            } else {
+                i.* += 1;
+                return error.MissingArgumentAfterEquals;
+            }
         } else {
             return error.NoEqualsAfterOption;
         }
     } else if (n.* < args.len - 1) {
         n.* += 1;
+        if (args[n.*][0] == '-') return error.MissingArgument;
         return args[n.*];
     } else {
         return error.OutOfArguments;
@@ -5736,7 +5744,7 @@ fn readShortArgs(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !void {
     while (i.* < arg.len) : (i.* += 1) {
         const opt_kind = OptionKind.shortOpt(arg[i.*]) orelse return error.ShortOptionNotRecognized;
         if (opt_kind.takesArgument()) {
-            const argument = try optionArgument(args, n, i.*);
+            const argument = try optionArgument(args, n, i);
             try assignArgument(opt, opt_kind, argument);
         } else {
             if (i.* < arg.len - 1 and arg[i.* + 1] == '=') {
@@ -5749,14 +5757,14 @@ fn readShortArgs(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !void {
 
 fn readLongArg(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !void {
     dbgassert(n.* < args.len);
-    dbgassert(i.* > 2);
+    dbgassert(i.* == 2);
     const arg = args[n.*];
     const start = i.*;
     while (i.* < arg.len and arg[i.*] != '=') : (i.* += 1) {}
     const long = arg[start..i.*];
     const opt_kind = opt_map.get(long) orelse return error.LongOptionNotRecognized;
     if (opt_kind.takesArgument()) {
-        const argument = try optionArgument(args, n, i.*);
+        const argument = try optionArgument(args, n, i);
         try assignArgument(opt, opt_kind, argument);
     } else {
         if (i.* < arg.len) {
@@ -5812,91 +5820,118 @@ fn optionsInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !usize {
     while (n < args.len) : (n += 1) {
         const more = readOneArg(opt, args, &n, &i) catch |err| more: {
             if (err == error.OutOfMemory) return err;
-            if (errcnt > last_err) {
-                if (last_err == 0) {
-                    dprint("Error in command line arguments:\n", .{});
-                }
-                errcnt += 1;
-                last_err = errcnt;
-                switch (err) {
-                    error.OutOfMemory => unreachable,
-                    error.ArgTooShort => {
-                        dprint("- \"-\" is not an argument (missing flag?):\n", .{});
-                    },
-                    error.SwitchTakesNoArgument => {
-                        dprint("- This switch takes no argument:\n", .{});
-                    },
-                    error.LongOptionNotRecognized => {
-                        dprint("- Long option not recognized:\n", .{});
-                    },
-                    error.ShortOptionNotRecognized => {
-                        dprint("- Short option not recognized:\n", .{});
-                    },
-                    error.NoEqualsAfterOption, error.OutOfArguments => {
-                        dprint("- This option must be followed by an argument:\n", .{});
-                    },
-                }
-                errline(args, n, i);
+            if (last_err == 0) dprint("Error in command line arguments:\n", .{});
+            errcnt += 1;
+            last_err = errcnt;
+            switch (err) {
+                error.OutOfMemory => unreachable,
+                error.ArgTooShort => {
+                    dprint("  - \"-\" is not an argument (missing flag?):\n", .{});
+                },
+                error.SwitchTakesNoArgument => {
+                    dprint("  - This switch takes no argument:\n", .{});
+                },
+                error.LongOptionNotRecognized => {
+                    var min_idx: usize = 0;
+                    var min_lev: usize = std.math.maxInt(usize);
+                    for (option_list, 0..) |o_entry, idx| {
+                        const lev = levenshtein(opt.allocator, args[n][2..], o_entry.@"0") catch std.math.maxInt(usize);
+                        if (lev < min_lev) {
+                            min_idx = idx;
+                            min_lev = lev;
+                        }
+                    }
+                    dprint(
+                        "  - Long option not recognized: '{s}', did you mean '--{s}'?\n",
+                        .{ args[n], option_list[min_idx].@"0" },
+                    );
+                    i = 0;
+                },
+                error.ShortOptionNotRecognized => {
+                    dprint("  - Short option not recognized:\n", .{});
+                },
+                error.NoEqualsAfterOption, error.OutOfArguments => {
+                    dprint("  - This option must be followed by an argument:\n", .{});
+                },
+                error.MissingArgument => {
+                    dprint("  - Option is missing its argument:\n", .{});
+                    n -= 1;
+                },
+                error.MissingArgumentAfterEquals => {
+                    dprint("  - Option is missing its argument:\n", .{});
+                },
             }
+            errline(args, n, i);
             break :more true;
         };
         if (!more) break;
         i = 0;
     }
+    if (errcnt > 0) {
+        dprint("Try `{s} --help` to print valid options.\n", .{shortProgramName(args)});
+        exit(1);
+    }
     return n;
+}
+
+fn shortProgramName(args: [][:0]u8) []const u8 {
+    const idx = if (mem.lastIndexOfScalar(u8, args[0], '/')) |slash| slash + 1 else 0;
+    return args[0][idx..];
 }
 
 // TODO: something better here
 const help_string =
-    \\Valid commands for {s} are:
     \\
-    \\ -b, --basis               Show only the basis for each parser state in the report file.
+    \\ {s} [opts] [--] filename.zy
     \\
-    \\ -c, --no-compress         Do not compress the generated action tables. The parser will be
-    \\                           a little larger and slower, but it will detect syntax errors sooner.
+    \\ Options:
     \\
-    \\ -d, --directory directory Write all output files into "directory". Normally,
-    \\                           output files are written into the directory that contains the input
-    \\                           grammar file.
+    \\   -b, --basis               Show only the basis for each parser state in the report file.
     \\
-    \\ -D, --define name         Define C-like preprocessor macro "name".  This macro is usable
-    \\                           by %ifdef, %ifndef, and %if lines in the grammar file.
-    \\                           It is legal to define a name more than once.
+    \\   -c, --no-compress         Do not compress the generated action tables. The parser will be
+    \\                             a little larger and slower, but it will detect syntax errors sooner.
     \\
-    \\ -e --enum-file            Emit the token enum as its own file.
+    \\   -d, --directory directory Write all output files into "directory". Normally,
+    \\                             output files are written into the directory that contains the input
+    \\                             grammar file.
     \\
-    \\ -g --grammar              Do not generate a parser. Instead write the input grammar to
-    \\                           standard output with all comments, actions, and other extraneous text
-    \\                           removed.
+    \\   -D, --define name         Define C-like preprocessor macro "name".  This macro is usable
+    \\                             by %ifdef, %ifndef, and %if lines in the grammar file.
+    \\                             It is legal to define a name more than once.
     \\
-    \\ -l --lines                Add "// #line" comments in the generated parser's Zig code.
+    \\   -e --enum-file            Emit the token enum as its own file.
     \\
-    \\ -P --pp-only              Run the "%if" preprocessor step only and print the revised
-    \\                           grammar file.
+    \\   -g --grammar              Do not generate a parser. Instead write the input grammar to
+    \\                             standard output with all comments, actions, and other extraneous text
+    \\                             removed.
     \\
-    \\ -p --precedence           Display all conflicts that are resolved by [precedence rules].
+    \\   -l --lines                Add "// #line" comments in the generated parser's Zig code.
     \\
-    \\ -q --quiet                Suppress generation of the report file.
+    \\   -P --pp-only              Run the "%if" preprocessor step only and print the revised
+    \\                             grammar file.
     \\
-    \\ -r --no-renumber          Do not sort or renumber the parser states as part of
-    \\                           optimization.
+    \\   -p --precedence           Display all conflicts that are resolved by [precedence rules].
     \\
-    \\ -s --show-stats           Show parser statistics before exiting.
+    \\   -q --quiet                Suppress generation of the report file.
     \\
-    \\ -S --sql                  Generate the *.sql file describing the parser tables.
+    \\   -r --no-renumber          Do not sort or renumber the parser states as part of
+    \\                             optimization.
     \\
-    \\ -T, --template file       Use "file" as the template for the generated C-code
-    \\                           parser implementation.
+    \\   -s --show-stats           Show parser statistics before exiting.
     \\
-    \\ -U, --undefine name       Undefine C-like preprocessor macro "name".  It is legal to
-    \\                           undefine a nonexistent name, but warned against.
+    \\   -S --sql                  Generate the *.sql file describing the parser tables.
     \\
-    \\ -v, --version             Print the Zitron version number.
+    \\   -T, --template file       Use "file" as the template for the generated C-code
+    \\                             parser implementation.
+    \\
+    \\   -U, --undefine name       Undefine C-like preprocessor macro "name".  It is legal to
+    \\                             undefine a nonexistent name, but warned against.
+    \\
+    \\   -v, --version             Print the Zitron version number.
 ;
 
 fn OptPrint(out: anytype, args: [][:0]u8) !void {
-    const idx = if (mem.lastIndexOfScalar(u8, args[0], '/')) |i| i + 1 else 0;
-    try out.print(help_string, .{args[0][idx..]});
+    try out.print(help_string, .{shortProgramName(args)});
 }
 
 fn strLessThan(_: void, a: []const u8, b: []const u8) bool {
@@ -6018,7 +6053,6 @@ pub fn main() !void {
     if (opt.help) {
         var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
         const stdout = &stdout_writer.interface;
-        stdout.writeAll("Zitron version 0.1\n") catch {};
         try OptPrint(stdout, args);
         stdout.flush() catch {};
         exit(0);
@@ -6026,7 +6060,7 @@ pub fn main() !void {
     if (opt.version) {
         var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
         const stdout = &stdout_writer.interface;
-        stdout.writeAll("Zitron version 0.1\n") catch {};
+        stdout.print("{s} version 0.1\n", .{shortProgramName(args)}) catch {};
         stdout.flush() catch {};
         exit(0);
     }
