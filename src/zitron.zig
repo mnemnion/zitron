@@ -2019,184 +2019,6 @@ fn reportTableImpl(
             try zyt.defines.put(allocator, "🍋ARG_STORE", arg_store);
         }
     }
-    if (zyt.token_enum.len > 0) {
-        try zyt.defines.put(zyt.allocator, "🍋TOKEN_ENUM", try zyt.allocator.dupe(u8, zyt.token_enum));
-    } else {
-        try zyt.defines.put(zyt.allocator, "🍋TOKEN_ENUM", try zyt.allocator.dupe(u8, "TokenKind"));
-    }
-    if (zyt.name.len > 0) {
-        try zyt.defines.put(zyt.allocator, "🍋PARSER_NAME", try zyt.allocator.dupe(u8, zyt.name));
-    } else {
-        try zyt.defines.put(zyt.allocator, "🍋PARSER_NAME", try zyt.allocator.dupe(u8, "Parser"));
-    }
-    if (zyt.trace_writer.len > 0) {
-        const trace_type = mem.trim(u8, zyt.trace_writer, " ");
-        const i = std.mem.indexOfScalar(u8, zyt.trace_writer, ':') orelse 0;
-        if (i == 0) {
-            std.debug.print(
-                "Warning: %trace_writer should look like `trace: Type`, not `{s}`\n",
-                .{zyt.trace_writer},
-            );
-        }
-        const trace = trace_type[0..i];
-        { // 🍋TRACE_ACCEPT
-            const trace_accept = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\try {s}.print("{{s}}ACCEPT!\n",
-                \\    .{{yyTracePrompt}});
-            ,
-                .{trace},
-            );
-            errdefer zyt.allocator.free(trace_accept);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_ACCEPT", trace_accept);
-        }
-        { // 🍋TRACE_DISCARD
-            const trace_discard = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\try {s}.print("{{s}}Discard input token {{s}}\n",
-                \\                            .{{ yyTracePrompt, yyTokenName[yymajor] }});
-            ,
-                .{trace},
-            );
-            errdefer zyt.allocator.free(trace_discard);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_DISCARD", trace_discard);
-        }
-        { // 🍋TRACE_FALLBACK
-            const trace_fallback = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\try {s}.print("{{s}}FALLBACK {{s}} => {{s}}\n",
-                \\                            .{{ yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[iFallback] }});
-            ,
-                .{trace},
-            );
-            errdefer zyt.allocator.free(trace_fallback);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_FALLBACK", trace_fallback);
-        }
-        { // 🍋TRACE_INPUT
-            const trace_input = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\if (yyact < YY_MIN_REDUCE) {{
-                \\            try {s}.print("{{s}}Input '{{s}}' in state {{d}}\n",
-                \\                .{{ yyTracePrompt, yyTokenName[yymajor], yyact }},
-                \\            );
-                \\        }} else {{
-                \\            try {s}.print("{{s}}Input '{{s}}' with pending reduce {{d}}\n",
-                \\               .{{ yyTracePrompt, yyTokenName[yymajor], yyact - YY_MIN_REDUCE }},
-                \\            );
-                \\        }}
-            ,
-                .{ trace, trace },
-            );
-            errdefer zyt.allocator.free(trace_input);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_INPUT", trace_input);
-        }
-        { // 🍋TRACE_POP
-            const trace_pop = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\{s}.print("{{s}}Popping {{s}}\n",
-                \\            .{{ yyTracePrompt, yyTokenName[yytos[0].major] }},
-                \\        ) catch {{}};
-            ,
-                .{trace},
-            );
-            errdefer zyt.allocator.free(trace_pop);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_POP", trace_pop);
-        }
-        { // 🍋TRACE_REDUCE
-            const trace_reduce = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\const yysize = yyRuleInfoNRhs[yyruleno];
-                \\                if (yysize == 0) {{
-                \\                    try {s}.print("{{s}}Reduce {{d}} [{{s}}]{{s}}, pop back to state {{d}}\n",
-                \\                        .{{ yyTracePrompt,
-                \\                           yyruleno,
-                \\                           yyRuleName[yyruleno],
-                \\                           if (yyruleno < YYNRULE_WITH_ACTION) "" else " without external action",
-                \\                           (yypParser.tos - @abs(yysize))[0].stateno,
-                \\                        }},
-                \\                    );
-                \\                }} else {{
-                \\                   try {s}.print("{{s}}Reduce {{d}} [{{s}}]{{s}}\n",
-                \\                      .{{ yyTracePrompt, yyruleno, yyRuleName[yyruleno],
-                \\                          if (yyruleno < YYNRULE_WITH_ACTION) "" else " without external action" }},
-                \\                   );
-                \\                }}
-            ,
-                .{ trace, trace },
-            );
-            errdefer zyt.allocator.free(trace_reduce);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_REDUCE", trace_reduce);
-        }
-        { // 🍋TRACE_RETURN
-            const trace_return = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\var cDiv: u8 = '[';
-                \\        try {s}.print("{{s}}Return. Stack=", .{{yyTracePrompt}});
-                \\        var yy_i = yypParser.stack + 1;
-                \\        while (@intFromPtr(yy_i) <= @intFromPtr(yypParser.tos)) : ( yy_i += 1) {{
-                \\            try {s}.print("{{u}}{{s}}", .{{ cDiv, yyTokenName[yy_i[0].major] }});
-                \\            cDiv = ' ';
-                \\        }}
-                \\        try {s}.writeAll("]\n");
-            ,
-                .{ trace, trace, trace },
-            );
-            errdefer zyt.allocator.free(trace_return);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_RETURN", trace_return);
-        }
-        { // 🍋TRACE_SHIFT
-            const trace_shift = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\if (yyNewState < YYNSTATE) {{
-                \\            {s}.print("{{s}}{{s}} '{{s}}', go to state {{d}}\n",
-                \\                .{{ yyTracePrompt, zTag, yyTokenName[yypParser.tos[0].major], yyNewState }},
-                \\            ) catch {{}};
-                \\        }} else {{
-                \\            {s}.print("{{s}}{{s}} '{{s}}', pending reduce {{d}}\n",
-                \\               .{{ yyTracePrompt, zTag, yyTokenName[yypParser.tos[0].major], yy_sint(yyNewState) - YY_MIN_REDUCE }},
-                \\            ) catch {{}};
-                \\        }}
-            ,
-                .{ trace, trace },
-            );
-            errdefer zyt.allocator.free(trace_shift);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_SHIFT", trace_shift);
-        }
-
-        { // 🍋TRACE_STACK_OVERFLOW
-            const trace_stack_overflow = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\{s}.print("{{s}}Stack Overflow!\n", .{{yyTracePrompt}}) catch {{}};
-            ,
-                .{trace},
-            );
-            errdefer zyt.allocator.free(trace_stack_overflow);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_STACK_OVERFLOW", trace_stack_overflow);
-        }
-
-        { // 🍋TRACE_SYNTAX_ERROR
-            const trace_syntax_error = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\try {s}.print("{{s}}Syntax Error!\n", .{{yyTracePrompt}});
-            ,
-                .{trace},
-            );
-            errdefer zyt.allocator.free(trace_syntax_error);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_SYNTAX_ERROR", trace_syntax_error);
-        }
-
-        { // 🍋TRACE_WILDCARD
-            const trace_wildcard = try std.fmt.allocPrint(
-                zyt.allocator,
-                \\try {s}.print("{{s}}WILDCARD {{s}} => {{s}}\n",
-                \\                            .{{ yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[YYWILDCARD] }});
-            ,
-                .{trace},
-            );
-            errdefer zyt.allocator.free(trace_wildcard);
-            try zyt.defines.put(zyt.allocator, "🍋TRACE_WILDCARD", trace_wildcard);
-        }
-    }
     if (zyt.ctx.len > 0) {
         var ctx = mem.trim(u8, zyt.ctx, " ");
         const i = std.mem.indexOfScalar(u8, zyt.ctx, ':') orelse 0;
@@ -2246,6 +2068,179 @@ fn reportTableImpl(
             const ctx_guard = try std.fmt.allocPrint(allocator, "_ = .{{&{s}}};", .{ctx});
             errdefer allocator.free(ctx_guard);
             try zyt.defines.put(allocator, "🍋CTX_GUARD", ctx_guard);
+        }
+    }
+    if (zyt.token_enum.len > 0) {
+        try zyt.defines.put(zyt.allocator, "🍋TOKEN_ENUM", try zyt.allocator.dupe(u8, zyt.token_enum));
+    } else {
+        try zyt.defines.put(zyt.allocator, "🍋TOKEN_ENUM", try zyt.allocator.dupe(u8, "TokenKind"));
+    }
+    if (zyt.name.len > 0) {
+        try zyt.defines.put(zyt.allocator, "🍋PARSER_NAME", try zyt.allocator.dupe(u8, zyt.name));
+    } else {
+        try zyt.defines.put(zyt.allocator, "🍋PARSER_NAME", try zyt.allocator.dupe(u8, "Parser"));
+    }
+    if (zyt.error_type.len > 0) {
+        try zyt.defines.put(zyt.allocator, "🍋PARSER_ERROR", try zyt.allocator.dupe(u8, zyt.error_type));
+    }
+    if (zyt.trace_writer.len > 0) {
+        const trace = mem.trim(u8, zyt.trace_writer, " ");
+        { // 🍋TRACE_ACCEPT
+            const trace_accept = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\{s}.print("{{s}}ACCEPT!\n",
+                \\    .{{yyTracePrompt}}) catch {{}};
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_accept);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_ACCEPT", trace_accept);
+        }
+        { // 🍋TRACE_DISCARD
+            const trace_discard = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\{s}.print("{{s}}Discard input token {{s}}\n",
+                \\                            .{{ yyTracePrompt, yyTokenName[yymajor] }}) catch {{}};
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_discard);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_DISCARD", trace_discard);
+        }
+        { // 🍋TRACE_FALLBACK
+            const trace_fallback = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\{s}.print("{{s}}FALLBACK {{s}} => {{s}}\n",
+                \\                            .{{ yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[iFallback] }}) catch {{}};
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_fallback);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_FALLBACK", trace_fallback);
+        }
+        { // 🍋TRACE_INPUT
+            const trace_input = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\if (yyact < YY_MIN_REDUCE) {{
+                \\            {s}.print("{{s}}Input '{{s}}' in state {{d}}\n",
+                \\                .{{ yyTracePrompt, yyTokenName[yymajor], yyact }},
+                \\            ) catch {{}};
+                \\        }} else {{
+                \\            {s}.print("{{s}}Input '{{s}}' with pending reduce {{d}}\n",
+                \\               .{{ yyTracePrompt, yyTokenName[yymajor], yyact - YY_MIN_REDUCE }},
+                \\            ) catch {{}};
+                \\        }}
+            ,
+                .{ trace, trace },
+            );
+            errdefer zyt.allocator.free(trace_input);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_INPUT", trace_input);
+        }
+        { // 🍋TRACE_POP
+            const trace_pop = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\{s}.print("{{s}}Popping {{s}}\n",
+                \\            .{{ yyTracePrompt, yyTokenName[yytos[0].major] }},
+                \\        ) catch {{}};
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_pop);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_POP", trace_pop);
+        }
+        { // 🍋TRACE_REDUCE
+            const trace_reduce = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\const yysize = yyRuleInfoNRhs[yyruleno];
+                \\                if (yysize == 0) {{
+                \\                    {s}.print("{{s}}Reduce {{d}} [{{s}}]{{s}}, pop back to state {{d}}\n",
+                \\                        .{{ yyTracePrompt,
+                \\                           yyruleno,
+                \\                           yyRuleName[yyruleno],
+                \\                           if (yyruleno < YYNRULE_WITH_ACTION) "" else " without external action",
+                \\                           (yypParser.tos - @abs(yysize))[0].stateno,
+                \\                        }},
+                \\                    ) catch {{}};
+                \\                }} else {{
+                \\                   {s}.print("{{s}}Reduce {{d}} [{{s}}]{{s}}\n",
+                \\                      .{{ yyTracePrompt, yyruleno, yyRuleName[yyruleno],
+                \\                          if (yyruleno < YYNRULE_WITH_ACTION) "" else " without external action" }},
+                \\                   ) catch {{}};
+                \\                }}
+            ,
+                .{ trace, trace },
+            );
+            errdefer zyt.allocator.free(trace_reduce);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_REDUCE", trace_reduce);
+        }
+        { // 🍋TRACE_RETURN
+            const trace_return = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\var cDiv: u8 = '[';
+                \\        {s}.print("{{s}}Return. Stack=", .{{yyTracePrompt}}) catch {{}};
+                \\        var yy_i = yypParser.stack + 1;
+                \\        while (@intFromPtr(yy_i) <= @intFromPtr(yypParser.tos)) : ( yy_i += 1) {{
+                \\            {s}.print("{{u}}{{s}}", .{{ cDiv, yyTokenName[yy_i[0].major] }}) catch {{}};
+                \\            cDiv = ' ';
+                \\        }}
+                \\        {s}.writeAll("]\n") catch {{}};
+            ,
+                .{ trace, trace, trace },
+            );
+            errdefer zyt.allocator.free(trace_return);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_RETURN", trace_return);
+        }
+        { // 🍋TRACE_SHIFT
+            const trace_shift = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\if (yyNewState < YYNSTATE) {{
+                \\            {s}.print("{{s}}{{s}} '{{s}}', go to state {{d}}\n",
+                \\                .{{ yyTracePrompt, zTag, yyTokenName[yypParser.tos[0].major], yyNewState }},
+                \\            ) catch {{}};
+                \\        }} else {{
+                \\            {s}.print("{{s}}{{s}} '{{s}}', pending reduce {{d}}\n",
+                \\               .{{ yyTracePrompt, zTag, yyTokenName[yypParser.tos[0].major], yy_sint(yyNewState) - YY_MIN_REDUCE }},
+                \\            ) catch {{}};
+                \\        }}
+            ,
+                .{ trace, trace },
+            );
+            errdefer zyt.allocator.free(trace_shift);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_SHIFT", trace_shift);
+        }
+
+        { // 🍋TRACE_STACK_OVERFLOW
+            const trace_stack_overflow = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\{s}.print("{{s}}Stack Overflow!\n", .{{yyTracePrompt}}) catch {{}};
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_stack_overflow);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_STACK_OVERFLOW", trace_stack_overflow);
+        }
+
+        { // 🍋TRACE_SYNTAX_ERROR
+            const trace_syntax_error = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\{s}.print("{{s}}Syntax Error!\n", .{{yyTracePrompt}}) catch {{}};
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_syntax_error);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_SYNTAX_ERROR", trace_syntax_error);
+        }
+
+        { // 🍋TRACE_WILDCARD
+            const trace_wildcard = try std.fmt.allocPrint(
+                zyt.allocator,
+                \\{s}.print("{{s}}WILDCARD {{s}} => {{s}}\n",
+                \\                            .{{ yyTracePrompt, yyTokenName[yy_lookahead], yyTokenName[YYWILDCARD] }}) catch {{}};
+            ,
+                .{trace},
+            );
+            errdefer zyt.allocator.free(trace_wildcard);
+            try zyt.defines.put(zyt.allocator, "🍋TRACE_WILDCARD", trace_wildcard);
         }
     }
     var in = try macroReplace(zyt, in_template);
@@ -2962,6 +2957,8 @@ const Zitron = struct {
     failure: []u8,
     /// Code to execute when the parser excepts
     accept: []u8,
+    /// Type of parser error set
+    error_type: []u8,
     /// Code appended to the generated file
     extracode: []u8,
     /// Code to execute to destroy token data
@@ -3048,6 +3045,7 @@ const Zitron = struct {
         .overflow = &.{},
         .failure = &.{},
         .accept = &.{},
+        .error_type = &.{},
         .extracode = &.{},
         .tokendest = &.{},
         .vardest = &.{},
@@ -3097,6 +3095,8 @@ const Zitron = struct {
         errdefer allocator.free(gp.failure);
         gp.accept = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.accept);
+        gp.error_type = try allocator.alloc(u8, 0);
+        errdefer allocator.free(gp.error_type);
         gp.extracode = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.extracode);
         gp.tokendest = try allocator.alloc(u8, 0);
@@ -3139,6 +3139,7 @@ const Zitron = struct {
         allocator.free(gp.overflow);
         allocator.free(gp.failure);
         allocator.free(gp.accept);
+        allocator.free(gp.error_type);
         allocator.free(gp.extracode);
         allocator.free(gp.tokendest);
         allocator.free(gp.token_enum);
@@ -4655,6 +4656,10 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 .parse_accept => {
                     psp.declargslot = &psp.gp.accept;
                 },
+                .parse_error_type => {
+                    psp.declargslot = &psp.gp.error_type;
+                    psp.insertLineMacro = false;
+                },
                 .parse_failure => {
                     psp.declargslot = &psp.gp.failure;
                 },
@@ -4962,6 +4967,7 @@ const Declaration = enum {
     trace_writer,
     syntax_error,
     parse_accept,
+    parse_error_type,
     parse_failure,
     stack_overflow,
     extra_argument,
@@ -4992,6 +4998,7 @@ const directive_list = [_]struct { []const u8, Declaration }{
     .{ "trace_writer", .trace_writer },
     .{ "syntax_error", .syntax_error },
     .{ "parse_accept", .parse_accept },
+    .{ "parse_error_type", .parse_error_type },
     .{ "parse_failure", .parse_failure },
     .{ "stack_overflow", .stack_overflow },
     .{ "extra_argument", .extra_argument },

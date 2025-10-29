@@ -26,8 +26,10 @@ const zitron_trace_prompt = "-> ";
 %extra_context {answer: f64}
 
 %ifdef TRACE
-%trace_writer "trace_me: *std.Io.Writer"
+%trace_writer "trace_me"
 %endif
+
+%parse_error_type "std.mem.Allocator.Error"
 
 %token_type "Token"
 // %token_enum_integer u8

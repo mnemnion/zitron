@@ -884,6 +884,7 @@ Zitron supports the following special directives:
 - [`%name`](#pname)
 - [`%nonassoc`](#pnonassoc)
 - [`%parse_accept`](#parse_accept)
+- [`%parse_error_type`](#parse_error)
 - [`%parse_failure`](#parse_failure)
 - [`%right`](#pright)
 - [`%stack_overflow`](#stack_overflow)
@@ -1128,13 +1129,13 @@ single preprocessor symbol name, not a general expression.  Use the
 `%if` directive for general expressions.
 
 Zitron note: since Lemon is a generator of C code, the documentation
-for these directives (verbatim above) presume a knowledge of the C
-preprocessor which Zig authors may or may not possess.  I want to add
-explicitly that these directives are _pre-processed_, they can appear
-anywhere, including weird places like inside [`%include`](#pinclude)
-code blocks.  Any which evaluate to false are replaced byte-for-byte
-with spaces, with newlines intact, and only then is the input file
-parsed.
+for these directives (verbatim above) presume a knowledge of the
+C preprocessor which Zig authors may or may not possess.  I want
+to add explicitly that these directives are _pre-processed_,
+they can appear anywhere, including weird places like inside
+[`%include`](#pinclude) code blocks.  Any such which evaluate to false
+are replaced byte-for-byte with spaces, with newlines intact, and only
+then is the input file parsed.
 
 Due to Zig's insistence that whitespace on both sides of an operator
 must be all-or-nothing, there is no valid Zig code which starts a line
@@ -1244,7 +1245,13 @@ This code is throw-friendly, meaning you can `try` or return an
 error in some other manner.
 
 
-#### 4.4.14 The `%parse_failure` directive <a id="parse_failure">
+#### 4.4.14 The `%parse_error_type` directive <a id="parse_error">
+
+By default, Zitron will infer the error return set of `parser.parse`
+and `parser.finalize`.  If `%parse_error_type` is set to a value,
+this value will be used as the error type instead.
+
+#### 4.4.15 The `%parse_failure` directive <a id="parse_failure">
 
 The `%parse_failure` directive specifies a block of Zig code that is
 executed whenever the parser fails complete. This code is not executed
@@ -1260,14 +1267,14 @@ This code is throw-friendly, meaning you can `try` or return an
 error in some other manner.
 
 
-#### 4.4.15 The `%right` directive <a id="pright">
+#### 4.4.16 The `%right` directive <a id="pright">
 
 This directive is used to assign right-associative precedence to one or
 more terminal symbols. See the section on [precedence rules](#precrules)
 or on the [%left](#pleft) directive for additional information.
 
 
-#### 4.4.16 The `%stack_overflow` directive <a id="stack_overflow">
+#### 4.4.17 The `%stack_overflow` directive <a id="stack_overflow">
 
 The `%stack_overflow` directive specifies a block of Zig code that is
 executed if the parser's internal stack ever overflows.  Typically this
@@ -1309,7 +1316,7 @@ the same effect, or nearly so, which brings us to:
 [fba]: https://ziglang.org/documentation/master/std/#std.heap.FixedBufferAllocator
 
 
-#### 4.4.17 The `%stack_size` directive <a id="stack_size">
+#### 4.4.18 The `%stack_size` directive <a id="stack_size">
 
 If stack overflow is a problem and you can't resolve the trouble by
 using left-recursion, then you might want to increase the size of the
@@ -1362,7 +1369,7 @@ presuming you named the context object `ctx`.
 [sfa]: https://ziglang.org/documentation/master/std/#std.heap.StackFallbackAllocator
 
 
-#### 4.4.18 The `%start_symbol` directive <a id="start_symbol">
+#### 4.4.19 The `%start_symbol` directive <a id="start_symbol">
 
 By default, the start symbol for the grammar that Zitron generates is the
 first non-terminal that appears in the grammar file.  But you can choose
@@ -1374,7 +1381,7 @@ This can be used with `%ifdef` conditionals to define a subset of the
 grammar as its own parser, for example.
 
 
-#### 4.4.19 The `%syntax_error` directive <a id="syntax_error">
+#### 4.4.20 The `%syntax_error` directive <a id="syntax_error">
 
 Specifies code to run when a syntax error is encountered.
 
@@ -1385,7 +1392,7 @@ See [Error Processing](#errors) for more details on how Zitron handles
 this situation when it arises.
 
 
-#### 4.4.20 The `%token` directive <a id="token">
+#### 4.4.21 The `%token` directive <a id="token">
 
 Tokens are normally created automatically, the first time they are used.
 Any identifier that begins with an upper-case letter is a token.
@@ -1410,7 +1417,7 @@ mentioned, whether with a `%token` directive or within the grammar, will
 have the number `1`.
 
 
-#### 4.4.21 The `%token_class` directive <a id="token_class">
+#### 4.4.22 The `%token_class` directive <a id="token_class">
 
 Undocumented... in Lemon!  Having pored over the source code in sufficient
 detail to translate it into Zitron, we're prepared to spill the beans.
@@ -1433,7 +1440,7 @@ of Lemon (and therefore Zitron) which are not in fact documented at the
 time of writing.
 
 
-#### 4.4.22 The `%token_destructor` directive <a id="token_destructor">
+#### 4.4.23 The `%token_destructor` directive <a id="token_destructor">
 
 The `%destructor` directive assigns a destructor to a non-terminal
 symbol.  (See the description of the [`%destructor`](#destructor)
@@ -1460,7 +1467,7 @@ words wide, and this may as well be copied by value, in which case no
 [mempool]:https://ziglang.org/documentation/master/std/#std.heap.memory_pool.MemoryPool
 
 
-#### 4.4.23 The `%token_enum` and `%token_enum_integer` directives <a id="token_enum">
+#### 4.4.24 The `%token_enum` and `%token_enum_integer` directives <a id="token_enum">
 
 Zitron generates an enum representing all possible terminal token
 variants.  By default this is called `TokenKind`, but a custom name
@@ -1475,7 +1482,7 @@ hold all tokens, this can be set to whatever is convenient with
     %token_enum_integer u7
 
 
-#### 4.4.24 The `%token_type` and `%type` directives <a id="token_type">
+#### 4.4.25 The `%token_type` and `%type` directives <a id="token_type">
 
 These directives are used to specify the data types for values on the
 parser's stack associated with terminal and non-terminal symbols.  The
@@ -1507,19 +1514,19 @@ whose data type requires 1K of storage, then your 100 entry parser stack
 will require 100K of heap space.  If you are willing and able to pay that
 price, fine.  You just need to know.
 
-#### 4.4.25 The `%trace_writer` directive <a id="trace_writer">
+#### 4.4.26 The `%trace_writer` directive <a id="trace_writer">
 
 This directs Zitron to add tracing to the generated grammar.  This
 will only be active in Debug release modes.  Tracing can be very loud,
 so this directive is a good candidate for turning on and off using an
 [`%ifdef`](#pifdef) macro.
 
-Use is as follows: add the directive like so:
+Use is as follows.  Add the directive like so:
 
-     %trace_writer "trace_me: *std.Io.Writer"
+     %trace_writer trace_me
 
-With whatever type and name you'll use for tracing.  Then in an
-[`%include`](#include) block, add something like this:
+With whatever the identifier is of the variable you'll use for tracing.
+Then in an [`%include`](#include) block, add something like this:
 
 ```zig
 threadlocal var trace_me: *std.Io.Writer = undefined;
@@ -1536,18 +1543,26 @@ Which you can set up in a [`%code`](#code) block thus:
 Don't forget to flush!
 
 With some creativity, you'll find that you can define a build option
-which both sets a macro to enable a `%trace_writer`, and comptime-gates
+which both sets a macro to enable a `%trace_writer`, and macro-gates
 the code which exercises it.
+
+Note that tracing happens on a "best effort" basis, any errors which
+arise are swallowed without a \*ahem\* trace.  This is to avoid
+interference with a defined [`%parser_error`](#parser_error), and on the
+general premise that tracing is a debug aid, so doing the same thing as
+`std.debug.print` is perfectly reasaonable.
 
 The trace output is comprehensive, or if you prefer, verbose.  It's
 intended to be consulted in tandem with the `.out` file produced by
 Zitron, to diagnose mysterious parser behaviors, ideally in small
-fragments of input.
+fragments of input.  There is no mechanism to filter the output to
+generate less information, other than tools like `awk` or `sed`.  But
+those should be more than sufficient.
 
 One more thing: if you define a string `zitron_trace_prompt`, that
 string will be prepended to every trace line.
 
-#### 4.4.26 The `%wildcard` directive <a id="pwildcard">
+#### 4.4.27 The `%wildcard` directive <a id="pwildcard">
 
 The `%wildcard` directive is followed by a single token name and a
 period.  This directive specifies that the identified token should match
