@@ -3993,12 +3993,6 @@ fn Parse(psp: *PState) !void {
     }
     // /* Make an initial pass through the file to handle %ifdef and %ifndef */
     preprocess_input(&psp.gp.opt, &psp.gp.errorcnt, filebuf);
-    for (psp.gp.opt.bDefineUsed, 0..) |used, i| {
-        if (!used) {
-            std.debug.print("Macro define {s} defined, but not used.\n", .{psp.gp.opt.azDefine[i]});
-            psp.gp.errorcnt += 1;
-        }
-    }
     if (psp.gp.errorcnt > 0) return;
     if (psp.gp.printPreprocessed) {
         var stdout_buffer: [1024]u8 = undefined;

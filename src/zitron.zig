@@ -207,7 +207,7 @@ const Symbol = struct {
     name: []const u8,
     /// Index number for this symbol
     index: u32,
-    /// Symbols are all either terminal or nonterminal
+    /// Symbols are one of .terminal, .nonterminal, or .multiterminal.
     type: SymbolType = .terminal,
     /// Linked list of rules of this (if an NT)
     rule: ?*Rule,
@@ -1284,12 +1284,23 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, zyt: *Zitron, lineno: *usize)
 /// Return TRUE (non-zero) if the given symbol has a destructor.
 ///
 fn has_destructor(sp: *Symbol, zyt: *Zitron) bool {
-    if (sp.type == .terminal) {
+    if (sp.type != .nonterminal) {
         return zyt.tokendest.len > 0;
     } else {
         return zyt.vardest.len > 0 or sp.destructor.len > 0;
     }
 }
+
+/// We want to track if an alias is use, but also if
+/// it's been captured.  This lets us emit a destructor
+/// if a token type is only captured by enum value.
+const UseType = packed struct(u8) {
+    used: bool,
+    captured: bool,
+    _: u6,
+
+    pub const empty: UseType = @bitCast(@as(u8, 0));
+};
 
 /// Write and transform the rp->code string so that symbols are expanded.
 /// Populate the rp->codePrefix and rp->codeSuffix strings, as appropriate.
@@ -1301,12 +1312,12 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     var dontUseRhs0 = false; // If true, use of left-most RHS label is illegal
     var lhsused = false; // True if the LHS element has been used
     var lhsdirect = false; // True if LHS writes directly into stack
-    var used: [MAXRHS]bool = undefined; // True for each RHS element which is used
+    var used: [MAXRHS]UseType = undefined; // True for each RHS element which is used
     var zLhsBuf: [64]u8 = undefined; // Convert the LHS symbol into this string
     var zSkip: ?usize = null; // Index of skippable special comment
     var zLhs: []const u8 = "";
     if (is_safe) {
-        @memset(&used, false);
+        @memset(&used, UseType.empty);
     }
     const alloc = zyt.allocator;
     var fallback = std.heap.stackFallback(2048, alloc);
@@ -1349,7 +1360,8 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
         // direct writing is allowed
         lhsdirect = true;
         lhsused = true;
-        used[0] = true;
+        used[0].used = true;
+        used[0].captured = true;
         if (rp.lhs.dtnum != rp.rhs[0].dtnum) {
             ErrorMsg(zyt.filename, rp.ruleline, "" ++
                 "{s}({s}) and {s}({s}) share the same label but have " ++
@@ -1492,7 +1504,8 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                                 .{ rp.rhs.len - j, dtnum },
                             );
                         }
-                        used[j] = true;
+                        used[j].used = true;
+                        if (!at) used[j].captured = true;
                         i = id - 1;
                         start = id;
                         break :rhs;
@@ -1542,10 +1555,17 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                     break :dupe;
                 }
             }
-            if (!used[i]) {
+            if (!used[i].used) {
                 ErrorMsg(zyt.filename, rp.ruleline, "" ++
                     "Label {s} for \"{s}({s})\" is never used.", .{ alias, rp.rhs[i].name, alias });
                 zyt.errorcnt += 1;
+            }
+            if (!used[i].captured and has_destructor(rp.rhs[i], zyt)) {
+                // Was @'ed upon but not otherwise touched. Destroy
+                try writer.print(
+                    "defer yy_destructor(yypParser,{d},&(yymsp - {d})[1].minor);\n",
+                    .{ rp.rhs[i].index, rp.rhs.len - i },
+                );
             }
         } else if (i > 0 and has_destructor(rp.rhs[i], zyt)) {
             if (p_check1) {
@@ -2259,11 +2279,11 @@ fn reportTableImpl(
         try out.writeAll(".\n//!\n");
         lineno += 2;
     } else {
-        try out.writeAll("//! with these options:\n//!\n");
-        lineno += 2;
+        try out.writeAll("\n//! with these options:\n//!\n");
+        lineno += 3;
         for (0..zyt.opt.azDefine.len) |i| {
             if (!zyt.opt.bDefineUsed[i]) continue;
-            try out.print("//!   -D{s}\n", .{zyt.opt.azDefine[i]});
+            try out.print("//!   -D={s}\n", .{zyt.opt.azDefine[i]});
             lineno += 1;
         }
         try out.writeAll("//!\n\n");
@@ -4353,12 +4373,6 @@ fn Parse(psp: *PState) !void {
     }
     // /* Make an initial pass through the file to handle %ifdef and %ifndef */
     preprocess_input(&psp.gp.opt, &psp.gp.errorcnt, filebuf);
-    for (psp.gp.opt.bDefineUsed, 0..) |used, i| {
-        if (!used) {
-            std.debug.print("Macro define {s} defined, but not used.\n", .{psp.gp.opt.azDefine[i]});
-            psp.gp.errorcnt += 1;
-        }
-    }
     if (psp.gp.errorcnt > 0) return;
     if (psp.gp.printPreprocessed) {
         var stdout_buffer: [1024]u8 = undefined;
