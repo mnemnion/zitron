@@ -154,15 +154,15 @@ mode, `Zitron` will only write `err`-level logging to stdout.
 As of right now, the command line options for Zitron are the same as
 those provided here.  That will not remain true for long.
 
-The behavior of Lemon can be modified using command-line options. You
+The behavior of Zitron can be modified using command-line options. You
 can obtain a list of the available command-line options together with a
 brief explanation of what each does by typing
 
-       lemon "-?"
+       zitron -h
 
-<tk the canonical source is in the Zitron notes, do not modify!>
 
 - **-b, --basis** Show only the basis for each parser state in the report file.
+- **-C --show-conflicts** Display all conflicts that are resolved by [precedence rules](#precrules).
 - **-c, --no-compress** Do not compress the generated action tables. The parser will be
     a little larger and slower, but it will detect syntax errors sooner.
 - **-d, --directory _directory_** Write all output files into _directory_. Normally,
@@ -172,16 +172,15 @@ brief explanation of what each does by typing
     by [`%ifdef`](#pifdef), [`%ifndef`](#pifdef), and [`%if`](#pifdef) lines in
     the grammar file.  It is legal to define a name more than once.
 - **-e --enum-file**  Emit the token enum as its own file.
-- **-g --no-gen**  Do not generate a parser. Instead write the input grammar to
+- **-g --grammar**  Do not generate a parser. Instead write the input grammar to
     standard output with all comments, actions, and other extraneous text
     removed.
 - **-h --help**  Print this help and exit.
 - **-l --lines** Add "#line" comments in the generated parser's Zig code.
 - **-P --pp-only** Run the "%if" preprocessor step only and print the revised
     grammar file.
-- **-p --precedence** Display all conflicts that are resolved by [precedence rules](#precrules).
 - **-q --quiet** Suppress generation of the report file.
-- **-r --no-renumber** Do not sort or renumber the parser states as part of
+- **-r --no-resort** Do not sort or renumber the parser states as part of
     optimization.
 - **-s --show-stats** Show parser statistics before exiting.
 - **-S**  Generate the *.sql file describing the parser tables.

@@ -1021,7 +1021,7 @@ fn reportOutputImpl(zyt: *Zitron, writer: anytype) !void {
         try writer.writeByte('\n');
         var m_ap = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
-            if (try PrintAction(writer, ap, 30, zyt.opt.show_precedence_conflict)) try writer.writeByte('\n');
+            if (try PrintAction(writer, ap, 30, zyt.opt.show_conflicts)) try writer.writeByte('\n');
         }
         try writer.writeByte('\n');
     }
@@ -5236,7 +5236,7 @@ fn CompressTables(zyt: *Zitron) !void {
             m_ap = stp.ap;
             const stderr = std.io.getStdErr().writer();
             while (m_ap) |ap| : (m_ap = ap.next) {
-                _ = try PrintAction(stderr, ap, 0, zyt.opt.show_precedence_conflict);
+                _ = try PrintAction(stderr, ap, 0, zyt.opt.show_conflicts);
             }
             m_ap = stp.ap;
         }
@@ -5508,13 +5508,15 @@ fn Compute_actiontable(zyt: *Zitron) !*ActTable {
 }
 
 const Options = struct {
+    allocator: Allocator = undefined,
+    help: bool = false,
     version: bool = false,
-    rpflag: bool = config.report,
+    grammar: bool = config.grammar,
     enum_file: bool = config.enum_file,
     no_compress: bool = config.no_compress,
     print_pp: bool = false,
     linenos: bool = config.line_numbers,
-    show_precedence_conflict: bool = config.show_precedence_conflict,
+    show_conflicts: bool = config.show_conflicts,
     quiet: bool = config.quiet,
     statistics: bool = config.statistics,
     sql_flag: bool = config.sql,
@@ -5532,41 +5534,115 @@ const Options = struct {
     }
 };
 
-fn argindex(args: [][:0]u8, n: i65) ?usize {
-    var n2 = n;
-    var dashdash: bool = false;
-    for (args[1..], 1..) |arg, i| {
-        if (dashdash or !isOpt(arg)) {
-            if (n2 == 0) return i;
-            n2 -= 1;
+const OptionKind = enum {
+    help,
+    version,
+    grammar,
+    enum_file,
+    no_compress,
+    print_pp,
+    linenos,
+    show_conflicts,
+    quiet,
+    statistics,
+    sql_flag,
+    only_basis,
+    no_resort,
+    user_template,
+    output_directory,
+    define,
+    undefine,
+
+    pub fn shortOpt(b: u8) ?OptionKind {
+        return switch (b) {
+            'b' => .only_basis,
+            'C' => .show_conflicts,
+            'c' => .no_compress,
+            'd' => .output_directory,
+            'D' => .define,
+            'e' => .enum_file,
+            'g' => .grammar,
+            'h' => .help,
+            'l' => .linenos,
+            'P' => .print_pp,
+            'q' => .quiet,
+            'r' => .no_resort,
+            's' => .statistics,
+            'S' => .sql_flag,
+            'T' => .user_template,
+            'U' => .undefine,
+            'v' => .version,
+            else => null,
+        };
+    }
+
+    pub fn takesArgument(ok: OptionKind) bool {
+        return switch (ok) {
+            .help,
+            .version,
+            .grammar,
+            .enum_file,
+            .no_compress,
+            .print_pp,
+            .linenos,
+            .show_conflicts,
+            .quiet,
+            .statistics,
+            .sql_flag,
+            .only_basis,
+            .no_resort,
+            => false,
+            .user_template,
+            .output_directory,
+            .define,
+            .undefine,
+            => true,
+        };
+    }
+};
+
+const option_list = [_]struct { []const u8, OptionKind }{
+    .{ "help", .help },
+    .{ "version", .version },
+    .{ "grammar", .grammar },
+    .{ "enum-file", .enum_file },
+    .{ "no-compress", .no_compress },
+    .{ "pp-only", .print_pp },
+    .{ "line-numbers", .linenos },
+    .{ "show-conflicts", .show_conflicts },
+    .{ "quiet", .quiet },
+    .{ "statistics", .statistics },
+    .{ "sql", .sql_flag },
+    .{ "only-basis", .only_basis },
+    .{ "no-resort", .no_resort },
+    .{ "template", .user_template },
+    .{ "directory", .output_directory },
+    .{ "define", .define },
+    .{ "undefine", .undefine },
+};
+
+const opt_map = std.StaticStringMap(OptionKind).initComptime(option_list);
+
+/// Return the argument of an option which takes one, or a
+/// useful error otherwise.
+fn optionArgument(args: [][:0]u8, n: *usize, i: usize) ![:0]const u8 {
+    if (i < args[n.*].len - 1) {
+        if (args[n.*][i + 1] == '=') {
+            return args[n.*][i + 2 .. :0];
+        } else {
+            return error.NoEqualsAfterOption;
         }
-        if (strcmp(arg, "--")) dashdash = true;
+    } else if (n.* < args.len - 1) {
+        n.* += 1;
+        return args[n.*];
+    } else {
+        return error.OutOfArguments;
     }
-    return null;
-}
-
-fn isOpt(arg: []const u8) bool {
-    return arg[0] == '-' or arg[0] == '+' or mem.indexOfScalar(u8, arg, '=') != null;
-}
-
-fn OptArg(args: [][:0]u8, n: usize) []const u8 {
-    const m_i = argindex(args, n);
-    return if (m_i) |i| args[i] else "";
-}
-
-fn OptNArgs(args: [][:0]u8) usize {
-    var cnt: usize = 0;
-    var dashdash: bool = false;
-    for (args[1..]) |arg| {
-        if (dashdash or !isOpt(arg)) cnt += 1;
-        if (strcmp(arg, "--")) dashdash = true;
-    }
-    return cnt;
 }
 
 /// Print the command line with a caret pointing to the k-th character
 /// of the n-th field.
-fn errline(args: []const []const u8, n: usize, k: usize) void {
+fn errline(args: [][:0]u8, n: usize, k: usize) void {
     var spcnt: usize = 0;
     var i: usize = 0;
 
@@ -5591,105 +5667,186 @@ fn errline(args: []const []const u8, n: usize, k: usize) void {
     }
 
     if (spcnt < 20) {
+        // `.s` can be anything, not related to s: (funky fmt parser)
         std.debug.print("\n{s: >[len]}^-- here\n\n", .{ .s = "", .len = spcnt });
     } else {
         const adj = spcnt - 7;
         std.debug.print("\n{s: >[len]}here --^\n\n", .{ .s = "", .len = adj });
     }
 }
-fn handleflags(opt: *Options, flag: u8, arg: []const u8, set: bool, allocator: Allocator) !usize {
-    switch (flag) {
-        'b' => opt.only_basis = set,
-        'c' => opt.no_compress = set,
-        'd' => opt.output_directory = arg,
-        'D' => {
-            if (arg.len > 0) {
-                for (opt.azDefine) |d| {
-                    if (strcmp(d, arg)) return 0;
+
+fn assignArgument(opt: *Options, opt_kind: OptionKind, argument: [:0]const u8) !void {
+    switch (opt_kind) {
+        .user_template => {
+            opt.user_templatename = try Strsafe(argument);
+        },
+        .output_directory => {
+            opt.output_directory = try Strsafe(argument);
+        },
+        .define => {
+            for (opt.azDefine) |d| {
+                if (strcmp(d, argument)) return;
+            }
+            const safe_arg = try Strsafe(argument);
+            opt.azDefine = try opt.allocator.realloc(opt.azDefine, opt.azDefine.len + 1);
+            opt.azDefine[opt.azDefine.len - 1] = safe_arg;
+            opt.bDefineUsed = try opt.allocator.realloc(opt.bDefineUsed, opt.bDefineUsed.len + 1);
+            opt.bDefineUsed[opt.bDefineUsed.len - 1] = false;
+        },
+        .undefine => {
+            for (opt.azDefine, 0..) |def, i| {
+                if (strcmp(def, argument)) {
+                    // Clobber with the last value (aliasing is harmless)
+                    opt.azDefine[i] = opt.azDefine[opt.azDefine.len - 1];
+                    opt.bDefineUsed[i] = opt.bDefineUsed[opt.bDefineUsed.len - 1];
+                    opt.azDefine = try opt.allocator.realloc(opt.azDefine, opt.azDefine.len - 1);
+                    opt.bDefineUsed = try opt.allocator.realloc(opt.bDefineUsed, opt.bDefineUsed.len - 1);
                 }
-                opt.azDefine = try allocator.realloc(opt.azDefine, opt.azDefine.len + 1);
-                opt.azDefine[opt.azDefine.len - 1] = arg;
-                opt.bDefineUsed = try allocator.realloc(opt.bDefineUsed, opt.bDefineUsed.len + 1);
-                opt.bDefineUsed[opt.bDefineUsed.len - 1] = false;
-            } else {
-                return 1;
             }
         },
-        'U' => {
-            if (arg.len > 0) {
-                for (opt.azDefine, 0..) |def, i| {
-                    if (strcmp(def, arg)) {
-                        // Clobber with the last value (aliasing is harmless)
-                        opt.azDefine[i] = opt.azDefine[opt.azDefine.len - 1];
-                        opt.bDefineUsed[i] = opt.bDefineUsed[opt.bDefineUsed.len - 1];
-                        opt.azDefine = try allocator.realloc(opt.azDefine, opt.azDefine.len - 1);
-                        opt.bDefineUsed = try allocator.realloc(opt.bDefineUsed, opt.bDefineUsed.len - 1);
-                    }
-                }
-            }
+        else => |k| {
+            std.debug.panic("Option {t} does not take argument (internal error)", .{k});
         },
-        'E' => opt.print_pp = set,
-        'g' => opt.rpflag = set,
-        'm' => opt.enum_file = set,
-        'l' => opt.linenos = set,
-        'p' => opt.show_precedence_conflict = set,
-        'q' => opt.quiet = set,
-        'r' => opt.no_resort = set,
-        's' => opt.statistics = set,
-        'S' => opt.sql_flag = set,
-        'x' => opt.version = set,
-        'T' => opt.user_templatename = arg,
-        else => return 1,
     }
-    return 0;
 }
 
-fn handleswitch(opt: *Options, arg: []const u8, allocator: Allocator) !usize {
-    const opt_t = arg[0];
-    const eq_idx = mem.indexOfScalar(u8, arg, '=').?;
-    if (eq_idx + 1 >= arg.len) return 1;
-    const opt_rest = arg[eq_idx + 1 ..];
-    return try handleflags(opt, opt_t, opt_rest, true, allocator);
+fn assignFlag(opt: *Options, opt_kind: OptionKind) void {
+    switch (opt_kind) {
+        .help => opt.help = true,
+        .version => opt.version = true,
+        .grammar => opt.grammar = !opt.grammar,
+        .enum_file => opt.enum_file = !opt.enum_file,
+        .no_compress => opt.no_compress = !opt.no_compress,
+        .print_pp => opt.print_pp = !opt.print_pp,
+        .linenos => opt.linenos = !opt.linenos,
+        .show_conflicts => opt.show_conflicts = !opt.show_conflicts,
+        .quiet => opt.quiet = !opt.quiet,
+        .statistics => opt.statistics = !opt.statistics,
+        .sql_flag => opt.sql_flag = !opt.sql_flag,
+        .only_basis => opt.only_basis = !opt.only_basis,
+        .no_resort => opt.no_resort = !opt.no_resort,
+        else => |k| std.debug.panic("Option {t} is not a flag (internal error)", .{k}),
+    }
 }
 
-fn OptInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !void {
-    errdefer opt.deinit(allocator);
+fn readShortArgs(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !void {
+    dbgassert(n.* < args.len);
+    dbgassert(i.* == 1);
+    const arg = args[n.*];
+    while (i.* < arg.len) : (i.* += 1) {
+        const opt_kind = OptionKind.shortOpt(arg[i.*]) orelse return error.ShortOptionNotRecognized;
+        if (opt_kind.takesArgument()) {
+            const argument = try optionArgument(args, n, i.*);
+            try assignArgument(opt, opt_kind, argument);
+        } else {
+            if (i.* < arg.len - 1 and arg[i.* + 1] == '=') {
+                return error.SwitchTakesNoArgument;
+            }
+            assignFlag(opt, opt_kind);
+        }
+    }
+}
+
+fn readLongArg(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !void {
+    dbgassert(n.* < args.len);
+    dbgassert(i.* > 2);
+    const arg = args[n.*];
+    const start = i.*;
+    while (i.* < arg.len and arg[i.*] != '=') : (i.* += 1) {}
+    const long = arg[start..i.*];
+    const opt_kind = opt_map.get(long) orelse return error.LongOptionNotRecognized;
+    if (opt_kind.takesArgument()) {
+        const argument = try optionArgument(args, n, i.*);
+        try assignArgument(opt, opt_kind, argument);
+    } else {
+        if (i.* < arg.len) {
+            // Argument where none expected:
+            dbgassert(arg[i.*] == '=');
+            return error.SwitchTakesNoArgument;
+        }
+        assignFlag(opt, opt_kind);
+    }
+}
+
+fn readOneArg(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !bool {
+    dbgassert(n.* < args.len);
+    const arg = args[n.*];
+    if (arg[0] != '-') return false; // Presumably the file name.
+    if (args[n.*].len < 2) return error.ArgTooShort;
+    if (arg[1] == '-') {
+        // dash-dash?
+        if (arg.len == 2) {
+            n.* += 1;
+            return false;
+        }
+        i.* = 2;
+        try readLongArg(opt, args, n, i);
+    } else {
+        i.* = 1;
+        try readShortArgs(opt, args, n, i);
+    }
+    return true;
+}
+
+/// Initialize the Options struct.  Return the index at which the filename should be
+/// found
+fn optionsInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !usize {
+    opt.allocator = allocator;
     if (config.define) |defines| {
         const n = opt.azDefine.len;
-        opt.azDefine = try allocator.realloc(opt.azDefine, n + defines.len);
-        opt.bDefineUsed = try allocator.realloc(opt.bDefineUsed, n + defines.len);
+        opt.azDefine = try allocator.alloc([]const u8, n + defines.len);
+        opt.bDefineUsed = try allocator.alloc(bool, n + defines.len);
         dbgassert(opt.azDefine.len == opt.bDefineUsed.len);
         for (defines, 0..) |d, i| {
             opt.azDefine[n + i] = d;
             opt.bDefineUsed[n + i] = false;
         }
+    } else {
+        opt.azDefine = try allocator.alloc([]const u8, 0);
+        opt.bDefineUsed = try allocator.alloc(bool, 0);
     }
     var errcnt: usize = 0;
     var last_err: usize = 0;
-    for (args, 0..) |arg, i| {
-        if (arg.len < 2) {
-            errcnt += 1;
-            continue;
-        }
-        if (arg[0] == '+' or arg[0] == '-') {
-            errcnt += try handleflags(opt, arg[1], arg[2..], arg[0] == '-', allocator);
-        } else if (mem.indexOfScalar(u8, arg, '=')) |_| {
-            errcnt += try handleswitch(opt, arg, allocator);
-        }
-        if (errcnt > last_err) {
-            if (last_err == 0) {
-                dprint("Error in command line arguments:\n", .{});
+    var n: usize = 1;
+    var i: usize = 0;
+    while (n < args.len) : (n += 1) {
+        const more = readOneArg(opt, args, &n, &i) catch |err| more: {
+            if (err == error.OutOfMemory) return err;
+            if (errcnt > last_err) {
+                if (last_err == 0) {
+                    dprint("Error in command line arguments:\n", .{});
+                }
+                errcnt += 1;
+                last_err = errcnt;
+                switch (err) {
+                    error.OutOfMemory => unreachable,
+                    error.ArgTooShort => {
+                        dprint("- \"-\" is not an argument (missing flag?):\n", .{});
+                    },
+                    error.SwitchTakesNoArgument => {
+                        dprint("- This switch takes no argument:\n", .{});
+                    },
+                    error.LongOptionNotRecognized => {
+                        dprint("- Long option not recognized:\n", .{});
+                    },
+                    error.ShortOptionNotRecognized => {
+                        dprint("- Short option not recognized:\n", .{});
+                    },
+                    error.NoEqualsAfterOption, error.OutOfArguments => {
+                        dprint("- This option must be followed by an argument:\n", .{});
+                    },
+                }
+                errline(args, n, i);
             }
-            last_err = errcnt;
-            errline(args, i, 0);
-        }
+            break :more true;
+        };
+        if (!more) break;
+        i = 0;
     }
-    if (errcnt > 0) {
-        OptPrint(args);
-    }
-    return;
+    return n;
 }
 
+// TODO: something better here
 const help_string =
     \\Valid commands for {s} are:
     \\
@@ -5708,7 +5865,7 @@ const help_string =
     \\
     \\ -e --enum-file            Emit the token enum as its own file.
     \\
-    \\ -g --no-gen               Do not generate a parser. Instead write the input grammar to
+    \\ -g --grammar              Do not generate a parser. Instead write the input grammar to
     \\                           standard output with all comments, actions, and other extraneous text
     \\                           removed.
     \\
@@ -5737,10 +5894,9 @@ const help_string =
     \\ -v, --version             Print the Zitron version number.
 ;
 
-fn OptPrint(args: [][:0]u8) noreturn {
+fn OptPrint(out: anytype, args: [][:0]u8) !void {
     const idx = if (mem.lastIndexOfScalar(u8, args[0], '/')) |i| i + 1 else 0;
-    dprint(help_string, .{args[0][idx..]});
-    exit(1);
+    try out.print(help_string, .{args[0][idx..]});
 }
 
 fn strLessThan(_: void, a: []const u8, b: []const u8) bool {
@@ -5854,25 +6010,33 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
     var opt: Options = .{};
     defer opt.deinit(allocator);
-    {
-        opt.azDefine = try allocator.alloc([]const u8, 0);
-        opt.bDefineUsed = try allocator.alloc(bool, 0);
-        try OptInit(&opt, args, allocator);
+    const file_index = init_opts: {
+        break :init_opts try optionsInit(&opt, args, allocator);
+    };
+    // A few more syscalls, but I'd rather not fatten the stack
+    var stdout_buffer: [128]u8 = undefined;
+    if (opt.help) {
+        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        const stdout = &stdout_writer.interface;
+        stdout.writeAll("Zitron version 0.1\n") catch {};
+        try OptPrint(stdout, args);
+        stdout.flush() catch {};
+        exit(0);
     }
     if (opt.version) {
-        var stdout_buffer: [128]u8 = undefined;
         var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
         const stdout = &stdout_writer.interface;
         stdout.writeAll("Zitron version 0.1\n") catch {};
         stdout.flush() catch {};
         exit(0);
     }
-    if (OptNArgs(args) != 1) {
+    if (file_index != args.len - 1) {
         dprint("Exactly one filename argument is required.\n", .{});
+        errline(args, @min(file_index + 1, args.len), 0);
         exit(1);
     }
     std.mem.sort([]const u8, opt.azDefine, {}, strLessThan);
-    const filename: []const u8 = OptArg(args, 0);
+    const filename: []const u8 = args[file_index];
     var zyt = lemon: {
         errdefer opt.deinit(allocator);
         break :lemon try Zitron.create(allocator);
@@ -5938,7 +6102,7 @@ pub fn main() !void {
     }
     // [1726]
     // /* Generate a reprint of the grammar, if requested on the command line */
-    if (opt.rpflag) {
+    if (opt.grammar) {
         try Reprint(zyt);
     } else {
         SetSize(zyt.nterminal + 1);
@@ -6034,20 +6198,19 @@ pub fn main() !void {
         if (opt.enum_file) try ReportHeader(zyt);
     }
     if (opt.statistics) {
-        var stdin_buffer: [1024]u8 = undefined;
-        var stdin_writer = std.fs.File.stdin().writer(&stdin_buffer);
-        const in = &stdin_writer.interface;
-        try in.writeAll("Parser statistics:\n");
-        try stats_line(in, "terminal symbols", zyt.nterminal);
-        try stats_line(in, "non-terminal symbols", zyt.nsymbol - zyt.nterminal);
-        try stats_line(in, "total symbols", zyt.nsymbol);
-        try stats_line(in, "rules", zyt.nrule);
-        try stats_line(in, "states", zyt.nxstate);
-        try stats_line(in, "conflicts", zyt.nconflict);
-        try stats_line(in, "action table entries", zyt.nactiontab);
-        try stats_line(in, "lookahead table entries", zyt.nlookaheadtab);
-        try stats_line(in, "total table size (bytes)", zyt.tablesize);
-        try in.flush();
+        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        const out = &stdout_writer.interface;
+        try out.writeAll("Parser statistics:\n");
+        try stats_line(out, "terminal symbols", zyt.nterminal);
+        try stats_line(out, "non-terminal symbols", zyt.nsymbol - zyt.nterminal);
+        try stats_line(out, "total symbols", zyt.nsymbol);
+        try stats_line(out, "rules", zyt.nrule);
+        try stats_line(out, "states", zyt.nxstate);
+        try stats_line(out, "conflicts", zyt.nconflict);
+        try stats_line(out, "action table entries", zyt.nactiontab);
+        try stats_line(out, "lookahead table entries", zyt.nlookaheadtab);
+        try stats_line(out, "total table size (bytes)", zyt.tablesize);
+        try out.flush();
     }
     if (zyt.nconflict > 0) {
         dprint("{d} parsing conflicts.\n", .{zyt.nconflict});
