@@ -4104,7 +4104,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 psp.state = .lhs_alias_1;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Expected to see a \":\" following the LHS symbol \"%s\".", .{});
+                    "Expected to see a \":\" following the LHS symbol \"{s}\".", .{psp.lhs.name});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -4115,7 +4115,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 psp.state = .lhs_alias_2;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "\"%s\" is not a valid alias for the LHS \"%s\"\n", .{});
+                    "\"{s}\" is not a valid alias for the LHS \"{s}\"\n", .{ x, psp.lhs.name });
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }

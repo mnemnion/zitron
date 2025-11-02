@@ -1325,7 +1325,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     var string_builder: ArrayList(u8) = .empty;
     defer string_builder.deinit(f_alloc);
     const writer = string_builder.writer(f_alloc);
-    const cp = std.mem.trim(u8, rp.code, "\t \n");
+    const cp = std.mem.trim(u8, rp.code, C_SPACE);
     if (cp.len == 0) {
         rp.code = "\n";
         rp.noCode = true;
@@ -1371,7 +1371,9 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     } else {
         string_builder.clearRetainingCapacity();
         try writer.print("// {s}-overwrites-{s}\n", .{ rp.lhsalias, rp.rhsalias[0] });
-        if (mem.indexOf(u8, std.mem.trimLeft(u8, rp.code, "\n \t"), string_builder.items)) |skip_idx| {
+        // `trimLeft` because we `trim` the code, so the index will be correct this way.
+        // just `trim` can remove the newline, which we want to detect.
+        if (mem.indexOf(u8, std.mem.trimLeft(u8, rp.code, C_SPACE), string_builder.items)) |skip_idx| {
             // The code contains a special comment that indicates that it is safe
             // for the LHS label to overwrite left-most RHS label.
             zSkip = skip_idx;
@@ -1995,7 +1997,7 @@ fn reportTableImpl(
     // var in = in_template;
     var lineno: usize = 1;
     if (zyt.arg.len > 0) {
-        var arg = mem.trim(u8, zyt.arg, " ");
+        var arg = mem.trim(u8, zyt.arg, C_SPACE);
         const i = std.mem.indexOfScalar(u8, zyt.arg, ':') orelse 0;
         if (i == 0) {
             std.debug.print(
@@ -2040,7 +2042,7 @@ fn reportTableImpl(
         }
     }
     if (zyt.ctx.len > 0) {
-        var ctx = mem.trim(u8, zyt.ctx, " ");
+        var ctx = mem.trim(u8, zyt.ctx, C_SPACE);
         const i = std.mem.indexOfScalar(u8, zyt.ctx, ':') orelse 0;
         if (i == 0) {
             std.debug.print(
@@ -2104,7 +2106,7 @@ fn reportTableImpl(
         try zyt.defines.put(zyt.allocator, "🍋PARSER_ERROR", try zyt.allocator.dupe(u8, zyt.error_type));
     }
     if (zyt.trace_writer.len > 0) {
-        const trace = mem.trim(u8, zyt.trace_writer, " ");
+        const trace = mem.trim(u8, zyt.trace_writer, C_SPACE);
         { // 🍋TRACE_ACCEPT
             const trace_accept = try std.fmt.allocPrint(
                 zyt.allocator,
@@ -3961,6 +3963,8 @@ fn resolve_conflict(apx: *Action, apy: *Action) u32 {
                 // NOTE: this means the /parse/ is in error,
                 // not the /grammar/, eg a == b == c in C.
             }
+            // TODO: Bison has a compile error version of this kind of
+            // precendence, we could add that, would it be of any use?
         }
     } else if (apx.type == .reduce and apy.type == .reduce) {
         const maybe_spx = apx.x.rp.?.precsym;
@@ -4021,6 +4025,7 @@ const E_State = enum {
     waiting_for_decl_arg,
     waiting_for_precedence_symbol,
     waiting_for_arrow,
+    waiting_for_arrow_or_rhs,
     in_rhs,
     lhs_alias_1,
     lhs_alias_2,
@@ -4063,13 +4068,15 @@ pub const PState = struct {
     /// Alias for the LHS
     lhsalias: []const u8,
     /// Number of right-hand side symbols seen
-    nrhs: usize, // TODO: rhs.len right?
+    nrhs: usize,
     /// RHS symbols
     rhs: []*Symbol,
     /// Aliases for each RHS symbol (or null)
     alias: [][]const u8, // We'll use empty slices as per usual
     /// Previous rule parsed
     prevrule: ?*Rule,
+    /// Is the previous rule a ditto?
+    dittoed: bool,
     /// Keyword of a declaration
     declkeyword: []const u8,
     /// Where the declaration argument should be put
@@ -4103,6 +4110,7 @@ pub const PState = struct {
         .rhs = &.{},
         .alias = &.{},
         .prevrule = null,
+        .dittoed = false,
         .declkeyword = "",
         .declargslot = null,
         .insertLineMacro = false,
@@ -4414,11 +4422,27 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
         .waiting_for_decl_or_rule => {
             if (x[0] == '%') {
                 psp.state = .waiting_for_decl_keyword;
+                psp.prevrule = null;
+                psp.dittoed = false;
             } else if (isLower(x[0])) {
                 psp.lhs = try Symbol_new(x);
                 psp.nrhs = 0;
                 psp.lhsalias = "";
                 psp.state = .waiting_for_arrow;
+                psp.dittoed = false;
+            } else if (x[0] == '`') {
+                dbgassert(x[1] == '`');
+                if (psp.prevrule) |prev| {
+                    psp.lhs = prev.lhs;
+                    psp.lhsalias = prev.lhsalias;
+                    psp.nrhs = 0;
+                    psp.dittoed = true;
+                    psp.state = .waiting_for_arrow_or_rhs;
+                } else {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "There is no prior rule, the ditto is invalid here.", .{});
+                    psp.errorcnt += 1;
+                }
             } else if (x[0] == '{') {
                 if (psp.prevrule) |prev| {
                     if (prev.code.len != 0) {
@@ -4444,20 +4468,21 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 psp.state = .precedence_mark_1;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Token {s} should be either \"%\" or a nonterminal name.", .{x});
+                    "Token {s} should be either \"%\"{s}.", //
+                    .{ x, if (psp.prevrule) |_| ", a nonterminal name, or a code block" else " or a nonterminal name" });
                 psp.errorcnt += 1;
             }
         },
         .precedence_mark_1 => {
             if (!isUpper(x[0])) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "The precedence symbol must be a terminal.", .{});
+                    "The precedence symbol must be a terminal, not '{s}'.", .{x});
                 psp.errorcnt += 1;
             } else if (psp.prevrule) |prev| {
                 if (prev.precsym) |_| {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Precedence mark on this line is not the first " ++
-                        "to follow the previous rule.", .{});
+                        "Precedence mark '[{s}]' on this line is not the first " ++
+                        "to follow the previous rule.", .{x});
                     psp.errorcnt += 1;
                 } else {
                     prev.precsym = try Symbol_new(x);
@@ -4478,15 +4503,27 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
             psp.state = .waiting_for_decl_or_rule;
         },
         .waiting_for_arrow => {
-            if (x.len >= 3 and x[0] == ':' and x[1] == ':' and x[2] == '=') {
+            if (x.len == 3 and x[0] == ':' and x[1] == ':' and x[2] == '=') {
                 psp.state = .in_rhs;
             } else if (x[0] == '(') {
                 psp.state = .lhs_alias_1;
             } else {
-                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Expected to see a \":\" following the LHS symbol \"%s\".", .{});
+                if (psp.dittoed) {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Expected to see a \"::=\" following the \"``\".", .{});
+                } else {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Expected to see a \"::=\" following the LHS symbol \"{s}\".", .{psp.lhs.name});
+                }
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
+            }
+        },
+        .waiting_for_arrow_or_rhs => {
+            if (x[0] == ':') {
+                continue :state .waiting_for_arrow;
+            } else {
+                continue :state .in_rhs;
             }
         },
         .lhs_alias_1 => {
@@ -4495,7 +4532,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 psp.state = .lhs_alias_2;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "\"%s\" is not a valid alias for the LHS \"%s\"\n", .{});
+                    "\"{s}\" is not a valid alias for the LHS \"{s}\"\n", .{ x, psp.lhs.name });
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -4514,9 +4551,15 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
             if (x.len >= 3 and x[0] == ':' and x[1] == ':' and x[2] == '=') {
                 psp.state = .in_rhs;
             } else {
-                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Missing \"::=\" following: \"{s}({s})\".", //
-                    .{ psp.lhs.name, psp.lhsalias });
+                if (isAlpha(x[0])) {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Missing \"::=\" following: \"{s}({s})\".", //
+                        .{ psp.lhs.name, psp.lhsalias });
+                } else {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Expected \"::=\" following \"{s}({s})\", saw \"{s}\".", //
+                        .{ psp.lhs.name, psp.lhsalias, x[0..][0..@min(x.len, 10)] });
+                }
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -4558,7 +4601,8 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
             } else if (isAlpha(x[0])) {
                 if (psp.nrhs >= MAXRHS) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Too many symbols on RHS of rule beginning at \"{s}\".", .{x});
+                        "Too many symbols on RHS of rule (maximum is {d}) beginning at \"{s}\".", //
+                        .{ MAXRHS - 1, x });
                     psp.errorcnt += 1;
                     psp.state = .resync_after_rule_error;
                 } else {
@@ -4625,7 +4669,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 psp.state = .in_rhs;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Missing \")\" following LHS alias name \"{s}\".", .{x});
+                    "Missing \")\" following LHS alias  \"{s}({s}\".", .{ psp.lhs.name, psp.lhsalias });
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -4767,7 +4811,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
         .waiting_for_destructor_symbol => {
             if (!isAlpha(x[0])) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Symbol name missing after %destructor keyword", .{});
+                    "Symbol name missing after %destructor directive", .{});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
                 break :state;
@@ -4781,7 +4825,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
         .waiting_for_datatype_symbol => {
             if (!isAlpha(x[0])) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Symbol name missing after %type keyword", .{});
+                    "Symbol name missing after %type directive", .{});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
                 break :state;
@@ -4789,7 +4833,8 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
             const sp = Symbol_find(x) orelse try Symbol_new(x);
             if (sp.datatype.len != 0) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Symbol %type \"{s}\" already defined", .{x});
+                    "Symbol %type for \"{s}\" already defined as \"{s}\"", //
+                    .{ x, sp.datatype });
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
             } else {
@@ -4805,7 +4850,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 const sp = try Symbol_new(x);
                 if (sp.prec) |_| {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Symbol \"{s}\" has already be given a precedence.", .{x});
+                        "Symbol \"{s}\" has already been given a precedence", .{x});
                     psp.errorcnt += 1;
                     // No new state assigned here (?)
                 } else {
@@ -4821,7 +4866,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
         .waiting_for_decl_arg => {
             if (x[0] == '{' or x[0] == '"' or isAlnum(x[0])) {
                 // NOTE: This is a difficult translation, because we eschew two
-                // Cisms: the null sentinel, and (consequently) bare char *. So
+                // C-isms: the null sentinel, and (consequently) bare char *. So
                 // idiomatic Zig looks quite different.
                 var zBuffer: [64]u8 = undefined; // Line macro buffer
                 // The code assumes declargslot is pointing at something, so null should be
@@ -4898,9 +4943,9 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 const sp = try Symbol_new(x);
                 if (psp.fallback == null) {
                     psp.fallback = sp;
-                } else if (sp.fallback != null) {
+                } else if (sp.fallback) |sp_f| {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "More than one fallback assigned to token {s}", .{sp.name});
+                        "Token {s} already assigned fallback {s}", .{ sp.name, sp_f.name });
                     psp.errorcnt += 1;
                     // TODO: no resync here, is that right?
                     // yeah so it can collect more tokens
@@ -4939,12 +4984,12 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 psp.errorcnt += 1;
             } else {
                 const sp = try Symbol_new(x);
-                if (psp.gp.wildcard == null) {
-                    psp.gp.wildcard = sp;
-                } else {
+                if (psp.gp.wildcard) |wild| {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Extra wildcard to token: {s}", .{x});
+                        "Extra wildcard {s}: already has {s}", .{ x, wild.name });
                     psp.errorcnt += 1;
+                } else {
+                    psp.gp.wildcard = sp;
                 }
             }
         },
@@ -5169,8 +5214,13 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
         } else if (fb[i] == '/' or fb[i] == '|' and isAlpha(fb[i + 1])) {
             i += 2;
             while (fb[i] != 0 and (isAlnum(fb[i]) or fb[i] == '_')) : (i += 1) {}
+        } else if (fb[i] == '`' and fb[i + 1] == '`') { // 'Ditto' operator
+            i += 2;
         } else { //  All other (one character) operators
-            i += 1; // TODO: skip a codepoint, not a byte
+            i += 1;
+            // While far from perfect, consuming a full code point will
+            // give better error messages in many circumstances:
+            while (0x80 <= fb[i] and fb[i] < 0xc0) : (i += 1) {}
         }
         const x = fb[ps.tokenstart..i];
         if (p_print) std.debug.print("i == {d} '{u}' ", .{ i, fb[i] });
@@ -5925,46 +5975,31 @@ const help_string =
     \\ Options:
     \\
     \\   -b, --basis               Show only the basis for each parser state in the report file.
-    \\
     \\   -c, --no-compress         Do not compress the generated action tables. The parser will be
     \\                             a little larger and slower, but it will detect syntax errors sooner.
-    \\
     \\   -d, --directory directory Write all output files into "directory". Normally,
     \\                             output files are written into the directory that contains the input
     \\                             grammar file.
-    \\
     \\   -D, --define name         Define C-like preprocessor macro "name".  This macro is usable
     \\                             by %ifdef, %ifndef, and %if lines in the grammar file.
     \\                             It is legal to define a name more than once.
-    \\
     \\   -e --enum-file            Emit the token enum as its own file.
-    \\
     \\   -g --grammar              Do not generate a parser. Instead write the input grammar to
     \\                             standard output with all comments, actions, and other extraneous text
     \\                             removed.
-    \\
     \\   -l --lines                Add "// #line" comments in the generated parser's Zig code.
-    \\
     \\   -P --pp-only              Run the "%if" preprocessor step only and print the revised
     \\                             grammar file.
-    \\
     \\   -p --precedence           Display all conflicts that are resolved by [precedence rules].
-    \\
     \\   -q --quiet                Suppress generation of the report file.
-    \\
     \\   -r --no-renumber          Do not sort or renumber the parser states as part of
     \\                             optimization.
-    \\
     \\   -s --show-stats           Show parser statistics before exiting.
-    \\
     \\   -S --sql                  Generate the *.sql file describing the parser tables.
-    \\
     \\   -T, --template file       Use "file" as the template for the generated C-code
     \\                             parser implementation.
-    \\
     \\   -U, --undefine name       Undefine C-like preprocessor macro "name".  It is legal to
     \\                             undefine a nonexistent name, but warned against.
-    \\
     \\   -v, --version             Print the Zitron version number.
 ;
 
@@ -6127,8 +6162,13 @@ pub fn main() !void {
     pstate.filename = filename;
 
     try Parse(pstate);
-    if (zyt.printPreprocessed or zyt.errorcnt > 0) {
-        logger.err("exiting due to preprocess only or too many errors", .{});
+    if (zyt.printPreprocessed) exit(0);
+    if (zyt.errorcnt > 0) {
+        logger.err("exiting with {d} error{s}", .{ zyt.errorcnt, if (zyt.errorcnt == 1) "" else "s" });
+        // Give hint if errors are outrageous
+        if (zyt.errorcnt > 23) {
+            logger.err("hint: check the input file, does it say `.zy` (good) or `.zig` (not good)?", .{});
+        }
         exit(@truncate(zyt.errorcnt));
     }
     if (zyt.nrule == 0) {

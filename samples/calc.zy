@@ -57,8 +57,8 @@ expr(A) ::= expr(B) MINUS term(C). { A = B - C; }
 ** to assign the same alias unless the rule types are also
 ** the same. */
 expr(A) ::= term(A).
-term(A) ::= term(B) TIMES factor(C). { A = B * C; }
-term(A) ::= term(B) DIVIDE factor(C). { A = B / C; }
+term(A) ::= term(B) TIMES factor(C).  { A = B * C; }
+   ``       term(B) DIVIDE factor(C). { A = B / C; }
 
 /* Note: it is illegal to refer to B in the below, after
 ** encountering the magic comment.  Why?  Ask DRH!

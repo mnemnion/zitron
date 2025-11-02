@@ -89,33 +89,35 @@ Zitron contains an embedded default parser template
 fine for most applications.  But the user is free to substitute a
 different parser template if desired.
 
-Depending on command-line options, Zitron will generate up to four
-output files.
-
-- Zig code to implement a parser for the input grammar.
-- A separate Zig file containing a definition of an enum naming each
-  token kind used in the parser.
-- An information file that describes the states of the generated parser
-  automaton.
-- A SQL statement 'dump' containing the complete parser state in a
-  queryable format.  This can be read into an SQLite database and
-  further use may be made of it thereafter, if desired.
-
-By default, two of these output files are generated. <tk> The header
-file is suppressed if the "-m" command-line option is used and the
-report file is omitted when "-q" is selected, provide "-S" to generate
-the `*.sql` file.
-
-The grammar specification file uses a ".zy" suffix, by convention. In
-the examples used in this document, we\'ll assume the name of the
-grammar file is "gram.zy". A typical use of Zitron would be the
+The grammar specification file uses a `.zy` suffix, by convention.
+In the examples used in this document, we\'ll assume the name of the
+grammar file is `gram.zy`.  A typical use of Zitron would be the
 following command:
 
        zitron gram.zy
 
-This command will generate two output files named "gram.zig", and
-"gram.out". The first is Zig code to implement the parser. The second is
-the report that explains the states used by the parser automaton.
+This command will generate two output files named `gram.zig`, and
+`gram.out`.  The first is Zig code to implement the parser.  The second
+is the report that explains the states used by the parser automaton.
+These appear in the same directory as the input file, unless otherwise
+configured.
+
+Depending on command-line options, Zitron will generate up to four
+output files.
+
+- Zig code to implement a parser for the input grammar: `gram.zig`
+- A separate Zig file containing a definition of an enum naming each
+  token kind used in the parser.  By default: `TokenKind.zig`.
+- An information file that describes the states of the generated
+  parser automaton: `gram.out`.
+- A SQL statement 'dump' containing the complete parser state in a
+  queryable format: `gram.sql`.  This can be read into an SQLite
+  database and further use made of it thereafter, if desired.
+
+By default, two of these output files are generated: the grammar and
+the report files.  The enum file is generated if the `-e` command-line
+option is used, and the report file is omitted when `-q` is selected.
+Provide `-S` to generate the `.sql` file.
 
 
 ### 3.1 Command Line Options <a id="options"> <tk>
@@ -128,9 +130,8 @@ generate code for a parser.
 
 To achieve this hybrid approach, anything which can be done with a
 command-line argument (excepting the input file name) can also be
-done using a build-time option.  A few options can also be triggered
-in-file using a `%pragma` directive.  The order is: command line options
-override build options, and `%pragma` directives override both.
+done using a build-time option.  There are a few minor exceptions,
+like `--version` and `--help`, which are CLI only.
 
 The command line switches are all booleans, every one of which is
 logically `false`, and the description in this documentation tells
@@ -194,10 +195,8 @@ brief explanation of what each does by typing
 ### 3.2 The Parser Interface <a id="interface">
 
 Zitron doesn't generate a complete, working program.  It generates a
-zig file, a container, containing few types which collectively implement
+`.zig` file, containing a few `pub` types which collectively implement
 a parser.  This section describes the public interface of that file.
-
-<tk continue>
 
 Before a program begins using a Zitron-generated parser, the program must
 first create the parser.  Unless [otherwise specified](#name), this
@@ -207,8 +206,10 @@ will be called `Parser`.  Created like so:
     var a_parser: *Parser = try Parser.create(allocator [, extra_context]);
     defer a_parser.destroy(); // The allocator is retained
 ```
-The above is of course not structurally-valid Zig.  `extra_context` is an
-optional parameter [explained below](#446-the-extracontext-directive).
+
+The `extra_context` is an optional parameter [explained
+below](#446-the-extracontext-directive).  The spurious `[ ]` shows that
+it's optional.
 
 After a parser has been created, the programmer must supply the parser
 with a sequence of tokens (terminal symbols) to be parsed. This is
@@ -290,20 +291,6 @@ parameter.  If you define one, you must provide it to both `parse` and
 `finalize`.  Under the hood, `finalize` is a special case of `parse`,
 and it's normal for the end of input to trigger a final reduction, which
 may have user code which makes use of the argument.
-
-<tk figure out how tracing works>
-
-There is one other interface routine that should be mentioned before we
-move on. The ParseTrace() function can be used to generate debugging
-output from the parser. A prototype for this routine is as follows:
-
-       ParseTrace(FILE *stream, char *zPrefix);
-
-After this routine is called, a short (one-line) message is written to
-the designated output stream every time the parser changes states or
-calls an action routine. Each such message is prefaced using the text
-given by zPrefix. This debugging output can be turned off by calling
-ParseTrace() again with a first argument of NULL (0).
 
 [^⁕]: Structurally a token only needs to begin with a capital letter,
 the rest is convention.
@@ -422,7 +409,7 @@ tokenizer-calls-parser paradigm used by Lemon, eliminating the need for
 global variables.
 
 
-### 3.4 Building and using the "zitron" or "zitron.exe" Executable <a id="build">
+### 3.4 Building and using the `zitron` Executable <a id="build">
 
 It is possible to build and install `zitron` as an ordinary command-line
 program, but we anticipate that it will more commonly be used as a tool
@@ -448,13 +435,18 @@ assume your source file is at `grammar/parse.zy` and you're
 generating a separate [%token_enum](#token_enum) as `TokenKind`,
 the default.
 
+There are two basic approaches: the more elegant, yet more annoying
+to set up, creates all the generated files in the cache.  A more
+brute-force approach will dump them in the same directory as the
+grammar file.  We'll start with the former.
+
 ```zig
     const zitron_dep = b.dependency("zitron", .{
        .target = target,
        .host = b.graph.host, // Since it runs on the host
        // Other options are best provided here, they
        // can be sent as options below, as well
-       .generate_enum_file = true,
+       .enum_file = true,
     });
 
     const zitron_exe = zitron_dep.artifact(zitron);
@@ -549,6 +541,21 @@ This multiple definitions are used instead of the more familiar `|`
 syntax to write rule alternates; Zitron reserves that symbol for a
 better and more useful purpose.
 
+In Zitron (but not in Lemon) there is a shorthand for this:
+
+    expr(A) ::= expr(B) PLUS expr(C). { ... }
+      ``        expr(B) TIMES expr(C). { ... }
+      ``        LPAREN expr(E) RPAREN. { ... }
+      ``    ::= VALUE(A).
+
+That is two backticks, none of the numerous other symbols which resemble
+them will work.
+
+Your author thinks this looks best without the `::=`, but it's optional.
+In all four of these rules, the block will refer to the left-hand-side
+as `A`.  It is not possible to redefine the LHS alias using the 'ditto'
+rule.  What's an alias and a block, I hear you asking?  Read on!
+
 Like yacc and bison, Zitron allows the grammar to specify a block of Zig
 code that will be executed whenever a grammar rule is reduced by the
 parser.  In Zitron, this action is specified by putting the Zig code
@@ -581,11 +588,11 @@ But in Zitron, the same rule becomes the following:
     expr(A) ::= expr(B) PLUS expr(C).  { A = B + C; }
 
 In the Zitron rule, any symbol in parentheses after a grammar rule
-symbol becomes a place holder for that symbol in the grammar rule. This
+symbol becomes a place holder for that symbol in the grammar rule.  This
 place holder can then be used in the associated C action to stand for
 the value of that symbol.  The symbol (called the alias) follows the
-familiar rule: it must start with an alphabetic ASCII character, and
-may be followed by any number of alphanumerics or `_`.
+familiar rule: it must start with an alphabetic ASCII character, and may
+be followed by any number of alphanumerics or `_`.
 
 The Zitron notation for linking a grammar rule with its reduce action is
 superior to yacc/bison on several counts.  First, as mentioned above, the
@@ -630,10 +637,14 @@ This also illustrates multiterminals: several token types may be chained
 together as shown (spaces are forbidden).  Note that this differs
 from yacc and bison as well, which use `|` to separate entire rule
 definitions, while Zitron uses the symbol with a higher precedence to
-create a group of several accepted terminals.  Alternative reductions
-for a given non-terminal are written as several definitions for that
-non-terminal.  The multiterminal is easily the best part of Lemon which
-is documented precisely nowhere at the time of writing.
+create a group of several accepted terminals.  The multiterminal is
+easily the best part of Lemon which is documented precisely nowhere at
+the time of writing.
+
+In Lemon, alternative reductions for a given non-terminal are written as
+several definitions for that non-terminal.  In Zitron you also have the
+option of using the ditto rule ` `` ` if you would like, with the
+same effect.
 
 Note that the `@` can only be placed on the capture of a terminal or
 multiterminal (or [%token_class](#token_class)).
@@ -673,7 +684,6 @@ I will not even attempt to teach you how to use this correctly.  You
 make find some of the examples to be helpful in this regard.  I am
 handing you a blade, without a hilt, please grasp it from the flat
 sides.  Thank you.
-
 
 #### 4.2.1 Writing Leak-free Action Code
 
@@ -715,11 +725,12 @@ This is ok:
       A = try doStuffWithIt(B, C, a_thing);
     }
 ```
+
 Because if either `try` fails, `A` remains unassigned.  Zitron will
 destroy the value of `foe` (if needed) since it wasn't captured, and
-`A` never receives a value, so all is well.  If your code needs to
-throw below the assignment to `A`, you have to clean it up, just like
-`a_thing` above.
+`A` never receives a value until after the last early return, so all is
+well.  If your code needs to throw below the assignment to `A`, you have
+to clean it up, just like `a_thing` above.
 
 Your author believes that while this is relatively straightforward,
 it was well worth making a section to discuss, nonetheless.  Debugging
@@ -768,7 +779,7 @@ For example:
 
 In the preceding sequence of directives, the AND operator is defined to
 have the lowest precedence.  The OR operator is one precedence level
-higher.  And so forth.  Hence, the grammar would attempt to group the
+higher[^¬].  And so forth.  Hence, the grammar would attempt to group the
 ambiguous expression
 
          a AND b OR c
@@ -800,6 +811,13 @@ The nonassoc precedence is used for non-associative operators. So
          a EQ b EQ c
 
 is an error.
+
+An error when _parsing_ to be clear, just as `a == b == c` is an error
+in most programming languages.  Bison has a fourth kind of precedence,
+in which the very possibility of such a conflict is a compile error, not
+a runtime error when the parser encounters a string so-formed.  This
+would be very simple to add, if anyone can convince me that there's a
+purpose to having it.
 
 The precedence of non-terminals is transferred to rules as follows: The
 precedence of a grammar rule is equal to the precedence of the left-most
@@ -852,6 +870,11 @@ Reduce-reduce conflicts are resolved this way:
 - Otherwise, resolve the conflict by reducing by the rule that appears
   first in the grammar, and report a parsing conflict.
 
+[^¬]: The keen-eyed will note that this precendence is opposite of how
+C (and Zig) do things vis. a vis. and'ing and or'ing.  The example is
+lifted straight from the Lemon manual, so your author cannot speak to
+why this is.  He has regretted that it is as it is on more than one
+occasion.
 
 ### 4.4 Special Directives <a id="special">
 
@@ -896,7 +919,7 @@ Zitron supports the following special directives:
 - [`%token_enum`](#token_enum)
 - [`%token_enum_integer`](#token_enum)
 - [`%token_type`](#token_type)
--  [%trace_writer](#trace_writer)
+- [`%trace_writer`](#trace_writer)
 - [`%type`](#ptype)
 - [`%wildcard`](#pwildcard)
 
@@ -988,7 +1011,7 @@ the token type (see [%token-type](#4420-the-token-directive)) has a
 `?usize` field called `val`, which the tokenizer helpfully fills with
 the indicated number.  When the rule for an `nt` reduces, it sets the
 value of the non-terminal to space obtained from the allocator.  Later,
-when the nt non-terminal is popped from the stack, the destructor will
+when the `nt` non-terminal is popped from the stack, the destructor will
 fire and call `allocator.free` on this allocated space, thus avoiding
 a memory leak. (Note that the symbol `$$` in the destructor code is
 replaced by the value of the non-terminal.)
