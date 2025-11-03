@@ -733,11 +733,24 @@ fn Plink_delete(plp_delete: ?*PLink) void {
 /// filenames to the correct fields of `lemp`.
 fn assign_outname(zyt: *Zitron, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
     if (zyt.outname.len > 0) zyt.allocator.free(zyt.outname);
-    if (escape) {
-        if (zyt.quoted_outname.len > 0) zyt.allocator.free(zyt.quoted_outname);
-    }
     zyt.outname = try file_makename(zyt, suffix, output_dir);
-    if (escape) zyt.quoted_outname = try esc_filename(zyt.allocator, zyt.outname);
+    check_filename(zyt.outname) catch |err| {
+        if (zyt.linenosflag) {
+            switch (err) {
+                error.FileNameHasNewline => {
+                    dprint("Filename has newline, line numbers cannot be printed\n", .{});
+                },
+                error.FileNameHasTab => {
+                    dprint("Filename has tab, line numbers cannot be printed\n", .{});
+                },
+                error.FileNameNotUtf8 => {
+                    dprint("Filename is not valid UTF-8, line numbers cannot be printed\n", .{});
+                },
+            }
+            zyt.errorcnt += 1;
+        }
+    };
+    if (escape) zyt.outname = zyt.outname;
 }
 
 fn file_makename(zyt: *Zitron, suffix: []const u8, output_dir: ?[]const u8) OOM![]const u8 {
@@ -824,7 +837,7 @@ fn Reprint(zyt: *Zitron) !void {
     var stdout_buffer: [4096]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const out = &stdout_writer.interface;
-    try out.print("// Reprint of input file {s}.\n// Symbols:\n", .{zyt.quoted_filename});
+    try out.print("// Reprint of input file {s}.\n// Symbols:\n", .{zyt.filename});
     var maxlen: usize = 10;
     for (zyt.symbols[0..zyt.nsymbol]) |sp| {
         const len = sp.name.len;
@@ -1230,7 +1243,7 @@ fn tplt_print(out: anytype, zyt: *Zitron, str: []const u8, lineno: *usize) !void
     }
     if (zyt.linenosflag) {
         lineno.* += 1;
-        try tplt_linedir(out, lineno.*, zyt.quoted_outname);
+        try tplt_linedir(out, lineno.*, zyt.outname);
     }
 }
 
@@ -1250,7 +1263,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, zyt: *Zitron, lineno: *usize)
             lineno.* += 1;
             if (zyt.linenosflag) {
                 lineno.* += 1;
-                try tplt_linedir(out, sp.destLineno.?, zyt.quoted_filename);
+                try tplt_linedir(out, sp.destLineno.?, zyt.filename);
             }
             break :cp sp.destructor;
         } else if (zyt.vardest.len > 0) {
@@ -1274,7 +1287,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, zyt: *Zitron, lineno: *usize)
     lineno.* += 1;
     if (zyt.linenosflag) {
         lineno.* += 1;
-        try tplt_linedir(out, lineno.*, zyt.quoted_outname);
+        try tplt_linedir(out, lineno.*, zyt.outname);
     }
     try out.writeAll("        },\n");
     lineno.* += 1;
@@ -1609,13 +1622,13 @@ fn emit_code(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !void {
         }
         if (zyt.linenosflag) {
             lineno.* += 1;
-            try tplt_linedir(out, rp.line, zyt.quoted_filename);
+            try tplt_linedir(out, rp.line, zyt.filename);
         }
         const extra: usize = if (try writeToIndent(out, rp.code, 12)) 1 else 0;
         lineno.* += mem.count(u8, rp.code, "\n") + extra;
         if (zyt.linenosflag) {
             lineno.* += 1;
-            try tplt_linedir(out, lineno.*, zyt.quoted_outname);
+            try tplt_linedir(out, lineno.*, zyt.outname);
         }
     }
 
@@ -1629,30 +1642,11 @@ fn emit_code(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !void {
     return;
 }
 
-/// Handle any crazy-pants filenames we might happen to encounter.
-fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
-    var a_list: ArrayList(u8) = .empty;
-    defer a_list.deinit(allocator);
-    try a_list.ensureTotalCapacity(allocator, filename.len + 2);
-    const writer = a_list.writer(allocator);
-    var i: usize = 0;
-    try writer.writeByte('"');
-    while (i < filename.len) : (i += 1) {
-        switch (filename[i]) {
-            '\t' => try writer.writeAll("\\t"),
-            '\n' => try writer.writeAll("\\n"),
-            '\\' => try writer.writeAll("\\\\"), // chopstix
-            '"' => try writer.writeAll("\\\""), // thanks I hate it
-            // All the weird stuff gets octal:
-            0x01...0x08, 0x0b...0x1f, 0x7f...0xff => |b| {
-                try writer.print("\\{o:>3}", .{b});
-            },
-            ' ', '!', '#'...'[', ']'...'~' => |c| try writer.writeByte(c),
-            0x00 => @panic("NUL byte in filename (POSIX is angry)"),
-        }
-    }
-    try writer.writeByte('"');
-    return a_list.toOwnedSlice(allocator);
+/// Check to make sure we can print the filename (no tabs no spaces, is Unicode)
+fn check_filename(filename: []const u8) !void {
+    if (std.mem.indexOfScalar(u8, filename, '\n')) |_| return error.FileNameHasNewline;
+    if (std.mem.indexOfScalar(u8, filename, '\t')) |_| return error.FileNameHasTab;
+    if (!std.unicode.utf8ValidateSlice(filename)) return error.FileNameNotUtf8;
 }
 
 /// Print the Token enum
@@ -2989,12 +2983,8 @@ const Zitron = struct {
     vardest: []u8,
     /// Name of the input file
     filename: []const u8,
-    /// Name of the input file, escaped and quoted
-    quoted_filename: []const u8,
     /// Name of the current output file
     outname: []const u8,
-    /// Name of the current output file, escaped and quoted
-    quoted_outname: []const u8,
     /// Custom name for TokenKind enum type
     token_enum: []u8,
     /// Custom backing integer for TokenKind enum type
@@ -3072,9 +3062,7 @@ const Zitron = struct {
         .tokendest = &.{},
         .vardest = &.{},
         .filename = "",
-        .quoted_filename = "",
         .outname = "",
-        .quoted_outname = "",
         .tokentype = &.{},
         .nconflict = 0,
         .nactiontab = 0,
@@ -3168,9 +3156,7 @@ const Zitron = struct {
         allocator.free(gp.token_enum_integer);
         allocator.free(gp.trace_writer);
         allocator.free(gp.vardest);
-        allocator.free(gp.quoted_filename);
         allocator.free(gp.outname);
-        allocator.free(gp.quoted_outname);
         allocator.destroy(gp);
     }
 };
@@ -4874,7 +4860,7 @@ fn parseonetoken(psp: *PState, x_init: []const u8) !void {
                 const declargslot = psp.declargslot.?;
                 const zOld: []const u8 = declargslot.*;
                 const zNew = if (x[0] == '"' or x[0] == '{') x[1..] else x;
-                const q_file = psp.gp.quoted_filename;
+                const q_file = psp.gp.filename;
                 var zLine: []u8 = zBuffer[0..0];
                 // To build the new slice, we have to track bytes written:
                 var zIdx: usize = 0;
@@ -6152,8 +6138,25 @@ pub fn main() !void {
     zyt.opt = opt;
     zyt.argv = args;
     zyt.filename = filename;
-    zyt.quoted_filename = try esc_filename(allocator, filename);
     zyt.linenosflag = opt.linenos;
+    check_filename(filename) catch |err| {
+        if (opt.linenos) {
+            switch (err) {
+                error.FileNameHasNewline => {
+                    dprint("Filename has newline, line numbers cannot be printed\n", .{});
+                },
+                error.FileNameHasTab => {
+                    dprint("Filename has tab, line numbers cannot be printed\n", .{});
+                },
+                error.FileNameNotUtf8 => {
+                    dprint("Filename is not valid UTF-8, line numbers cannot be printed\n", .{});
+                },
+            }
+            zyt.errorcnt += 1;
+        }
+    };
+    // TODO: don't need the quoted version of either of these...
+    zyt.filename = filename;
     zyt.printPreprocessed = opt.print_pp;
     _ = try Symbol_new("$"); // Why? Answer: creates index 0!
     var pstate = try PState.create(allocator, zyt);
