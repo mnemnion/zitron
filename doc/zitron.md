@@ -426,42 +426,109 @@ is a note-perfect clone of DRH's Lemon; this was a necessary step on the
 path to writing Zitron, and I saw no reason to leave it lost in the mists
 of the git repository.
 
-Using Zitron from your own `build.zig` is a bit more involved.
+As a command line tool, everything is quite simple.  We assume you have
+`zitron` on your `$PATH`, something like
+
+    zitron src/parse.zy
+
+Will generate `src/parse.out` and `src/parse.zig`.
+
+Using Zitron from your own `build.zig` is quite a bit more involved,
+but it's also better.  If you're using `zig build` already, and you
+probably are, do it this way instead.  It may make sense to run the CLI
+tool during development, if and when you need access to esoteric things
+like the `.out` file, the `.sql` dump.  This method doesn't make those
+convenient to access.  But to ship a grammar?  Read on.
 
 <tk build.zig.zon and zig fetch etc>
 
 Then in your `build.zig`, things are moderately complex.  We'll
-assume your source file is at `grammar/parse.zy` and you're
+assume your source file is at `src/grammar/parse.zy` and you're
 generating a separate [%token_enum](#token_enum) as `TokenKind`,
-the default.
+the default.  Anything else you want the module to use should also
+be in `src/grammar`.
 
-There are two basic approaches: the more elegant, yet more annoying
-to set up, creates all the generated files in the cache.  A more
-brute-force approach will dump them in the same directory as the
-grammar file.  We'll start with the former.
+The approved method, while fairly involved, creates the module in
+a cache directory when the output `.zig` file is needed.  It works
+like this:
 
 ```zig
     const zitron_dep = b.dependency("zitron", .{
-       .target = target,
-       .host = b.graph.host, // Since it runs on the host
-       // Other options are best provided here, they
-       // can be sent as options below, as well
-       .enum_file = true,
+        // Remember, it runs on the host, not the target:
+        .target = b.graph.host,
+        // Zitron is a young project, and very fast even in
+        // debug mode, so you may as well specify maximum
+        // assertions:
+        .optimize = .Debug,
+        // Other options are best provided here, they
+        // can be sent as arguments as well.
+        .enum_file = true,
+        // Don't need the `.out` file when shipping, it's
+        // for debugging purposes.
+        .quiet = true,
     });
 
     const zitron_exe = zitron_dep.artifact(zitron);
 
     const zitron_run = b.addRunArtifact(zitron_exe);
-    // Zitron expects the file name last, we need to
-    // give an output directory first.
 
-    // First create a directory in cache:
-    const zitron_wf = b.addWriteFiles();
-    // <tk> I have to actually do this, I can't just make
-    // this up and expect it to work...
+    // We need an input directory to hold the grammar file:
+    const zitron_write_in = b.addWriteFiles();
 
+    // We copy over the whole subdirectory:
+    const grammar_in = zitron_write_in.addCopyDirectory(b.path("src/grammar"), "grammar_in", .{});
+
+    // Set up `zitron` to run from that directory.
+    zitron_run.setCwd(grammar_in);
+    zitron_run.addArg("parse.zy");
+
+    zitron_run.step.dependOn(&zitron_writedir.step);
+
+    // Now we need an output WriteFile step.  We can't reuse the
+    // input one, because it's a step, that would be circular.
+    const zitron_write_out = b.addWriteFiles();
+    zitron_write_out.step.dependOn(&zitron_run.step);
+
+    // Copy our whole in directory to the out directory, we don't need the `.zy`
+    // anymore so we leave it behind.
+    const grammar_out = zitron_write_out.addCopyDirectory(grammar_in, "grammar_out", .{
+        .include_extensions = &.{"zig"},
+    });
+
+    // Now we can create a module using the generated file.  The effect of
+    // all this elaborate setup is as though `src/grammar/parse.zy` were
+    // replaced with `parse.zig`, and `TokenKind.zig` added to it.
+    const parse_mod = b.addModule("parser", .{
+        .root_source_file = grammar_out.path(b, "parse.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Here you add it to your exe, or export it, or whatever else you
+    // plan to do.  We'll do a test to keep things simple.
+
+    const parse_unit_tests = b.addTest(.{
+        .root_module = parse_mod,
+    });
+
+    const run_exe_unit_tests = b.addRunArtifact(parse_unit_tests);
+
+    const test_step = b.step("test", "Run unit tests");
+
+    test_step.dependOn(&run_exe_unit_tests.step);
 ```
 
+It's also possible to generate the grammar file in-place and check
+it into version control.  There aren't really advantages in doing so
+however, so this documentation won't provide a recipe for it.
+
+As mentioned earlier, the short path for development is probably the
+command line.  But you can also use `b.addInstallFile` on the `.out`
+and `.sql` artifacts, to put them in `zig-out/` while developing.  There
+are a plethora of options here, too many to document.  Just spend a lot
+of time reading [std.Build][stdbuild] like the rest of us do.
+
+[stdbuild]: https://ziglang.org/documentation/master/std/#std.Build
 
 ## 4.0 Input File Syntax <a id="syntax">
 

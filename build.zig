@@ -43,7 +43,7 @@ pub fn build(b: *std.Build) void {
     z_opt.addOption(
         bool,
         "no_compress",
-        b.option(bool, "no-compress", "Don't compress tables") orelse false,
+        b.option(bool, "no_compress", "Don't compress tables") orelse false,
     );
     z_opt.addOption(
         bool,
@@ -53,17 +53,17 @@ pub fn build(b: *std.Build) void {
     z_opt.addOption(
         bool,
         "enum_file",
-        b.option(bool, "enum-file", "Generate the token enum in its own file") orelse false,
+        b.option(bool, "enum_file", "Generate the token enum in its own file") orelse false,
     );
     z_opt.addOption(
         bool,
         "line_numbers",
-        b.option(bool, "line-numbers", "Print line number comments") orelse false,
+        b.option(bool, "line_numbers", "Print line number comments") orelse false,
     );
     z_opt.addOption(
         bool,
         "show_conflicts",
-        b.option(bool, "show-conflicts", "Print precedence conflicts") orelse false,
+        b.option(bool, "show_conflicts", "Print precedence conflicts") orelse false,
     );
     z_opt.addOption(
         bool,
@@ -83,12 +83,12 @@ pub fn build(b: *std.Build) void {
     z_opt.addOption(
         bool,
         "only_basis",
-        b.option(bool, "only-basis", "Print only the basis in report") orelse false,
+        b.option(bool, "only_basis", "Print only the basis in report") orelse false,
     );
     z_opt.addOption(
         bool,
         "no_resort",
-        b.option(bool, "no-resort", "Do not sort or renumber states") orelse false,
+        b.option(bool, "no_resort", "Do not sort or renumber states") orelse false,
     );
     z_opt.addOption(
         ?[]const []const u8,

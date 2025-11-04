@@ -731,9 +731,9 @@ fn Plink_delete(plp_delete: ?*PLink) void {
 /// name comes from malloc() and must be freed by the calling
 /// function.  Quote outname for line directives, and assign the
 /// filenames to the correct fields of `lemp`.
-fn assign_outname(zyt: *Zitron, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
+fn assign_outname(zyt: *Zitron, suffix: []const u8, escape: bool) OOM!void {
     if (zyt.outname.len > 0) zyt.allocator.free(zyt.outname);
-    zyt.outname = try file_makename(zyt, suffix, output_dir);
+    zyt.outname = try file_makename(zyt, suffix);
     check_filename(zyt.outname) catch |err| {
         if (zyt.linenosflag) {
             switch (err) {
@@ -753,14 +753,15 @@ fn assign_outname(zyt: *Zitron, suffix: []const u8, output_dir: ?[]const u8, esc
     if (escape) zyt.outname = zyt.outname;
 }
 
-fn file_makename(zyt: *Zitron, suffix: []const u8, output_dir: ?[]const u8) OOM![]const u8 {
+fn file_makename(zyt: *Zitron, suffix: []const u8) OOM![]const u8 {
     var buf = ArrayList(u8){};
     errdefer buf.deinit(zyt.allocator);
 
     var w = buf.writer(zyt.allocator);
-    var filename = zyt.filename;
+    var filename = if (zyt.opt.output_file.len > 0) zyt.opt.output_file else zyt.filename;
 
-    if (output_dir) |dir| {
+    if (zyt.opt.output_directory.len > 0) {
+        const dir = zyt.opt.output_directory;
         if (std.mem.lastIndexOfScalar(u8, filename, '/')) |i| {
             filename = filename[i + 1 ..];
         }
@@ -780,7 +781,7 @@ fn file_makename(zyt: *Zitron, suffix: []const u8, output_dir: ?[]const u8) OOM!
 /// but with a different (specified) suffix, and return a pointer
 /// to the stream.
 fn file_open(zyt: *Zitron, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
-    try assign_outname(zyt, suffix, null, escape);
+    try assign_outname(zyt, suffix, escape);
     const fh = open_file(zyt, zyt.outname, mode);
     return fh;
 }
@@ -2881,13 +2882,16 @@ fn ReportHeader(zyt: *Zitron) !void {
     // The original opens the file to read and checks if anything
     // has changed, only then does it write.  We're just going to
     // do it.
-    const dir = if (std.mem.lastIndexOfScalar(u8, zyt.filename, '/')) |i|
-        zyt.filename[0 .. i + 1]
+    const filename = if (zyt.opt.output_file.len > 0) zyt.opt.output_file else zyt.filename;
+    const dir = if (zyt.opt.output_directory.len > 0)
+        zyt.opt.output_directory
+    else if (std.mem.lastIndexOfScalar(u8, filename, '/')) |i|
+        filename[0..i]
     else
-        "";
+        ".";
     const tok_filename = try std.fmt.allocPrint(
         zyt.allocator,
-        "{s}{s}.zig",
+        "{s}/{s}.zig",
         .{ dir, zyt.defines.get("🍋TOKEN_ENUM").? },
     );
     defer zyt.allocator.free(tok_filename);
@@ -2900,6 +2904,8 @@ fn ReportHeader(zyt: *Zitron) !void {
         var line_dummy: usize = 0;
         try print_token_enum(zyt, out, &line_dummy);
         try out.flush();
+    } else {
+        std.debug.print("did not open token file\n", .{});
     }
 }
 
@@ -5598,6 +5604,7 @@ const Options = struct {
     no_resort: bool = config.no_resort,
     user_templatename: []const u8 = "",
     output_directory: []const u8 = "",
+    output_file: []const u8 = "",
     azDefine: [][]const u8 = undefined,
     nDefineUsed: u32 = 0,
     bDefineUsed: []bool = undefined,
@@ -5624,6 +5631,7 @@ const OptionKind = enum {
     no_resort,
     user_template,
     output_directory,
+    output_file,
     define,
     undefine,
 
@@ -5638,6 +5646,7 @@ const OptionKind = enum {
             'g' => .grammar,
             'h' => .help,
             'l' => .linenos,
+            'o' => .output_file,
             'P' => .print_pp,
             'q' => .quiet,
             'r' => .no_resort,
@@ -5668,6 +5677,7 @@ const OptionKind = enum {
             => false,
             .user_template,
             .output_directory,
+            .output_file,
             .define,
             .undefine,
             => true,
@@ -5691,6 +5701,7 @@ const option_list = [_]struct { []const u8, OptionKind }{
     .{ "no-resort", .no_resort },
     .{ "template", .user_template },
     .{ "directory", .output_directory },
+    .{ "file", .output_file },
     .{ "define", .define },
     .{ "undefine", .undefine },
 };
@@ -5764,6 +5775,9 @@ fn assignArgument(opt: *Options, opt_kind: OptionKind, argument: [:0]const u8) !
         },
         .output_directory => {
             opt.output_directory = try Strsafe(argument);
+        },
+        .output_file => {
+            opt.output_file = try Strsafe(argument);
         },
         .define => {
             for (opt.azDefine) |d| {
@@ -5966,6 +5980,7 @@ const help_string =
     \\   -d, --directory directory Write all output files into "directory". Normally,
     \\                             output files are written into the directory that contains the input
     \\                             grammar file.
+    \\   -o  --file                Write the output (.zig) file to this name instead, e.g. "foo.zig".
     \\   -D, --define name         Define C-like preprocessor macro "name".  This macro is usable
     \\                             by %ifdef, %ifndef, and %if lines in the grammar file.
     \\                             It is legal to define a name more than once.
@@ -6305,11 +6320,7 @@ pub fn main() !void {
         if (!opt.quiet) try ReportOutput(zyt);
         // Generate the source code for the parser.
         try ReportTable(zyt);
-        // Produce a header file for use by the scanner.  (This step is
-        // omitted if the "-m" option is used because makeheaders will
-        // generate the file for us.)
-        // TODO: this is now the "make token its own file flag", act
-        // accordingly
+        // Produce a separate enum file when requested.
         if (opt.enum_file) try ReportHeader(zyt);
     }
     if (opt.statistics) {

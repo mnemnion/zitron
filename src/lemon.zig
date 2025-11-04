@@ -739,23 +739,24 @@ fn Plink_delete(plp_delete: ?*PLink) void {
 /// name comes from malloc() and must be freed by the calling
 /// function.  Quote outname for line directives, and assign the
 /// filenames to the correct fields of `lemp`.
-fn assign_outname(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8, escape: bool) OOM!void {
+fn assign_outname(lemp: *Lemon, suffix: []const u8, escape: bool) OOM!void {
     if (lemp.outname.len > 0) lemp.allocator.free(lemp.outname);
     if (escape) {
         if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
     }
-    lemp.outname = try file_makename(lemp, suffix, output_dir);
+    lemp.outname = try file_makename(lemp, suffix);
     if (escape) lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
 }
 
-fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM![]const u8 {
+fn file_makename(lemp: *Lemon, suffix: []const u8) OOM![]const u8 {
     var buf = ArrayList(u8){};
     errdefer buf.deinit(lemp.allocator);
 
     var w = buf.writer(lemp.allocator);
     var filename = lemp.filename;
 
-    if (output_dir) |dir| {
+    if (lemp.opt.output_directory.len > 0) {
+        const dir = lemp.opt.output_directory;
         if (std.mem.lastIndexOfScalar(u8, filename, '/')) |i| {
             filename = filename[i + 1 ..];
         }
@@ -766,7 +767,7 @@ fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM!
         filename = filename[0..dot];
     }
 
-    try w.print("{s}{s}{s}", .{ filename, extra_suffix, suffix });
+    try w.print("{s}{s}", .{ filename, suffix });
 
     return buf.toOwnedSlice(lemp.allocator);
 }
@@ -775,7 +776,7 @@ fn file_makename(lemp: *Lemon, suffix: []const u8, output_dir: ?[]const u8) OOM!
 /// but with a different (specified) suffix, and return a pointer
 /// to the stream.
 fn file_open(lemp: *Lemon, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
-    try assign_outname(lemp, suffix, null, escape);
+    try assign_outname(lemp, suffix, escape);
     const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
         lemp.errorcnt += 1;
         switch (err) {
@@ -1894,7 +1895,7 @@ fn reportTableImpl(
         try tplt_print(out, lemp, include, &lineno);
     }
     if (mhflag) {
-        const incName = try file_makename(lemp, ".h", null);
+        const incName = try file_makename(lemp, ".h");
         defer lemp.allocator.free(incName);
         const inc_esc = try esc_filename(lemp.allocator, incName);
         defer lemp.allocator.free(inc_esc);
