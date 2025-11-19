@@ -134,30 +134,25 @@ done using a build-time option.  There are a few minor exceptions,
 like `--version` and `--help`, which are CLI only.
 
 The command line switches are all booleans, every one of which is
-logically `false`, and the description in this documentation tells
-the user what happens if they're set to `true`.  These correspond to
-boolean build options, naturally.  The wrinkle is that if the build
-sets them to `true`, then providing the switch on the command line
-will set it back to `false`.  The `-h --help` documentation for a
-given build will tell you which is which.
+logically `false`, and the description in this documentation tells the
+user what happens if they're set to `true`.  These correspond to boolean
+build options, naturally.  The wrinkle is that if the build sets them
+to `true`, then providing the switch on the command line will set it
+back to `false`.  The `-h --help` documentation assumes a default build,
+on the probably-reasonable assumption that build-configured `zitron`
+binaries will be used directly via the Zig build system.
 
 The string-taking options such as `-T`, `-o`, and `-d`, simply override
 any analogous build option.  The odd case is `-D` and `-U`, which define
 and undefine preprocessor macros (see [`%if`](#pifdef) for the details
 here).  The build only allows _defining_ macros, which can be undefined
 on the CLI with `-U`.  It is harmless to define a macro more than once,
-or undefine a macro which does not exist; double-defining is `info`
+or undefine a macro which does not exist; double-defining is <tk> `info`
 logged, but a spurious undefine is `warn` logged.  In default build
 mode, `Zitron` will only write `err`-level logging to stdout.
 
-<tk>
-
-As of right now, the command line options for Zitron are the same as
-those provided here.  That will not remain true for long.
-
-The behavior of Zitron can be modified using command-line options. You
-can obtain a list of the available command-line options together with a
-brief explanation of what each does by typing
+You can obtain a list of the available command-line options together
+with a brief explanation of what each does by typing
 
        zitron -h
 
@@ -173,6 +168,7 @@ brief explanation of what each does by typing
     by [`%ifdef`](#pifdef), [`%ifndef`](#pifdef), and [`%if`](#pifdef) lines in
     the grammar file.  It is legal to define a name more than once.
 - **-e --enum-file**  Emit the token enum as its own file.
+- **-f --file _file_**  Write the file using this name instead.
 - **-g --grammar**  Do not generate a parser. Instead write the input grammar to
     standard output with all comments, actions, and other extraneous text
     removed.

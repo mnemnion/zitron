@@ -58,10 +58,6 @@ const do_not_optimize_terminals = true;
 const print_aliases = false;
 const print_code = false;
 
-/// Do various bug-compatible things precisely
-/// as Lemon does them.
-const lemon_compat = false;
-
 //| Useful Constants
 
 const C_SPACE = " \t\n\r\x0b\x0c"; // C locale definition of isspace(3)
@@ -791,19 +787,19 @@ fn open_file(zyt: *Zitron, name: []const u8, mode: File.CreateFlags) OOM!?File {
         zyt.errorcnt += 1;
         switch (err) {
             error.IsDir => {
-                logger.err("file open error: path is a directory '{s}'", .{zyt.outname});
+                logger.err("file open error: path is a directory '{s}'\n", .{zyt.outname});
                 return null;
             },
             error.FileNotFound => {
-                logger.err("file open error: file not found '{s}'", .{zyt.outname});
+                logger.err("file open error: file not found '{s}'\n", .{zyt.outname});
                 return null;
             },
             error.AccessDenied => {
-                logger.err("file open error: permission denied '{s}'", .{zyt.outname});
+                logger.err("file open error: permission denied '{s}'\n", .{zyt.outname});
                 return null;
             },
             else => |e| {
-                logger.err("file open error: unexpected error {s} opening '{s}'", .{ @errorName(e), zyt.outname });
+                logger.err("file open error: unexpected error {s} opening '{s}'\n", .{ @errorName(e), zyt.outname });
                 return null;
             },
         }
@@ -1185,10 +1181,9 @@ fn tplt_xfer(name: []const u8, in: *[:0]const u8, out: anytype, lineno: *usize) 
 }
 
 /// Skip forward past the header of the template file to the first "%%".
-fn tplt_skip_header(in: *[:0]const u8, lineno: *usize) void {
+fn tplt_skip_header(in: *[:0]const u8) void {
     const h_idx = mem.indexOf(u8, in.*, "\n%%");
     if (h_idx) |i| {
-        if (lemon_compat) lineno.* += mem.count(u8, in.*[0 .. i + 1], "\n");
         in.* = in.*[i + 4 ..];
     } else {
         logger.err("Header of template file: /^%%/ not found", .{});
@@ -2300,7 +2295,7 @@ fn reportTableImpl(
         }
         include = include[nl_skip..];
         if (include.len > 3 and include[0] == '/' and include[1] == '/' and include[2] == '!') {
-            tplt_skip_header(&in, &lineno);
+            tplt_skip_header(&in);
         } else {
             try tplt_xfer(zyt.name, &in, out, &lineno);
         }
@@ -2850,7 +2845,7 @@ fn reportTableImpl(
                 try out.writeByte('\n');
                 lineno += 1;
             } else {
-                try out.print("         yy__assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
+                try out.print("         yy_assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
                 try writeRuleText(out, rp);
                 try out.writeAll(" (OPTIMIZED OUT) \n");
                 lineno += 1;
@@ -5985,9 +5980,10 @@ const help_string =
     \\                             by %ifdef, %ifndef, and %if lines in the grammar file.
     \\                             It is legal to define a name more than once.
     \\   -e --enum-file            Emit the token enum as its own file.
-    \\   -g --grammar              Do not generate a parser. Instead write the input grammar to
-    \\                             standard output with all comments, actions, and other extraneous text
-    \\                             removed.
+    \\   -f --file file            Write the file(s) using this name instead.
+    \\   -g --grammar              Do not generate a parser.  Instead write the input grammar to
+    \\                             standard output with all comments, actions, and other extraneous
+    \\                             text removed.
     \\   -l --lines                Add "// #line" comments in the generated parser's Zig code.
     \\   -P --pp-only              Run the "%if" preprocessor step only and print the revised
     \\                             grammar file.
@@ -6000,7 +5996,7 @@ const help_string =
     \\   -T, --template file       Use "file" as the template for the generated C-code
     \\                             parser implementation.
     \\   -U, --undefine name       Undefine C-like preprocessor macro "name".  It is legal to
-    \\                             undefine a nonexistent name, but warned against.
+    \\                             undefine a nonexistent name.
     \\   -v, --version             Print the Zitron version number.
 ;
 
