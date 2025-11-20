@@ -50,13 +50,14 @@ expr(A) ::= expr(B) PLUS|FOO(O) term(C). {
     // std.debug.print("PLUS? {t}\n", .{@O});
     A = B + C;
 }
+
 expr(A) ::= expr(B) MINUS term(C). { A = B - C; }
 
 /* This generates the same code as the term-factor version,
 ** with less fuss.  Prefer this style.  Note: it's illegal
 ** to assign the same alias unless the rule types are also
 ** the same. */
-expr(A) ::= term(A).
+expr(A) ::= term(A).  @expr_term(A; A,)
 term(A) ::= term(B) TIMES factor(C).  { A = B * C; }
    ``       term(B) DIVIDE factor(C). { A = B / C; }
 

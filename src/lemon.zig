@@ -4738,6 +4738,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
                     // Skip C++ comments too
                     i += 2;
                     while (fb[i] != 0 and fb[i] != '\n') : (i += 1) {}
+                    if (fb[i] == '\n') lineno += 1 else break :scanning;
                 } else if (fb[i] == '"' or fb[i] == '\'') {
                     // String or character literals (since the latter can have " in it)
                     const startchar = fb[i];

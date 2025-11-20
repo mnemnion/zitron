@@ -457,10 +457,11 @@ like this:
         // assertions:
         .optimize = .Debug,
         // Other options are best provided here, they
-        // can be sent as arguments as well.
+        // can be sent as arguments as well.  Let's say we
+        // want the enums in a separate file.
         .enum_file = true,
-        // Don't need the `.out` file when shipping, it's
-        // for debugging purposes.
+        // And we don't need the `.out` file when shipping,
+        // it's for debugging purposes.
         .quiet = true,
     });
 
@@ -493,7 +494,9 @@ like this:
 
     // Now we can create a module using the generated file.  The effect of
     // all this elaborate setup is as though `src/grammar/parse.zy` were
-    // replaced with `parse.zig`, and `TokenKind.zig` added to it.
+    // replaced with `parse.zig`, and `TokenKind.zig` added to it.  It's not
+    // necessary that the parser be the root, either, but we'll pretend that's
+    // the case here.
     const parse_mod = b.addModule("parser", .{
         .root_source_file = grammar_out.path(b, "parse.zig"),
         .target = target,
@@ -506,17 +509,31 @@ like this:
     const parse_unit_tests = b.addTest(.{
         .root_module = parse_mod,
     });
-
     const run_exe_unit_tests = b.addRunArtifact(parse_unit_tests);
-
     const test_step = b.step("test", "Run unit tests");
-
     test_step.dependOn(&run_exe_unit_tests.step);
+
+    // What this doesn't make easy is looking at the generated output, for
+    // example, to debug it.  For that you might add a step which installs
+    // the files in (canonically) `zig-out/`.
+
+    const write_parser = b.addInstallFile(zitron_write_out.path(b, "parse.zig", "grammar/parse.zig"));
+    write_parser.step.dependOn(&zitron_write_out.step);
+    // If you're writing the tokens enum as its own file, repeat this for that file.
+    const grammar_install_step = b.step("grammar", "Install the grammar");
+    grammar_install_step.dependOn(&write_parser.step);
+
+    // Or you can just attach it to the built-in `zig install` step, if you prefer.
+    // The purpose is somewhat development-specific, so a separate step makes sense,
+    // but it's your rodeo and here's how you do it that way:
+    b.getInstallStep().dependOn(&write_parser.step);
+
 ```
 
 It's also possible to generate the grammar file in-place and check
 it into version control.  There aren't really advantages in doing so
-however, so this documentation won't provide a recipe for it.
+however, so this documentation won't provide a recipe for it.  The
+[Zig Build Systems docs][zbsdoc] has some examples of that approach.
 
 As mentioned earlier, the short path for development is probably the
 command line.  But you can also use `b.addInstallFile` on the `.out`
@@ -524,6 +541,7 @@ and `.sql` artifacts, to put them in `zig-out/` while developing.  There
 are a plethora of options here, too many to document.  Just spend a lot
 of time reading [std.Build][stdbuild] like the rest of us do.
 
+[zbsdoc]: https://ziglang.org/learn/build-system/
 [stdbuild]: https://ziglang.org/documentation/master/std/#std.Build
 
 ## 4.0 Input File Syntax <a id="syntax">
