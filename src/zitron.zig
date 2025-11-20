@@ -5148,7 +5148,7 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
         } else if (fb[i] == '{') { // A block of Zig code
             var level: usize = 1;
             i += 1;
-            while (fb[i] != 0 and (level > 1 or fb[i] != '}')) : (i += 1) {
+            codescan: while (fb[i] != 0 and (level > 1 or fb[i] != '}')) : (i += 1) {
                 if (fb[i] == '\n') lineno += 1 //
                 else if (fb[i] == '{') level += 1 //
                 else if (fb[i] == '}') level -= 1 //
@@ -5159,12 +5159,21 @@ fn scan(ps: *PState, fb: [:0]const u8) !void {
                     if (fb[i] != 0) {
                         if (fb[i] == '\n') lineno += 1;
                         i += 1;
-                        continue :scanning;
+                        continue :codescan;
                     } else break :scanning;
                 } else if (fb[i] == '/' and fb[i + 1] == '/') {
                     // Skip comments
                     i += 2;
                     while (fb[i] != 0 and fb[i] != '\n') : (i += 1) {}
+                    if (fb[i] == '\n') {
+                        lineno += 1;
+                        continue :codescan;
+                    } else { // EOF
+                        ErrorMsg(ps.filename, ps.tokenlineno, "" ++
+                            "Zig comment on this line ends file unexpectedly", .{});
+                        ps.errorcnt += 1;
+                        break :scanning;
+                    }
                 } else if (fb[i] == '"' or fb[i] == '\'') {
                     // String or character literals (since the latter can have " in it)
                     const startchar = fb[i];
