@@ -312,6 +312,7 @@ const ImplSafe = struct {
         defer is_impl_safe = false;
         for (impls.impls.values()) |impl| {
             impls.allocator.free(impl.rhsalias);
+            impls.allocator.free(impl.code);
             impls.allocator.destroy(impl);
         }
         impls.impls.deinit(impls.allocator);
@@ -326,6 +327,7 @@ const ImplSafe = struct {
         impl.* = .empty;
         impl.name = name;
         impl.rhsalias = try impls.allocator.alloc([]const u8, 0);
+        impl.code = try impls.allocator.alloc(u8, 0);
         try impls.impls.put(impls.allocator, name, impl);
         return impl;
     }
@@ -339,7 +341,7 @@ threadlocal var is_impl_safe: bool = false;
 const Impl = struct {
     name: []const u8,
     rule: ?*Rule,
-    code: []const u8,
+    code: []u8,
     line: usize,
     lhsalias: []const u8,
     rhsalias: [][]const u8,
@@ -347,7 +349,7 @@ const Impl = struct {
     pub const empty: Impl = .{
         .name = "",
         .rule = null,
-        .code = "",
+        .code = &.{},
         .line = 0,
         .lhsalias = "",
         .rhsalias = &.{},
@@ -4074,6 +4076,7 @@ const E_State = enum {
     impl_lhs2,
     impl_rhs1,
     impl_rhs2,
+    waiting_for_impl_directive,
     lhs_alias_1,
     lhs_alias_2,
     lhs_alias_3,
@@ -4083,6 +4086,7 @@ const E_State = enum {
     precedence_mark_2,
     resync_after_rule_error,
     resync_after_decl_error,
+    resync_after_impl_error,
     waiting_for_destructor_symbol,
     waiting_for_datatype_symbol,
     waiting_for_fallback_id,
@@ -4549,35 +4553,16 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     } else {
                         if (psp.prevrule) |prev| {
                             impl.rule = prev;
-                            var good: bool = true;
-                            // if already defined, we need to validate the names:
-                            if (impl.lhsalias.len > 0 and !strcmp(prev.lhsalias, impl.lhsalias)) {
-                                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                                    "Rule impl name is already defined, and has the LHS alias \"{s}\", " ++
-                                    "but the rule's LHS alias is \"{s}\".  They must match", .{ prev.lhsalias, impl.lhsalias });
-                                psp.errorcnt += 1;
-                                good = false;
-                            }
-                            if (impl.rhsalias.len > 0) {
-                                if (impl.rhsalias.len != prev.rhsalias.len) {
-                                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                                        "The rule has {d} RHS aliases, the impl is defined before the rule to have {d}", .{
-                                        prev.rhsalias.len,
-                                        impl.rhsalias.len,
-                                    });
-                                    psp.errorcnt += 1;
-                                    good = false;
-                                } else for (impl.rhsalias, prev.rhsalias) |rhs1, rhs2| {
-                                    if (!strcmp(rhs1, rhs2)) {
-                                        ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                                            "Rule impl previously defined with RHS alias \"{s}\", the rule has \"{s}\" " ++
-                                            "in that position.", .{ rhs2, rhs1 });
-                                        psp.errorcnt += 1;
-                                        good = false;
-                                    }
+
+                            if (try validateImpl(psp, impl, prev)) {
+                                if (impl.rhsalias.len == 0) {
+                                    impl.rhsalias = try psp.allocator.realloc(impl.rhsalias, prev.rhsalias.len);
+                                    @memset(impl.rhsalias, "");
                                 }
+                                psp.state = .impl_1;
+                            } else {
+                                psp.state = .resync_after_impl_error;
                             }
-                            if (good) psp.state = .impl_1;
                         } else {
                             ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                                 "No previous rule to attach an impl name to", .{});
@@ -4652,7 +4637,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Impl \"{s}\" must name the rule aliases", .{psp.impl.?.name});
                 psp.errorcnt += 1;
-                psp.state = .resync_after_rule_error;
+                psp.state = .resync_after_impl_error;
             }
         },
         .impl_lhs1 => {
@@ -4666,13 +4651,13 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                             x,
                         });
                         psp.errorcnt += 1;
-                        psp.state = .resync_after_rule_error;
+                        psp.state = .resync_after_impl_error;
                     } else if (impl.rule) |rule| {
                         if (!strcmp(rule.lhsalias, x)) {
                             ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                                 "Rules LHS alias is \"{s}\", not \"{s}\".", .{ rule.lhsalias, x });
                             psp.errorcnt += 1;
-                            psp.state = .resync_after_rule_error;
+                            psp.state = .resync_after_impl_error;
                         } else {
                             impl.lhsalias = x;
                             psp.state = .impl_lhs2;
@@ -4689,7 +4674,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "Rule has LHS alias \"{s}\", rule impl name must match.", .{rule.lhsalias});
                         psp.errorcnt += 1;
-                        psp.state = .resync_after_rule_error;
+                        psp.state = .resync_after_impl_error;
                     } else {
                         psp.state = .impl_rhs1;
                     }
@@ -4705,16 +4690,24 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         psp.errorcnt += 1;
                         psp.state = .resync_after_rule_error;
                     } else {
-                        psp.state = .waiting_for_decl_or_rule;
+                        if (psp.prevrule == null) {
+                            psp.state = .waiting_for_decl_arg;
+                        } else {
+                            psp.state = .waiting_for_decl_or_rule;
+                        }
                     }
                 } else {
-                    psp.state = .waiting_for_decl_or_rule;
+                    if (psp.prevrule == null) {
+                        psp.state = .waiting_for_decl_arg;
+                    } else {
+                        psp.state = .waiting_for_decl_or_rule;
+                    }
                 }
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Expected a valid alias list in impl name, got {s}", .{x});
                 psp.errorcnt += 1;
-                psp.state = .resync_after_rule_error;
+                psp.state = .resync_after_impl_error;
             }
         },
         .impl_lhs2 => {
@@ -4724,35 +4717,47 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Impl LHS alias \"{s}\" must be followed by a semicolon", .{psp.impl.?.lhsalias});
                 psp.errorcnt += 1;
-                psp.state = .resync_after_rule_error;
+                psp.state = .resync_after_impl_error;
             }
         },
         .impl_rhs1 => {
             if (isAlpha(x[0])) {
                 const impl = psp.impl.?;
-                const idx = psp.impl_idx;
-                if (idx >= impl.rhsalias.len) {
+                if (psp.impl_idx >= impl.rhsalias.len) {
+                    dbgassert(psp.impl_idx == impl.rhsalias.len);
                     impl.rhsalias = try psp.allocator.realloc(impl.rhsalias, impl.rhsalias.len + 1);
+                    impl.rhsalias[psp.impl_idx] = "";
                 }
                 if (impl.rule) |rule| {
-                    if (rule.rhsalias.len < impl.rhsalias.len) {
+                    // find the next non-empty alias
+                    while (psp.impl_idx < rule.rhsalias.len and
+                        rule.rhsalias[psp.impl_idx].len == 0) : (psp.impl_idx += 1)
+                    {}
+                    if (psp.impl_idx >= rule.rhsalias.len) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "The rule impl name has more RHS aliases than the rule itself", .{});
                         psp.errorcnt += 1;
-                        psp.state = .resync_after_rule_error;
-                    } else if (!strcmp(rule.rhsalias[idx], x)) {
+                        psp.state = .resync_after_impl_error;
+                    } else if (!strcmp(rule.rhsalias[psp.impl_idx], x)) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "Rule RHS alias \"{s}\" does not make rule impl's \"{s}\".", .{
-                            rule.rhsalias[idx], x,
+                            "Rule RHS alias \"{s}\" does not match rule impl's \"{s}\".", .{
+                            rule.rhsalias[psp.impl_idx], x,
                         });
                         psp.errorcnt += 1;
-                        psp.state = .resync_after_rule_error;
+                        psp.state = .resync_after_impl_error;
                     } else {
-                        impl.rhsalias[idx] = x;
+                        // Looking for the next rule can get us past what we've allocated
+                        if (psp.impl_idx >= impl.rhsalias.len) {
+                            const more = psp.impl_idx - (impl.rhsalias.len - 1);
+                            const old_len = impl.rhsalias.len;
+                            impl.rhsalias = try psp.allocator.realloc(impl.rhsalias, impl.rhsalias.len + more);
+                            @memset(impl.rhsalias[old_len..], "");
+                        }
+                        impl.rhsalias[psp.impl_idx] = x;
                         psp.state = .impl_rhs2;
                     }
                 } else {
-                    impl.rhsalias[idx] = x;
+                    impl.rhsalias[psp.impl_idx] = x;
                     psp.state = .impl_rhs2;
                 }
                 psp.impl_idx += 1;
@@ -4762,14 +4767,37 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Expected an alias in rule impl name, got \"{s}\"", .{x});
                 psp.errorcnt += 1;
-                psp.state = .resync_after_rule_error;
+                psp.state = .resync_after_impl_error;
             }
         },
         .impl_rhs2 => {
             if (x[0] == ',') {
                 psp.state = .impl_rhs1;
             } else if (x[0] == ')') {
-                psp.state = .waiting_for_decl_or_rule;
+                const impl = psp.impl.?;
+                if (impl.rule) |rule| {
+                    if (impl.rhsalias.len < rule.rhsalias.len) {
+                        const many = if (rule.rhsalias.len == 1) "alias" else "aliases";
+                        ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                            "Rule has {d} RHS {s}, the rule impl has {d}.  They must match", .{
+                            rule.rhsalias.len,
+                            many,
+                            impl.rhsalias.len,
+                        });
+                        psp.errorcnt += 1;
+                        // No resync state since we saw the )
+                    }
+                }
+                if (psp.prevrule == null) {
+                    psp.state = .waiting_for_decl_arg;
+                } else {
+                    psp.state = .waiting_for_decl_or_rule;
+                }
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Expected a ',' or ')', got \"{s}\" ", .{x});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_impl_error;
             }
         },
         .lhs_alias_1 => {
@@ -4926,6 +4954,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 if (isAlpha(x[0])) {
                     var min_idx: usize = std.math.maxInt(usize);
                     var min_lev: usize = min_idx;
+                    // Let's see if we can infer what was meant and give a nice suggestion.
                     for (directive_list, 0..) |d_entry, i| {
                         const lev = levenshtein(psp.gp.allocator, x, d_entry.@"0") catch std.math.maxInt(usize);
                         if (lev < min_lev) {
@@ -4933,8 +4962,20 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                             min_lev = lev;
                         }
                     }
+                    // The ifdefs look like directives but don't switch like them, so we look at those too:
+                    for (pp_list, directive_list.len..) |p_entry, i| {
+                        const lev = levenshtein(psp.gp.allocator, x, p_entry) catch std.math.maxInt(usize);
+                        if (lev < min_lev) {
+                            min_idx = i;
+                            min_lev = lev;
+                        }
+                    }
+                    const suggestion = if (min_idx >= directive_list.len)
+                        pp_list[min_idx - directive_list.len]
+                    else
+                        directive_list[min_idx].@"0";
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Unknown declaration keyword: \"%{s}\".  Did you mean \"%{s}\"?", .{ x, directive_list[min_idx].@"0" });
+                        "Unknown declaration keyword: \"%{s}\".  Did you mean \"%{s}\"?", .{ x, suggestion });
                 } else {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Illegal declaration keyword: \"%{s}\".", .{x});
@@ -4956,6 +4997,10 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 },
                 .include => {
                     psp.declargslot = &psp.gp.include;
+                },
+                .impl => {
+                    psp.insertLineMacro = true;
+                    psp.state = .waiting_for_impl_directive;
                 },
                 .code => {
                     psp.declargslot = &psp.gp.extracode;
@@ -5177,6 +5222,19 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 psp.state = .resync_after_decl_error;
             }
         },
+        .waiting_for_impl_directive => {
+            if (x[0] == '@') {
+                dbgassert(psp.impl == null);
+                psp.impl = try impl_safe.get(x);
+                psp.declargslot = &psp.impl.?.code;
+                psp.state = .impl_1;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Impl name must start with @, got \"{s}\" ", .{x});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
+        },
         .waiting_for_fallback_id => {
             if (x[0] == '.') {
                 psp.state = .waiting_for_decl_or_rule;
@@ -5275,6 +5333,10 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 psp.state = .resync_after_decl_error;
             }
         },
+        .resync_after_impl_error => {
+            if (x[0] == ')') psp.state = .waiting_for_decl_or_rule;
+            continue :state .resync_after_rule_error;
+        },
         // TODO: These don't need to be separate states
         .resync_after_rule_error,
         .resync_after_decl_error,
@@ -5285,40 +5347,103 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
     }
 }
 
+fn validateImpl(psp: *ParserState, impl: *Impl, rule: *Rule) !bool {
+    var good: bool = true;
+    // if already defined, we need to validate the names:
+    if (impl.lhsalias.len > 0 and !strcmp(rule.lhsalias, impl.lhsalias)) {
+        ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+            "Rule impl name is already defined, and has the LHS alias \"{s}\", " ++
+            "but the rule's LHS alias is \"{s}\".  They must match", .{ rule.lhsalias, impl.lhsalias });
+        psp.errorcnt += 1;
+        good = false;
+    }
+    if (impl.rhsalias.len > 0) {
+        if (impl.rhsalias.len > rule.rhsalias.len) {
+            ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                "The rule has {d} RHS parts, the impl is defined before the rule to have {d} aliases", .{
+                rule.rhsalias.len,
+                impl.rhsalias.len,
+            });
+            psp.errorcnt += 1;
+            good = false;
+        } else {
+            // This is the tricky part, because the rule might have un-aliased parts
+            // which the impl doesn't know about.
+            var idx: usize = 0;
+            for (impl.rhsalias) |alias| {
+                while (idx < rule.rhsalias.len and rule.rhsalias[idx].len == 0) : (idx += 1) {}
+                if (idx == rule.rhsalias.len) {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "The impl as previously defined has more aliases than the rule", .{});
+                    psp.errorcnt += 1;
+                } else if (!strcmp(alias, rule.rhsalias[idx])) {
+                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                        "Previous impl alias \"{s}\" does not match rule alias \"{s}\" ", .{
+                        alias,
+                        rule.rhsalias[idx],
+                    });
+                    psp.errorcnt += 1;
+                    psp.state = .resync_after_rule_error;
+                }
+                idx += 1;
+            }
+            // So much for the ones we have, did we miss any?
+
+            while (idx < rule.rhsalias.len and rule.rhsalias[idx].len == 0) : (idx += 1) {}
+            if (idx < rule.rhsalias.len) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Rule has more aliases than impl as previously defined", .{});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
+            // Any old way, we copy the correct aliases, to get better errors later
+            const new_rhs = try psp.allocator.alloc([]const u8, rule.rhsalias.len);
+            @memcpy(new_rhs, rule.rhsalias);
+            psp.allocator.free(impl.rhsalias);
+            impl.rhsalias = new_rhs;
+        }
+    }
+    return good;
+}
+
 const Declaration = enum {
-    name,
-    include,
     code,
-    token_destructor,
     default_destructor,
-    token_enum,
-    token_enum_integer,
-    trace_writer,
-    syntax_error,
+    default_type,
+    destructor,
+    extra_argument,
+    extra_context,
+    fallback,
+    impl,
+    include,
+    left,
+    name,
+    nonassoc,
     parse_accept,
     parse_error_type,
     parse_failure,
+    right,
     stack_overflow,
-    extra_argument,
-    extra_context,
-    token_type,
-    default_type,
     stack_size,
     start_symbol,
-    left,
-    right,
-    nonassoc,
-    destructor,
-    type,
-    fallback,
-    token,
-    wildcard,
+    syntax_error,
     token_class,
+    token_destructor,
+    token_enum_integer,
+    token_enum,
+    token_type,
+    token,
+    trace_writer,
+    type,
+    wildcard,
 };
+
+const pp_list = [_][]const u8{ "ifdef", "ifndef", "if", "else", "endif" };
 
 const directive_list = [_]struct { []const u8, Declaration }{
     .{ "name", .name },
     .{ "include", .include },
+    .{ "impl", .impl },
     .{ "code", .code },
     .{ "token_destructor", .token_destructor },
     .{ "default_destructor", .default_destructor },
@@ -6448,6 +6573,20 @@ pub fn main() !void {
 
     try Parse(pstate);
     if (zyt.printPreprocessed) exit(0);
+
+    for (impl_safe.impls.values()) |impl| {
+        if (impl.rule) |rule| {
+            // Code generally lives in the Str_safe, I think it's
+            // better policy to keep it there.
+            rule.code = try Strsafe(impl.code);
+            impl.code = try zyt.allocator.realloc(impl.code, 0);
+        } else {
+            ErrorMsg(zyt.filename, impl.line, "" ++
+                "Orphaned impl named {s}", .{impl.name});
+            zyt.errorcnt += 1;
+        }
+    }
+
     if (zyt.errorcnt > 0) {
         logger.err("exiting with {d} error{s}", .{ zyt.errorcnt, if (zyt.errorcnt == 1) "" else "s" });
         // Give hint if errors are outrageous
@@ -6460,6 +6599,7 @@ pub fn main() !void {
         logger.err("Empty grammar.", .{});
         exit(1);
     }
+
     zyt.errsym = Symbol_find("error");
 
     // Count and index the symbols of the grammar

@@ -836,6 +836,44 @@ The idea is to make it safe to guard `try` statements with just:
 But the parser itself does not clean up the stack, if and when an
 error is thrown from within `parser.parse`.
 
+#### 4.3.2 Named Actions and Impls <a id="named_actions">
+
+Zitron, unlike Lemon, has an additional option for code actions.
+Instead of providing the code block after the rule, you can name the
+action instead, and provide it in an [`%impl`](#impl) directive.  As
+many as you'd like, in fact.
+
+This is a powerful facility, especially in concert with the
+[preprocessor](#pifdef).  Impls can be put before or after the rule.
+The styles are mutually-exclusive for a given rule (you cannot follow
+an impl name with a code block), but may be mixed and matched within a
+single grammar.
+
+An illustration of the style:
+
+```zitron
+    expr(A) ::= term(B) PLUS factor(C).  @expr_plus(A; B, C)
+
+    expr  ::= term(A) POW NUMBER(B).  @expr_pow( ; A, B,)
+
+    expr ::= term.   @expr_impl()
+```
+
+Note that the LHS must be followed by a semicolon, even if it isn't
+included, unless there are no alias captures in the rule, and the
+RHS aliases are a comma- separated list.  Trailing commas are fine,
+whitespace as usual is ignored.
+
+The [`%impl`](#impl) directive has its own section, what I want to note
+here is that the impl name must be unique to that rule, and the impl
+directives all must match the 'call signature' as defined at the rule
+site.  Orphan impls, those without an associated rule, raise an error.
+
+This seeming redundancy is a sort of type-check on the impl name and the
+impls.  It ensures that when the definition of a rule changes enough that
+the signature is different, Zitron, rather than the Zig compiler, will
+let you know if you haven't changed the impls to match.
+
 ### 4.3 Precedence Rules <a id="precrules">
 
 Zitron resolves parsing ambiguities in exactly the same way as yacc and
@@ -982,6 +1020,7 @@ Zitron supports the following special directives:
 - [`%if`](#pifdef)
 - [`%ifdef`](#pifdef)
 - [`%ifndef`](#pifdef)
+- [`%impl`](#impl)
 - [`%include`](#pinclude)
 - [`%left`](#pleft)
 - [`%name`](#pname)
@@ -1254,6 +1293,54 @@ particular, use of `%if(n)def` can be helpful combined with the
 and all support code to enable tracing, can be gated behind a macro
 definition.
 
+#### 4.4.9 The `%impl` directive <a id="impl">
+
+Zitron has [named actions](#named_action), a unique (so far as I'm
+aware) feature which allows the separation of form and policy in the
+grammar.  Instead of appending a code action directly to the rule,
+Zitron allows the rule to be assigned a name.
+
+`%impl` directives are how actions are specified for named rules.  They
+look like this:
+
+```zitron
+%impl expr_a_plus_b(A; B, C) {
+    A = B.?.val + C.?.val;
+}
+```
+
+The name and signature must match the definition, which must match the
+aliases introduced in the rule.
+
+An `%impl` directive must have an associated rule defined somewhere in
+the file, whether before or after the directive.  Putting the impls
+after the rule gives slightly better error messages, in the event.
+
+The opposite is not the case: a rule with an impl name, but no `%impl`
+directives, is the same as a rule with no code action block, as far as
+Zitron is concerned.
+
+More than one `%impl` per rule is legal, they will be concatenated
+together in the order in which they occur in the file.
+
+This facility really shines in combination with the
+[preprocessor](#pifdef).  It's common when developing a grammar to focus
+on printed reports, or build up some minimal data structure, adding the
+intended parser actions later once the grammar is somewhat well-behaved.
+
+With named actions, all of that work can be kept in a single section of
+the file, with the production behaviors of the grammar in another.  With
+the right defines, one, the other, or both, can be run as desired.
+
+It can even be used to generate more than one tool based on the parser,
+for an example, with a bit of cooperation from the tokenizer to handle
+whitespace, one could have an edition of the parser which marks up the
+code for HTML or terminal syntax highlighting.
+
+Zitron fully supports either style, and they may be mixed and matched on
+a per-rule basis.  We think you'll prefer the named action style once
+you try it.
+
 #### 4.4.9 The `%include` directive <a id="pinclude">
 
 The `%include` directive specifies Zig code that is included at the top of
@@ -1271,6 +1358,18 @@ in which identifiers are added to a container.  So the existence of
 separate `%include` and `%code` directives is not as critical.  It does
 seem to make grammar files easier to read, however, and there was no
 advantage to be had in removing one of them, so there we have it.
+
+For best future compatibility with some contemplated features, it's
+best to arrange things so that the parser will compile given only
+the `%include` directives.  This happens to match what I consider
+the natural division of labor, given the names of the two kinds: any
+namespaces needed for user code go in `%include`, and `%code` has
+tests or a `main` function, or something which integrates a parser and
+tokenizer, any to all of these things.
+
+You will never have to organize things that way, except to take
+advantage of some things Zitron doesn't currently do, in the event that
+it starts to do them.
 
 [^‡]: The minimum amount of structurally-necessary parsing is
 performed, such that a Zig token such as `"oops! } lol"` does not

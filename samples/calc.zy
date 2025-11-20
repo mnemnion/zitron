@@ -51,6 +51,14 @@ expr(A) ::= expr(B) PLUS|FOO(O) term(C). {
     A = B + C;
 }
 
+%impl @expr_term(A; A ) {
+// Inserted before
+}
+
+%impl @term_times(A; B, C, ) {
+   // A comment on the whole situation
+}
+
 expr(A) ::= expr(B) MINUS term(C). { A = B - C; }
 
 /* This generates the same code as the term-factor version,
@@ -58,8 +66,10 @@ expr(A) ::= expr(B) MINUS term(C). { A = B - C; }
 ** to assign the same alias unless the rule types are also
 ** the same. */
 expr(A) ::= term(A).  @expr_term(A; A,)
-term(A) ::= term(B) TIMES factor(C).  { A = B * C; }
+term(A) ::= term(B) TIMES factor(C).  @term_times(A; B, C)
    ``       term(B) DIVIDE factor(C). { A = B / C; }
+
+%impl @term_times(A; B, C) { A = B * C; }
 
 /* Note: it is illegal to refer to B in the below, after
 ** encountering the magic comment.  Why?  Ask DRH!
@@ -67,6 +77,14 @@ term(A) ::= term(B) TIMES factor(C).  { A = B * C; }
 term(A) ::= factor(B). {
     A = B;
     // A-overwrites-B
+}
+
+%impl @expr_term(A; A ) {
+// Inserted After
+}
+
+%impl @expr_term(A; A ) {
+// Inserted After v2
 }
 
 
