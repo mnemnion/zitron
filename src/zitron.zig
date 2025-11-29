@@ -4554,7 +4554,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         if (psp.prevrule) |prev| {
                             impl.rule = prev;
 
-                            if (try validateImpl(psp, impl, prev)) {
+                            if (try validateAndRepairImpl(psp, impl, prev)) {
                                 if (impl.rhsalias.len == 0) {
                                     impl.rhsalias = try psp.allocator.realloc(impl.rhsalias, prev.rhsalias.len);
                                     @memset(impl.rhsalias, "");
@@ -5347,7 +5347,9 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
     }
 }
 
-fn validateImpl(psp: *ParserState, impl: *Impl, rule: *Rule) !bool {
+/// Validates a pre-existing impl name, and 'repairs' the rhsalias list, which
+/// may be missing un-named aliases represented as "".
+fn validateAndRepairImpl(psp: *ParserState, impl: *Impl, rule: *Rule) !bool {
     var good: bool = true;
     // if already defined, we need to validate the names:
     if (impl.lhsalias.len > 0 and !strcmp(rule.lhsalias, impl.lhsalias)) {
