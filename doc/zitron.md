@@ -121,7 +121,7 @@ option is used, and the report file is omitted when `-q` is selected.
 Provide `-S` to generate the `.sql` file.
 
 
-### 3.1 Command Line Options <a id="options"> <tk>
+### 3.1 Command Line Options <a id="options">
 
 Lemon is designed to work with the classical style of C programs:
 command-line tools triggered by makefiles.  Zitron is also a separate
@@ -148,9 +148,7 @@ any analogous build option.  The odd case is `-D` and `-U`, which define
 and undefine preprocessor macros (see [`%if`](#pifdef) for the details
 here).  The build only allows _defining_ macros, which can be undefined
 on the CLI with `-U`.  It is harmless to define a macro more than once,
-or undefine a macro which does not exist; double-defining is <tk> `info`
-logged, but a spurious undefine is `warn` logged.  In default build
-mode, `Zitron` will only write `err`-level logging to stdout.
+or undefine a macro which does not exist.
 
 You can obtain a list of the available command-line options together
 with a brief explanation of what each does by typing
@@ -442,7 +440,11 @@ during development, if and when you need access to esoteric things like
 the `.out` file, the `.sql` dump.  This method renders those somewhat
 less convenient to access.  But to ship a grammar?  Read on.
 
-<tk build.zig.zon and zig fetch etc>
+Do the needful:
+
+```sh
+zig fetch --save "https://github.com/mnemnion/zitron/archive/refs/tags/v0.1.0.tar.gz"
+```
 
 Then in your `build.zig`, things are moderately complex.  We'll
 assume your source file is at `src/grammar/parse.zy` and you're
@@ -1057,7 +1059,7 @@ Zitron supports the following special directives:
 - [`%wildcard`](#pwildcard)
 
 Each of these directives will be described separately in the following
-sections:
+sections.
 
 
 #### 4.4.1 The `%code` directive <a id="pcode">
@@ -1904,14 +1906,14 @@ _sinaasappel_.  I wonder how that happened.
 ## 7.0 Copyright <a id="copyright">
 
 All of the source code to Lemon, including the template parser file
-"lempar.c" and this documentation file ("lemon.html") are in the
+"lempar.c" and ~this~ the documentation file ("lemon.html") are in the
 public domain. You can use the code for any purpose and without
 attribution.
 
-Source code and other for Zitron not explicitly demarcated as public
-domain is licensed under the zero-clause BSD license.  Some of the
-files in `/samples` are gratefully borrowed from other projects,
-you may find those licenses in the `/samples/licenses` folder.
+Source code and other files of Zitron not explicitly demarcated as
+public domain are licensed under the zero-clause BSD license.  Some of
+the files in `/samples` are gratefully borrowed from other projects, you
+may find those licenses in the `/samples/licenses` folder.
 
 The code comes with no warranty. If it breaks, you get to keep both
 pieces.

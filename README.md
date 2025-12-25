@@ -1,6 +1,6 @@
 # Zitron
 
-Zitron[^†] is a [LALR(1)][lalr] parser generator, closely based on
+Zitron[^†] is an [LALR(1)][lalr] parser generator, closely based on
 [Lemon][lem], the parser generator D. Richard Hipp wrote for SQLite.  It
 has been adopted and modified to produce Zig code.
 
@@ -11,8 +11,8 @@ itself.  While I can think of no actual advantage to using `lemon.zig`
 rather than `lemon.c`, translating the former was an essential step in
 writing the latter, and I saw no reason to leave it stranded in the
 commit history.  Let it serve as an artifact showing the fidelity with
-which this translation was prepared; any bugs in Zitron are almost sure
-to be of my own doing, and with decent confidence, transpired after the
+which this translation was prepared.  Any bugs in Zitron are almost sure
+to be of my own doing, and, with decent confidence, transpired after the
 translation of `lemon.zig`.
 
 ## Using Zitron
@@ -58,8 +58,8 @@ build flag.  Decent chance it will be, though.  If you find yourself
 relying on Zitron in a project, I would be most pleased to hear about it,
 and will keep that in consideration in the event of any breaking change.
 
-Most of what I'm contemplating is strictly additive, anyway.  No promises,
-no warranty, as the Lemon manual puts it:
+Most of what I'm contemplating is strictly additive, in any case.  No
+promises, no warranty, as the Lemon manual puts it:
 
 > If it breaks, you get to keep both pieces.
 
@@ -76,7 +76,7 @@ entirely in English, but to the lemon in those European languages where
 it doesn't sound like 'lemon'.  This artifice is guaranteed to please no
 one, much like the EU.
 
-[^※]: Safe bet right?
+[^※]: Safe bet
 
-[^‡] Which I suppose makes me yet another yet another compiler-compiler
-compiler.  Hazard of the trade.
+[^‡]: Which I suppose makes me yet another yet another compiler-compiler
+compiler.  Hazard of the trade!  Quite the yacc shave, I must admit.

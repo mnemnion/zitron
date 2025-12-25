@@ -1,10 +1,10 @@
-// Zig package metadata for {zitron}
+// Zig package metadata for Zitron
 .{
     .name = .zitron,
 
-    .version = "0.0.1",
+    .version = "0.1.0",
 
-    .minimum_zig_version = "0.15.1",
+    .minimum_zig_version = "0.15.2",
 
     .fingerprint = 0x741e2afa667531fa,
 
