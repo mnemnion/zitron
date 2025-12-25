@@ -5,11 +5,16 @@ consulted on various trivia of the C language, and sometimes shown
 buggy functions in the hope that it would spot something obvious.
 Occasionally, this even worked.
 
-The translation itself was entirely my doing, with the exception of a
+The translation itself is entirely my doing, with the exception of a
 few nearly-mechanical translations of type definitions.  These required
 considerable modification; the main benefit was to copy the comments in
 the original as doc comments, and ease the drudgery of writing out the
 same field names in the same original order.
+
+The derived works (`zitron.zig` and `ztmpl.zig`) are also entirely of
+my personal authorship.  This involved a negligible amount of mostly-
+fruitless exploration of various esoterica, and no code generation
+whatsoever.
 
 The LLM was also engaged to get a head start on various scripts used in
 testing the result of the port against the original.  These are included
@@ -28,6 +33,6 @@ will be resolved by fiat, in favor of the conclusion most conducive to
 the interests of the powerful.
 
 That said, I see it as appropriate to include brief documentation of
-the role such programs have played in this creation, so that others are
-appropriately informed and may make their own decisions about the nature
-of the code here found.  I encourage others to do likewise.
+the role such programs have played in this creation, so that others
+are appropriately informed, and may make their own decisions about the
+nature of the code here found.  I encourage others to do likewise.
