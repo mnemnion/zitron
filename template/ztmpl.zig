@@ -190,7 +190,7 @@ const yyFallback = [_]YYCODETYPE{
 /// After the "shift" half of a SHIFTREDUCE action, the yy_stateno field
 /// actually contains the reduce action for the second half of the
 /// SHIFTREDUCE.
-const yyStackEntry = struct {
+const YyStackEntry = struct {
     /// The state-number, or reduce action in SHIFTREDUCE.
     stateno: YYACTIONTYPE,
     /// The major token value.  This is the code number for the token at this stack level.
@@ -201,7 +201,7 @@ const yyStackEntry = struct {
 
 /// This value is the minimum amount of memory needed to build the
 /// parser stack.
-pub const parser_stack_minimum = @sizeOf(🍋PARSER_NAME) + (@sizeOf(yyStackEntry) * YYSTACKDEPTH);
+pub const parser_stack_minimum = @sizeOf(🍋PARSER_NAME) + (@sizeOf(YyStackEntry) * YYSTACKDEPTH);
 
 /// The state of the parser is completely contained in an instance of
 /// the following structure.
@@ -209,7 +209,7 @@ pub const 🍋PARSER_NAME = struct {
     /// Allocator
     allocator: std.mem.Allocator,
     /// Pointer to top element of the stack
-    tos: [*]yyStackEntry,
+    tos: [*]YyStackEntry,
     //
     // TODO: reckon with `yyhwm`
     //
@@ -217,9 +217,9 @@ pub const 🍋PARSER_NAME = struct {
     errcnt: isize,
     🍋ARG_SDECL
     🍋CTX_SDECL
-    stack_end: [*]yyStackEntry,
-    stack: [*]yyStackEntry,
-    stk0: []yyStackEntry,
+    stack_end: [*]YyStackEntry,
+    stack: [*]YyStackEntry,
+    stk0: []YyStackEntry,
 
     /// Create a 🍋PARSER_NAME on the heap, returning a pointer to it.
     /// Free later with `destroy`.
@@ -242,7 +242,7 @@ pub const 🍋PARSER_NAME = struct {
     pub fn init(yypParser: *🍋PARSER_NAME, allocator: std.mem.Allocator 🍋CTX_PDECL) std.mem.Allocator.Error!void {
         🍋CTX_STORE
         yypParser.allocator = allocator;
-        yypParser.stk0 = try yypParser.allocator.alloc(yyStackEntry, 100);
+        yypParser.stk0 = try yypParser.allocator.alloc(YyStackEntry, 100);
         yypParser.stack = yypParser.stk0.ptr;
         yypParser.stack_end = yypParser.stack + (yypParser.stk0.len - 1);
         yypParser.errcnt = -1; // TODO: Deal with NOERRORRECOVERY
