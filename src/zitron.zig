@@ -5988,6 +5988,7 @@ const Options = struct {
     print_pp: bool = false,
     linenos: bool = config.line_numbers,
     show_conflicts: bool = config.show_conflicts,
+    clean_exit: bool = config.clean_exit,
     quiet: bool = config.quiet,
     statistics: bool = config.statistics,
     sql_flag: bool = config.sql,
@@ -6015,6 +6016,7 @@ const OptionKind = enum {
     print_pp,
     linenos,
     show_conflicts,
+    clean_exit,
     quiet,
     statistics,
     sql_flag,
@@ -6046,6 +6048,7 @@ const OptionKind = enum {
             'T' => .user_template,
             'U' => .undefine,
             'v' => .version,
+            'x' => .clean_exit,
             else => null,
         };
     }
@@ -6060,6 +6063,7 @@ const OptionKind = enum {
             .print_pp,
             .linenos,
             .show_conflicts,
+            .clean_exit,
             .quiet,
             .statistics,
             .sql_flag,
@@ -6085,6 +6089,7 @@ const option_list = [_]struct { []const u8, OptionKind }{
     .{ "pp-only", .print_pp },
     .{ "line-numbers", .linenos },
     .{ "show-conflicts", .show_conflicts },
+    .{ "clean-exit", .clean_exit },
     .{ "quiet", .quiet },
     .{ "statistics", .statistics },
     .{ "sql", .sql_flag },
@@ -6207,6 +6212,7 @@ fn assignFlag(opt: *Options, opt_kind: OptionKind) void {
         .print_pp => opt.print_pp = !opt.print_pp,
         .linenos => opt.linenos = !opt.linenos,
         .show_conflicts => opt.show_conflicts = !opt.show_conflicts,
+        .clean_exit => opt.clean_exit = !opt.clean_exit,
         .quiet => opt.quiet = !opt.quiet,
         .statistics => opt.statistics = !opt.statistics,
         .sql_flag => opt.sql_flag = !opt.sql_flag,
@@ -6394,6 +6400,7 @@ const help_string =
     \\   -U, --undefine name       Undefine C-like preprocessor macro "name".  It is legal to
     \\                             undefine a nonexistent name.
     \\   -v, --version             Print the Zitron version number.
+    \\   -x, --clean-exit          Always exit with code 0, despite errors.
 ;
 
 fn OptPrint(out: anytype, args: [][:0]u8) !void {
@@ -6535,7 +6542,7 @@ pub fn main() !void {
     if (file_index != args.len - 1) {
         dprint("Exactly one filename argument is required.\n", .{});
         errline(args, @min(file_index + 1, args.len), 0);
-        exit(1);
+        if (opt.clean_exit) exit(0) else exit(1);
     }
     std.mem.sort([]const u8, opt.azDefine, {}, strLessThan);
     const filename: []const u8 = args[file_index];
@@ -6595,11 +6602,11 @@ pub fn main() !void {
         if (zyt.errorcnt > 23) {
             logger.err("hint: check the input file, does it say `.zy` (good) or `.zig` (not good)?", .{});
         }
-        exit(@truncate(zyt.errorcnt));
+        if (opt.clean_exit) exit(0) else exit(@truncate(zyt.errorcnt));
     }
     if (zyt.nrule == 0) {
         logger.err("Empty grammar.", .{});
-        exit(1);
+        if (opt.clean_exit) exit(0) else exit(1);
     }
 
     zyt.errsym = Symbol_find("error");
@@ -6751,7 +6758,9 @@ pub fn main() !void {
         dprint("{d} parsing conflicts.\n", .{zyt.nconflict});
     }
     // return 0 on success, 1 on failure.
-    if (zyt.errorcnt > 0 or zyt.nconflict > 0) exit(1);
+    if (zyt.errorcnt > 0 or zyt.nconflict > 0) {
+        if (opt.clean_exit) exit(0) else exit(1);
+    }
     std.process.cleanExit();
 }
 

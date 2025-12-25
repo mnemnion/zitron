@@ -67,6 +67,11 @@ pub fn build(b: *std.Build) void {
     );
     z_opt.addOption(
         bool,
+        "clean_exit",
+        b.option(bool, "clean_exit", "Always exit with 0") orelse false,
+    );
+    z_opt.addOption(
+        bool,
         "quiet",
         b.option(bool, "quiet", "Quiet output") orelse false,
     );

@@ -186,6 +186,7 @@ with a brief explanation of what each does by typing
 - **-U, --undefine _name_** Undefine C-like preprocessor macro _name_.  It is legal to
     undefine a nonexistent name, but warned against.
 - **-v, --version** Print the Zitron version number.
+-   **-x, --clean-exit**  Always exit with code 0, despite errors.
 
 
 ### 3.2 The Parser Interface <a id="interface">
@@ -477,6 +478,9 @@ like this:
 
     // Set up `zitron` to run from that directory.
     zitron_run.setCwd(grammar_in);
+    // While developing, you may want to install outputs even if
+    // there are errors.  This compels Zitron to always exit 0:
+    zitron_run.addArg("--clean-exit"); // Or "-x"
     zitron_run.addArg("parse.zy");
 
     zitron_run.step.dependOn(&zitron_writedir.step);
@@ -543,6 +547,7 @@ of time reading [std.Build][stdbuild] like the rest of us do.
 
 [zbsdoc]: https://ziglang.org/learn/build-system/
 [stdbuild]: https://ziglang.org/documentation/master/std/#std.Build
+
 
 ## 4.0 Input File Syntax <a id="syntax">
 
