@@ -44,6 +44,7 @@ and in his example, there is much for the student to learn.
   - [4.2 Grammar Rules](#rules)
   - [4.3 Precedence Rules](#precrules)
   - [4.4 Special Directives](#special)
+  - [4.5 Magic Declarations](#magic)
 - [5.0 Error Processing](#errors)
 - [6.0 History of Lemon](#history)
 - [7.0 Copyright](#copyright)
@@ -314,11 +315,11 @@ Zig being somewhat strict about variable shadowing, some coöperation
 is needed to prevent colliding this outer namespace with inner variables.
 
 Primarily: do not start any name with `yy`, `YY`, or any
-oddly-capitalized combination of two Ys.  This is an old tradition which
-hearkens back to `yacc`, and to C's somewhat derisory namespacing, if we
-might even use that word.  The author considered using the `@"anything"`
-syntax to deeply hide parse names, and concluded: nah.  Just don't use
-`yy`, simple.
+oddly-capitalized combination of two Ys.  This is an old tradition
+which hearkens back to `yacc`, and is due to C's somewhat derisory
+namespacing, if we might even use that word.  The author considered
+using the `@"anything"` syntax to deeply hide parse names, and
+concluded: nah.  Just don't use `yy`, simple.
 
 For interior code convenience, the allocator provided to a `Parser`
 instance will be localized inside various functions with the name
@@ -329,6 +330,10 @@ There are some other identifiers to avoid, corresponding to other
 magically-available identifiers described later: `err` and `err_token`.
 Again, these are only to be avoided in the outer namespace, where
 they would shadow these uses.
+
+There are a few channels of communication opened up through user code
+defining identifiers which begin with `zitron`, as such, the prefix
+should be treated as reserved.
 
 Last, there's a special value `parser_stack_minimum`, the utility of
 which is also [described later](#stack_size).  This is in the outer
@@ -430,20 +435,20 @@ As a command line tool, everything is quite simple.  We assume you have
 
 Will generate `src/parse.out` and `src/parse.zig`.
 
-Using Zitron from your own `build.zig` is quite a bit more involved,
-but it's also better.  If you're using `zig build` already, and you
-probably are, do it this way instead.  It may make sense to run the CLI
-tool during development, if and when you need access to esoteric things
-like the `.out` file, the `.sql` dump.  This method doesn't make those
-convenient to access.  But to ship a grammar?  Read on.
+Using Zitron from your own `build.zig` is quite a bit more involved, but
+it's also better.  If you're using `zig build` already, and you probably
+are, do it this way instead.  It may make sense to run the CLI tool
+during development, if and when you need access to esoteric things like
+the `.out` file, the `.sql` dump.  This method renders those somewhat
+less convenient to access.  But to ship a grammar?  Read on.
 
 <tk build.zig.zon and zig fetch etc>
 
 Then in your `build.zig`, things are moderately complex.  We'll
 assume your source file is at `src/grammar/parse.zy` and you're
-generating a separate [%token_enum](#token_enum) as `TokenKind`,
-the default.  Anything else you want the module to use should also
-be in `src/grammar`.
+generating a separate [%token_enum](#token_enum) as `TokenKind`, the
+default.  Anything else you want the module to use should also be in
+`src/grammar`.
 
 The approved method, while fairly involved, creates the module in
 a cache directory when the output `.zig` file is needed.  It works
@@ -523,7 +528,8 @@ like this:
 
     const write_parser = b.addInstallFile(zitron_write_out.path(b, "parse.zig", "grammar/parse.zig"));
     write_parser.step.dependOn(&zitron_write_out.step);
-    // If you're writing the tokens enum as its own file, repeat this for that file.
+    // If you're writing the tokens enum as its own file, repeat this for that file,
+    // same for "parse.out", "parse.sql" if you're into that kind of thing.
     const grammar_install_step = b.step("grammar", "Install the grammar");
     grammar_install_step.dependOn(&write_parser.step);
 
@@ -623,9 +629,10 @@ this:
 
 There is one non-terminal in this example, `expr`, and five terminal
 symbols or tokens: `PLUS`, `TIMES`, `LPAREN`, `RPAREN` and `VALUE`.
-This multiple definitions are used instead of the more familiar `|`
+These multiple definitions are used instead of the more familiar `|`
 syntax to write rule alternates; Zitron reserves that symbol for a
-better and more useful purpose.
+better and more useful purpose.  Also note that a clause is terminated
+with a period, not a semicolon.
 
 In Zitron (but not in Lemon) there is a shorthand for this:
 
@@ -838,8 +845,9 @@ The idea is to make it safe to guard `try` statements with just:
 }
 ```
 
-But the parser itself does not clean up the stack, if and when an
-error is thrown from within `parser.parse`.
+But the parser itself does not clean up the stack, if and when an error
+is thrown from within `parser.parse`.  That job is left up to `deinit`,
+so be sure to include it.
 
 #### 4.3.2 Named Actions and Impls <a id="named_actions">
 
@@ -1086,10 +1094,14 @@ Or the also-popular
 
     $$.destroy(allocator);
 
+The `$$` will be cunningly transformed into a reference to the
+to-be-destroyed.
+
 Since this is a default, you only get one, so pick a lane.
 
 In this and all cases, `allocator` is the allocator provided to the parser
-type during creation.
+type during creation.  If that isn't suitable, you're free to attach a different
+one to an [`%extra_argument`](#extraarg) or [`%extra_context`](#extractx).
 
 Destructor code is not allowed to throw: resource deallocation must
 succed.
@@ -1290,13 +1302,12 @@ with `%anything`, so it's not even possible to collide these directives
 with real code.  Not that this would be likely if it were not for that
 rule, but it's nice that it simply doesn't work.
 
-Zig gets along just fine without a preprocessor, but this kind
-of code-generating little language can strain comptime's ability
-to make code which is universally-valid without this.  In
-particular, use of `%if(n)def` can be helpful combined with the
-[`%trace_writer`](#trace_writer) directive: that directive itself,
-and all support code to enable tracing, can be gated behind a macro
-definition.
+Zig gets along just fine without a preprocessor, but this kind of
+code-generating DSL can strain comptime's ability to make code which is
+universally-valid without this.  In particular, use of `%if(n)def` can
+be helpful combined with the [`%trace_writer`](#trace_writer) directive:
+that directive itself, and all support code to enable tracing, can be
+gated behind a macro definition.
 
 #### 4.4.9 The `%impl` directive <a id="impl">
 
@@ -1323,7 +1334,12 @@ after the rule gives slightly better error messages, in the event.
 
 The opposite is not the case: a rule with an impl name, but no `%impl`
 directives, is the same as a rule with no code action block, as far as
-Zitron is concerned.
+Zitron is concerned.  This is likely to cause problems _later_, because
+aliases declared must also be used.  But this:
+
+    expr ::= term PLUS term.  @expr_placeholder()
+
+Is valid without the `%impl` existing.
 
 More than one `%impl` per rule is legal, they will be concatenated
 together in the order in which they occur in the file.
@@ -1335,10 +1351,11 @@ intended parser actions later once the grammar is somewhat well-behaved.
 
 With named actions, all of that work can be kept in a single section of
 the file, with the production behaviors of the grammar in another.  With
-the right defines, one, the other, or both, can be run as desired.
+some preprocessor macro-defines, one, the other, or both, can be run as
+desired.
 
 It can even be used to generate more than one tool based on the parser,
-for an example, with a bit of cooperation from the tokenizer to handle
+for an example, with a bit of coöperation from the tokenizer to handle
 whitespace, one could have an edition of the parser which marks up the
 code for HTML or terminal syntax highlighting.
 
@@ -1349,14 +1366,15 @@ you try it.
 #### 4.4.9 The `%include` directive <a id="pinclude">
 
 The `%include` directive specifies Zig code that is included at the top of
-the generated parser.  You can include any text you want[‡] - the Zitron
+the generated parser.  You can include any text you want[^‡] - the Zitron
 parser generator copies it blindly.  If you have multiple `%include`
 directives in your grammar file, their values are concatenated so that
 all `%include` code ultimately appears near the top of the generated
 parser, in the same order as it appeared in the grammar.
 
 Use the [`%code`](#pcode) directive to add code to the end of the
-generated parser.
+generated parser.  This is the only difference between the two
+directives.
 
 Zitron note: Zig, quite unlike C, is serenely unconcerned with the order
 in which identifiers are added to a container.  So the existence of
@@ -1390,7 +1408,7 @@ The `%left` directive is used (along with the [`%right`](#pright) and
 symbols. Every terminal symbol whose name appears after a `%left`
 directive but before the next period (".") is given the same
 left-associative precedence value. Subsequent `%left` directives have
-higher precedence. For example:
+**higher** precedence. For example:
 
        %left AND.
        %left OR.
@@ -1497,8 +1515,8 @@ error in some other manner.
 
 Zitron will always try to grow the stack using the provided allocator.
 If this fails, we catch the `error.OutOfMemory` and call this routine.
-If you wish to limit the available stack space, perhaps put it on the
-program stack: keep reading.
+If you wish to limit the available stack space, perhaps keep the entire
+parser on the program stack: keep reading.
 
 You can help prevent parser stack overflows by avoiding the use of right
 recursion and right-precedence operators in your grammar.  Use left
@@ -1562,6 +1580,9 @@ const ctx: ParserContext = .init(heap_allocator); // If you want to
 parser.init(allocator, ctx) catch unreachable; // Can't run out by definition
 // etc
 ```
+
+`parser_stack_minimum` is `pub`, so this can be imported into another
+file if desired.
 
 With this setup, any attempt to grow the stack will fail with
 `error.OutOfMemory`.  This assumes that user code will not take
@@ -1682,6 +1703,13 @@ may be specified using the `%token_enum` directive.
 
     %token_enum MySpecialEnumType
 
+This would change the generated token enum file (if that option is
+configured to `MySpecialEnumType.zig`).  Like with tokens themselves,
+this is a break with established Zig style, where a capitalized file
+name indicates that the entire file is an instantiable `struct`
+definition.  If it were possible to generate an instantiable container
+which is not a struct, particularly an enum, Zitron would do that.
+
 By default, this will generate an enum just large enough to
 hold all tokens, this can be set to whatever is convenient with
 `%token_enum_integer`:
@@ -1711,15 +1739,15 @@ example:
 
        %type expr "*Expr"
 
-Each entry on the parser's stack is actually a union (bare) containing
-instances of all data types for every non-terminal and terminal symbol.
-Zitron will automatically use the correct element of this union depending
-on what the corresponding non-terminal or terminal symbol is.  But the
-grammar designer should keep in mind that the size of the union will be
-the size of its largest element.  So if you have a single non-terminal
-whose data type requires 1K of storage, then your 100 entry parser stack
-will require 100K of heap space.  If you are willing and able to pay that
-price, fine.  You just need to know.
+Each entry on the parser's stack is actually a (bare) union containing
+instances of all data types for every non-terminal and terminal
+symbol.  Zitron will automatically use the correct element of this union
+depending on what the corresponding non-terminal or terminal symbol
+is.  But the grammar designer should keep in mind that the size of the
+union will be the size of its largest element.  So if you have a single
+non-terminal whose data type requires 1K of storage, then your 100 entry
+parser stack will require 100K of heap space.  If you are willing and
+able to pay that price, fine.  You just need to know.
 
 #### 4.4.26 The `%trace_writer` directive <a id="trace_writer">
 
@@ -1784,6 +1812,24 @@ the SQLite parser as part of the virtual table syntax, for what that's
 worth.
 
 
+### 4.5 Magic Declarations <a id="magic">
+
+Some of the more esoteric facilities were provided by (completely
+undocumented) macros in Lemon.  In Zitron, these are accessed through
+magic: defining a declaration with a certain name within the parser
+file will activate them.
+
+`zitron_trace_prompt` has already been mentioned, at present the others
+are:
+
+  - `zitron_coverage`
+  - `zitron_no_error_recovery`
+  - `zitron_track_max_stack_depth`
+
+The trace prompt needs to be a string: for the others, the type of the
+declaration is of no consequence.  These are reasonably self-documenting,
+at least in concert with examining the generated code.
+
 ## 5.0 Error Processing <a id="errors">
 
 After extensive experimentation over several years, it has been
@@ -1815,7 +1861,7 @@ assessment][jefferey].  On a long-term time horizon it would be
 quite nice to integrate that work into Zitron, perhaps with a bit of
 [Tratt][tratt] as well.
 
-[jefferey]: (https://www.cs.tufts.edu/~nr/cs257/archive/clinton-jefferey/lr-error-messages.pdf)
+[jefferey]: https://www.cs.tufts.edu/~nr/cs257/archive/clinton-jefferey/lr-error-messages.pdf
 [tratt]: https://tratt.net/laurie/blog/2020/automatic_syntax_error_recovery.html
 
 
