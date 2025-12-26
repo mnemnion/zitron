@@ -70,11 +70,11 @@ promises, no warranty, as the Lemon manual puts it:
 [re2c]: https://re2c.org/manual/manual_zig.html
 
 
-[^†]: The name Zitron is a sort of pan-European compromise between several
-spellings of "citron", a word which refers to a different citrus
+[^†]: The name Zitron is a sort of pan-European compromise between
+several spellings of "citron", a word which refers to a different citrus
 entirely in English, but to the lemon in those European languages where
-it doesn't sound like 'lemon'.  This artifice is guaranteed to please no
-one, much like the EU.
+it doesn't sound like 'lemon'.  This artifice, much like the EU, is
+guaranteed to please no one.
 
 [^※]: Safe bet
 

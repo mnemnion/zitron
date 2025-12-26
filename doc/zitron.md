@@ -180,7 +180,7 @@ with a brief explanation of what each does by typing
     optimization.
 - **-s --show-stats** Show parser statistics before exiting.
 - **-S**  Generate the *.sql file describing the parser tables.
-- **-T, --template _file_** Use *file* as the template for the generated C-code
+- **-T, --template _file_** Use *file* as the template for the generated Zig-code
     parser implementation.
 - **-U, --undefine _name_** Undefine C-like preprocessor macro _name_.  It is legal to
     undefine a nonexistent name, but warned against.
@@ -204,7 +204,7 @@ will be called `Parser`.  Created like so:
 ```
 
 The `extra_context` is an optional parameter [explained
-below](#446-the-extracontext-directive).  The spurious `[ ]` shows that
+below](#extractx).  The spurious `[ ]` shows that
 it's optional.
 
 After a parser has been created, the programmer must supply the parser
@@ -220,7 +220,7 @@ although this may be renamed if desired.  The `token_data` argument
 is, by default, of type `void`, but useful parsers will invariably
 define it to be some more useful type, carrying information such as
 the span of the token and what have you.  This is all explained in the
-[%token_type](#4424-the-tokentype-and-type-directives) section.
+[%token_type](#token_type) section.
 
 If the grammar specification file requests it (via the
 [`%extra_argument`](#extraarg) directive), the function `parser.parse`
@@ -266,7 +266,7 @@ fine for `tok.next()` to return a `struct ?{TokenKind, Token}` which
 could be destructured into `|kind, t|`.
 
 This example also assumes the existence of a context object, `ctx`,
-specified using the [`%extra_context`](#extra_context) directive.
+specified using the [`%extra_context`](#extractx) directive.
 This is available for any user action as `ctx`, or whatever the code
 names it.  The premise is that this is used to build up a parse tree,
 ultimately stored as a `*TreeRoot` on `ctx.root`.  The `allocator`
@@ -282,7 +282,7 @@ that the end of input has been reached.  Cleanup happens from the
 `deinit` if the parser is living on the stack (which would be more
 practical for a use case like this).
 
-`[arg]` in finalize is the optional [`%extra_argument`](#extra_argument)
+`[arg]` in finalize is the optional [`%extra_argument`](#extraarg)
 parameter.  If you define one, you must provide it to both `parse` and
 `finalize`.  Under the hood, `finalize` is a special case of `parse`,
 and it's normal for the end of input to trigger a final reduction, which
@@ -307,10 +307,10 @@ directive.
 #### 3.2.2 More About the Namespace <a id="namespace">
 
 A Zitron parser can include arbitrary code before and after the
-generated code, using the [%include](#449-the-include-directive) and
-[%code](#441-the-code-directive) directives, respectively.  Due to
-Zig being somewhat strict about variable shadowing, some coöperation
-is needed to prevent colliding this outer namespace with inner variables.
+generated code, using the [%include](#pinclude) and [%code](#pcode)
+directives, respectively.  Due to Zig being somewhat strict about
+variable shadowing, some coöperation is needed to prevent colliding
+this outer namespace with inner variables.
 
 Primarily: do not start any name with `yy`, `YY`, or any
 oddly-capitalized combination of two Ys.  This is an old tradition
@@ -362,12 +362,11 @@ not going to help you with a `.zy` file in any manner, adding further
 friction to this style of development.
 
 Happily, however, Zig does allow circular imports, allowing identifiers
-to be 'smuggled' in and out of the grammar file at leisure.  The
-author suggests taking advantage of this and making relatively
-minimal use of the [%include](#449-the-include-directive) and
-[%code](#441-the-code-directive) directives, just enough to give reduce
-actions access to the namespaces and types which they need in order to
-execute.
+to be 'smuggled' in and out of the grammar file at leisure.  The author
+suggests taking advantage of this and making relatively minimal use of
+the [%include](#pinclude) and [%code](#pcode) directives, just enough to
+give reduce actions access to the namespaces and types which they need
+in order to execute.
 
 [^†]: Zitron has an option to print the line numbers as comments, but this
 is simply not as helpful as a proper `#line` directive.  It was left in
@@ -473,7 +472,7 @@ like this:
         .quiet = true,
     });
 
-    const zitron_exe = zitron_dep.artifact(zitron);
+    const zitron_exe = zitron_dep.artifact("zitron");
 
     const zitron_run = b.addRunArtifact(zitron_exe);
 
@@ -501,6 +500,8 @@ like this:
     // anymore so we leave it behind.
     const grammar_out = zitron_write_out.addCopyDirectory(grammar_in, "grammar_out", .{
         .include_extensions = &.{"zig"},
+        // Or if you want the .out and .sql files:
+        // .exclude_extensions = &.{"zy"},
     });
 
     // Now we can create a module using the generated file.  The effect of
@@ -775,10 +776,10 @@ both.  So the magic comment promises Zitron you won't do that, and it's
 allowed to write any reference to `Alpha`, and any reference to `Z`,
 as indices into the same slot in the stack.
 
-I will not even attempt to teach you how to use this correctly.  You
-make find some of the examples to be helpful in this regard.  I am
-handing you a blade, without a hilt, please grasp it from the flat
-sides.  Thank you.
+I will not even attempt to teach you how to use this correctly.  You may
+find some of the examples to be helpful in this regard.  I am handing
+you a blade, without a hilt, please grasp it from the flat sides.  Thank
+you.
 
 #### 4.2.1 Writing Leak-free Action Code
 
@@ -1031,6 +1032,7 @@ Zitron supports the following special directives:
 - [`%else`](#pifdef)
 - [`%endif`](#pifdef)
 - [`%extra_argument`](#extraarg)
+- [`%extra_context`](#extractx)
 - [`%fallback`](#pfallback)
 - [`%if`](#pifdef)
 - [`%ifdef`](#pifdef)
@@ -1146,14 +1148,14 @@ Consider an example:
 This example is a bit contrived, but it serves to illustrate how
 destructors work. The example shows a non-terminal named `nt` that
 holds values of type `[]u8`.  We're making the further assumption that
-the token type (see [%token-type](#4420-the-token-directive)) has a
-`?usize` field called `val`, which the tokenizer helpfully fills with
-the indicated number.  When the rule for an `nt` reduces, it sets the
-value of the non-terminal to space obtained from the allocator.  Later,
-when the `nt` non-terminal is popped from the stack, the destructor will
-fire and call `allocator.free` on this allocated space, thus avoiding
-a memory leak. (Note that the symbol `$$` in the destructor code is
-replaced by the value of the non-terminal.)
+the token type (see [%token-type](#token_type)) has a `?usize` field
+called `val`, which the tokenizer helpfully fills with the indicated
+number.  When the rule for an `nt` reduces, it sets the value of the
+non-terminal to space obtained from the allocator.  Later, when the `nt`
+non-terminal is popped from the stack, the destructor will fire and
+call `allocator.free` on this allocated space, thus avoiding a memory
+leak. (Note that the symbol `$$` in the destructor code is replaced by
+the value of the non-terminal.)
 
 It is important to note that the value of a non-terminal is passed to
 the destructor whenever the non-terminal is removed from the stack,
@@ -1313,7 +1315,7 @@ gated behind a macro definition.
 
 #### 4.4.9 The `%impl` directive <a id="impl">
 
-Zitron has [named actions](#named_action), a unique (so far as I'm
+Zitron has [named actions](#named_actions), a unique (so far as I'm
 aware) feature which allows the separation of form and policy in the
 grammar.  Instead of appending a code action directly to the rule,
 Zitron allows the rule to be assigned a name.
@@ -1579,7 +1581,7 @@ const allocator = fba.allocator;
 const parser: Parser = undefined;
 const ctx: ParserContext = .init(heap_allocator); // If you want to
 // This sets up the stack and assigns every parser field a valid value
-parser.init(allocator, ctx) catch unreachable; // Can't run out by definition
+parser.init(allocator, ctx) catch unreachable; // Can't run out here by construction
 // etc
 ```
 
@@ -1763,13 +1765,13 @@ Use is as follows.  Add the directive like so:
      %trace_writer trace_me
 
 With whatever the identifier is of the variable you'll use for tracing.
-Then in an [`%include`](#include) block, add something like this:
+Then in an [`%include`](#pinclude) block, add something like this:
 
 ```zig
 threadlocal var trace_me: *std.Io.Writer = undefined;
 ```
 
-Which you can set up in a [`%code`](#code) block thus:
+Which you can set up in a [`%code`](#pcode) block thus:
 
 ```zig
     var stdout_buffer: [1024]u8 = undefined;
@@ -1785,9 +1787,9 @@ the code which exercises it.
 
 Note that tracing happens on a "best effort" basis, any errors which
 arise are swallowed without a \*ahem\* trace.  This is to avoid
-interference with a defined [`%parser_error`](#parser_error), and on the
-general premise that tracing is a debug aid, so doing the same thing as
-`std.debug.print` is perfectly reasaonable.
+interference with a defined [`%parse_error_type`](#parse_error), and on
+the general premise that tracing is a debug aid, so doing the same thing
+as `std.debug.print` is perfectly reasaonable.
 
 The trace output is comprehensive, or if you prefer, verbose.  It's
 intended to be consulted in tandem with the `.out` file produced by
@@ -1895,8 +1897,8 @@ they are easy, but because we thought they would be easy.
 The name Zitron is a sort of pan-European compromise between several
 spellings of "citron", a word which refers to a different citrus
 entirely in English, but to the lemon in those European languages where
-it doesn't sound like lemon.  This artifice is guaranteed to please no
-one, much like the EU.
+it doesn't sound like lemon.  This artifice, much like the EU, is
+guaranteed to please no one.
 
 Fun fact: Afrikaaners call it the _suerlemoen_.  _Lemoen_ itself
 refers to the orange, a fruit the Dutch have the audacity to call
