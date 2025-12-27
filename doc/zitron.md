@@ -1324,7 +1324,7 @@ Zitron allows the rule to be assigned a name.
 look like this:
 
 ```zitron
-%impl expr_a_plus_b(A; B, C) {
+%impl @expr_a_plus_b(A; B, C) {
     A = B.?.val + C.?.val;
 }
 ```
