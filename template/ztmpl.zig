@@ -410,7 +410,7 @@ threadlocal var yycoverage: (if (YYCOVERAGE)
 ///   (2)  is not a syntax error.
 ///
 /// Return the number of missed state/lookahead combinations.
-fn yyParseCoverage(yy_out: anytype, yy_print: bool) !usize {
+pub fn yyParseCoverage(yy_out: anytype, yy_print: bool) !usize {
     if (comptime !YYCOVERAGE) @compileError("define `zitron_coverage` in %include/%code to enable coverage.");
     var yy_nmissed: usize = 0;
     for (0..YYNSTATE) |yy_stateno| {
