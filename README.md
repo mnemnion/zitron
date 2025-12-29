@@ -40,6 +40,13 @@ compatible with more international licensing régimes.
 Some of the Lemon grammars in the `samples/` directory have their own
 licenses, which you will find in `samples/licenses/`.
 
+### Editing
+
+The Zitron format has a [Tree-sitter grammar](https://github.com/mnemnion/tree-sitter-zitron),
+for your editing convenience.  It's still a bit rough around the edges, so you'll
+need to manually integrate it with your editor of choice. Smoother user experiences
+may be forthcoming.
+
 ## Future Work
 
 This project has the great advantage of standing upon the shoulders of a
