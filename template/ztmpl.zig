@@ -326,7 +326,7 @@ fn yy_destructor(
         🍋ARG_STORE
         🍋CTX_STORE
     }
-    _ = .{ 🍋PARSER_NAME, yypminor }; // Unused variable ward
+    _ = .{ yypminor }; // Unused variable ward
     const allocator = yypParser.allocator; _ = .{allocator};
     switch( yymajor ){
         // Here is inserted the actions which take place when a
