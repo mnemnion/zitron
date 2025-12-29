@@ -4903,10 +4903,8 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     };
                     if (sym_freelist) |free| {
                         fl.next = free;
-                        sym_freelist = fl;
-                    } else {
-                        sym_freelist = fl;
                     }
+                    sym_freelist = fl;
                 }
                 msp.subsym = try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
                 // We know x[1] exists and is terminal-shaped, so this is valid:
