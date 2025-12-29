@@ -25,6 +25,8 @@ const zitron_trace_prompt = "-> ";
 
 %extra_context {answer: f64}
 
+%stack_size 1096
+
 %ifdef TRACE && !NO_TRACE
 %trace_writer "trace_me"
 %endif
@@ -37,7 +39,7 @@ const zitron_trace_prompt = "-> ";
     // buh
 }
 
-%type expr f64
+%type expr {f64}
 %type term f64
 %type factor f64
 
@@ -87,6 +89,7 @@ term(A) ::= factor(B). {
 // Inserted After v2
 }
 
+%token_class foo FOO|BAR|BAZ.
 
 %type NUMBER {f64}
 
