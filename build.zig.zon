@@ -2,7 +2,7 @@
 .{
     .name = .zitron,
 
-    .version = "0.1.0",
+    .version = "0.1.1",
 
     .minimum_zig_version = "0.15.2",
 
@@ -14,6 +14,9 @@
         "build.zig",
         "build.zig.zon",
         "src",
+        "template",
+        "samples",
+        "doc",
         "LICENSE",
         "README.md",
     },
