@@ -1477,14 +1477,12 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                     while (i < cp.len and cp[i] != '\n') : (i += 1) {}
                     try writer.writeAll(cp[start..i]);
                     special_end = i;
-                    i -= 1; // Read the newline next round
                     start = i;
                     dontUseRhs0 = true;
                     continue;
                 } else {
                     i += 2;
                     while (i < cp.len and cp[i] != '\n') : (i += 1) {}
-                    i -= 1;
                     continue;
                 }
             }
@@ -1493,7 +1491,6 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                 // Skip multiline strings
                 i += 2;
                 while (i < cp.len and cp[i] != '\n') : (i += 1) {}
-                i -= 1;
                 continue;
             } else if (cp[i] == '"' or cp[i] == '\'') {
                 // String or character literals (since the latter can have " in it)
@@ -1506,7 +1503,6 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                             "Zig code on this line contains an un-terminated string, or " ++
                             "botched character literal.", .{});
                         zyt.errorcnt += 1;
-                        i -= 1;
                         continue;
                     }
                     if (prevc == '\\')
@@ -4496,18 +4492,23 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 psp.state = .waiting_for_arrow;
                 psp.dittoed = false;
             } else if (x[0] == '`') {
-                dbgassert(x[1] == '`');
-                if (psp.prevrule) |prev| {
-                    psp.lhs = prev.lhs;
-                    psp.lhsalias = prev.lhsalias;
-                    psp.impl = null;
-                    psp.impl_idx = 0;
-                    psp.nrhs = 0;
-                    psp.dittoed = true;
-                    psp.state = .waiting_for_arrow_or_rhs;
+                if (x.len >= 2 and x[1] == '`') {
+                    if (psp.prevrule) |prev| {
+                        psp.lhs = prev.lhs;
+                        psp.lhsalias = prev.lhsalias;
+                        psp.impl = null;
+                        psp.impl_idx = 0;
+                        psp.nrhs = 0;
+                        psp.dittoed = true;
+                        psp.state = .waiting_for_arrow_or_rhs;
+                    } else {
+                        ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                            "There is no prior rule, the ditto is invalid here.", .{});
+                        psp.errorcnt += 1;
+                    }
                 } else {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "There is no prior rule, the ditto is invalid here.", .{});
+                        "Unexpected {s} token, did you mean \"``\"?", .{x});
                     psp.errorcnt += 1;
                 }
             } else if (x[0] == '{') {
@@ -4713,6 +4714,8 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .impl_lhs2 => {
             if (x[0] == ';') {
                 psp.state = .impl_rhs1;
+            } else if (x[0] == ')') {
+                continue :state .impl_rhs2;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Impl LHS alias \"{s}\" must be followed by a semicolon", .{psp.impl.?.lhsalias});
@@ -5332,6 +5335,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             }
         },
         .resync_after_impl_error => {
+            psp.impl = null;
             if (x[0] == ')') psp.state = .waiting_for_decl_or_rule;
             continue :state .resync_after_rule_error;
         },
@@ -6774,9 +6778,6 @@ pub fn main() !void {
 //| equality tie-breaker is important, because it gives us sort stability.
 //|
 //| We then specialize the functions accordingly, returning the one we need.
-//|
-//| NOTE: to self: when you port this to Zelda, use std.math.Order, so we
-//| can add sorts in both directions and they'll both be stable.
 
 const LISTSIZE = 32;
 
