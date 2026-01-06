@@ -1661,18 +1661,18 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
 fn emit_code(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !void {
     //
     // Generate code to do the reduce action
-    if (rp.code.len > 0) {
-        try out.writeAll("        => {\n");
+    try out.writeAll("        => {\n");
+    lineno.* += 1;
+    // Setup code prior to the #line directive
+    if (rp.codePrefix.len > 0) {
+        const extra: usize = if (try writeToIndent(out, rp.codePrefix, 12)) 1 else 0;
+        lineno.* += mem.count(u8, rp.codePrefix, "\n") + extra;
+    }
+    if (zyt.linenosflag) {
         lineno.* += 1;
-        // Setup code prior to the #line directive
-        if (rp.codePrefix.len > 0) {
-            const extra: usize = if (try writeToIndent(out, rp.codePrefix, 12)) 1 else 0;
-            lineno.* += mem.count(u8, rp.codePrefix, "\n") + extra;
-        }
-        if (zyt.linenosflag) {
-            lineno.* += 1;
-            try tplt_linedir(out, rp.line, zyt.filename);
-        }
+        try tplt_linedir(out, rp.line, zyt.filename);
+    }
+    if (rp.code.len > 0) {
         const extra: usize = if (try writeToIndent(out, rp.code, 12)) 1 else 0;
         lineno.* += mem.count(u8, rp.code, "\n") + extra;
         if (zyt.linenosflag) {
@@ -1680,14 +1680,14 @@ fn emit_code(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !void {
             try tplt_linedir(out, lineno.*, zyt.outname);
         }
     }
-
     // Generate breakdown code that occurs after the #line directive
     if (rp.codeSuffix.len > 0) {
-        const extra: usize = if (try writeToIndent(out, rp.codeSuffix, 12)) 1 else 0;
-        lineno.* += mem.count(u8, rp.codeSuffix, "\n") + extra;
+        const more_extra: usize = if (try writeToIndent(out, rp.codeSuffix, 12)) 1 else 0;
+        lineno.* += mem.count(u8, rp.codeSuffix, "\n") + more_extra;
     }
     try out.writeAll("        },\n");
     lineno.* += 1;
+
     return;
 }
 
@@ -2853,7 +2853,7 @@ fn reportTableImpl(
             }
             try out.print("        {d}, // ", .{rp.iRule});
             try writeRuleText(out, rp);
-            try out.writeAll("\n");
+            try out.writeByte('\n');
             lineno += 1;
             var m_rp2: ?*Rule = rp.next; // Other rules with the same action
             while (m_rp2) |rp2| : (m_rp2 = rp2.next) {
