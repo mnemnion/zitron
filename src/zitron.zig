@@ -1767,13 +1767,13 @@ fn print_stack_union(
             continue :hash;
         }
         if (sp.type != .nonterminal or (sp.datatype.len == 0 and zyt.vartype.len == 0)) {
-            sp.dtnum = 0; // Redundant I think
+            dbgassert(sp.dtnum == 0);
             continue :hash;
         }
         const d_raw = if (sp.datatype.len > 0) sp.datatype else zyt.vartype;
         const stddt = mem.trim(u8, d_raw, C_SPACE);
         if (zyt.tokentype.len > 0 and std.mem.eql(u8, zyt.tokentype, stddt)) {
-            sp.dtnum = 0;
+            dbgassert(sp.dtnum == 0);
             continue :hash;
         }
         var hash: u32 = 0;

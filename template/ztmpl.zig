@@ -94,7 +94,7 @@ const YY_VOIDTOKEN = @TypeOf(YY_TOKEN_TYPE) == void;
 const YY_NLOOKAHEAD = yy_lookahead.len;
 
 /// Set a value for zitron_no_error_recovery to disable error recovery.
-const YYNOERRORRECOVERY = !@hasDecl(@This(), "zitron_no_error_recovery");
+const YYNOERRORRECOVERY = @hasDecl(@This(), "zitron_no_error_recovery");
 
 /// Set a value for zitron_track_max_stack_depth to track the maximum stack depth on the Parser instance.
 const YYTRACKMAXSTACKDEPTH = @hasDecl(@This(), "zitron_track_max_stack_depth");
@@ -850,7 +850,7 @@ fn yyParse(
         } else if (yyact <= YY_MAX_SHIFTREDUCE) {
             try yy_shift(yypParser, yyact, yymajor, yyminor);
             if (comptime !YYNOERRORRECOVERY) {
-                yypParser.yyerrcnt -= 1;
+                yypParser.errcnt -= 1;
             }
             break;
         } else if (yyact == YY_ACCEPT_ACTION) {
