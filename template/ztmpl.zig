@@ -377,8 +377,8 @@ fn yy_parse_reset(yypParser: *🍋PARSER_NAME) void {
         }
         if (yytos[0].major >= YY_MIN_DSTRCTR) {
             yy_destructor(yypParser, yytos[0].major, &yytos[0].minor);
-            yytos -= 1;
         }
+        yytos -= 1;
     }
 }
 
@@ -819,7 +819,7 @@ fn yyParse(
         🍋TRACE_INPUT
     }
 
-    while (true) { // Exit by "break"
+    resolve: while (true) { // Exit by "break"
         yy_assert(@intFromPtr(yypParser.tos) >= @intFromPtr(yypParser.stack));
         yy_assert(yyact == yypParser.tos[0].stateno);
         yyact = yy_find_shift_action(yymajor, yyact);
@@ -842,7 +842,7 @@ fn yyParse(
                 if (@intFromPtr(yypParser.tos) >= @intFromPtr(yypParser.stack_end)) {
                     yyGrowStack(yypParser) catch {
                         try yyStackOverflow(yypParser);
-                        break;
+                        break :resolve;
                     };
                 }
             }
@@ -852,7 +852,7 @@ fn yyParse(
             if (comptime !YYNOERRORRECOVERY) {
                 yypParser.errcnt -= 1;
             }
-            break;
+            break :resolve;
         } else if (yyact == YY_ACCEPT_ACTION) {
             yypParser.tos -= 1;
             try yy_accept(yypParser);
@@ -924,7 +924,7 @@ fn yyParse(
                 //
                 defer yy_destructor(yypParser, yymajor, &yyminorunion);
                 try yy_syntax_error(yypParser, yymajor, yyminor);
-                break;
+                break :resolve;
             } else { // YYERRORSYMBOL is not defined, nor YYNOERRORRECOVERY
                 // This is what we do if the grammar does not define ERROR:
                 //
@@ -946,7 +946,7 @@ fn yyParse(
                           yypParser.errcnt = -1;
                     }
                 }
-                break;
+                break :resolve;
             }
         }
     }
