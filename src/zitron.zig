@@ -6590,6 +6590,7 @@ pub fn main() !void {
             // Code generally lives in the Str_safe, I think it's
             // better policy to keep it there.
             rule.code = try Strsafe(impl.code);
+            rule.noCode = false;
             impl.code = try zyt.allocator.realloc(impl.code, 0);
         } else {
             ErrorMsg(zyt.filename, impl.line, "" ++
