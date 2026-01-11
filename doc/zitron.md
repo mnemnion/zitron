@@ -573,7 +573,7 @@ conventions as C and C++.
 
 The above is not a typo: Zitron grammar files also accept `/* This kind */`
 of comment, as well as the C++ (and Zig) `// This kind` line comments.
-This laxity does not apply, of course, inside code blocks, but there was
+This liberty does not apply, of course, inside code blocks, but there was
 little motive to remove it outside of them, so there it remains.  Zitron
 does not know or care about the doc-style comment variations, feel free
 to use them, but it is not a syntax error to abuse this privilege.
@@ -757,7 +757,7 @@ Just like that, one space, no trailing whitespace. `A` is a
 left-hand-side alias, and `Z` is a right-hand-side one, specifically
 it must be the first value (not _aliased_ value, just _value_, period).
 
-Why though?  Good question, these are reduce actions, so named because
+Why though?  Good question!  These are reduce actions, so named because
 the stack reduces in size.  When you see a rule like:
 
      alphabet(Alpha) ::= A(Z) B C D E.
@@ -879,6 +879,14 @@ Note that the LHS must be followed by a semicolon, even if it isn't
 included, unless there are no alias captures in the rule, and the
 RHS aliases are a comma- separated list.  Trailing commas are fine,
 whitespace as usual is ignored.
+
+"House style" is as follows:
+
+    @one_lhs(A) // @one_lhs(A;) is equivalent
+    @one_rhs(;B)  // ; is mandatory here
+    @one_each(A;B)
+    @several_rhs( ; B, C)
+    @buncha_captures(A; B, C, D)
 
 The [`%impl`](#impl) directive has its own section, what I want to note
 here is that the impl name must be unique to that rule, and the impl
@@ -1343,7 +1351,7 @@ aliases declared must also be used.  But this:
 
     expr ::= term PLUS term.  @expr_placeholder()
 
-Is valid without the `%impl` existing.
+Is valid (yet discouraged) without the `%impl` existing.
 
 More than one `%impl` per rule is legal, they will be concatenated
 together in the order in which they occur in the file.
@@ -1615,7 +1623,9 @@ grammar as its own parser, for example.
 
 #### 4.4.20 The `%syntax_error` directive <a id="syntax_error">
 
-Specifies code to run when a syntax error is encountered.
+Specifies code to run when a syntax error is encountered.  This code has
+access to a variable `err_token`, which contains the token at the point
+where the syntax error occurs.
 
 This code is throw-friendly, meaning you can `try` or return an
 error in some other manner.
