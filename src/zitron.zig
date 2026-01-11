@@ -4543,6 +4543,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "This rule already has an impl name {s}, saw {s}", .{ imp.name, x });
                     psp.errorcnt += 1;
+                    psp.state = .resync_after_impl_error;
                 } else {
                     const impl = try impl_safe.get(x);
                     psp.impl = impl;
@@ -4551,6 +4552,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "This impl name {s} already has a rule {s}, they must be unique", .{ x, rp.lhs.name });
                         psp.errorcnt += 1;
+                        psp.state = .resync_after_impl_error;
                     } else {
                         if (psp.prevrule) |prev| {
                             impl.rule = prev;
@@ -4575,6 +4577,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Token {s} should be either \"%\"{s}.", //
                     .{ x, if (psp.prevrule) |_| ", a nonterminal name, or a code block" else " or a nonterminal name" });
+                psp.state = .resync_after_impl_error;
                 psp.errorcnt += 1;
             }
         },
@@ -4972,8 +4975,10 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         }
                     }
                     const suggestion = if (min_idx >= directive_list.len)
+                        // Closest to a preprocessor directive.
                         pp_list[min_idx - directive_list.len]
                     else
+                        // Closest to a postprocessor directive.
                         directive_list[min_idx].@"0";
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Unknown declaration keyword: \"%{s}\".  Did you mean \"%{s}\"?", .{ x, suggestion });
