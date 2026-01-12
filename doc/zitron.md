@@ -723,6 +723,15 @@ difficult to solve it, either:
 
 Will do the intended thing.
 
+#### 4.2.1 Esoteric Optimizations
+
+Lemon has a number of features which at the time of writing are nowhere
+documented.  Zitron has all of those features, and a few more; I aim to
+document it completely.  This section documents several features the two
+share in common.
+
+##### 4.2.1.1 Passing Tokens By Enum
+
 Occasionally it may be more useful, or efficient, to accept the enum
 corresponding to a token rather than the token itself.  Zitron allows
 this by prepending `@` to the symbolic name:
@@ -748,14 +757,54 @@ These are the only grammatical particles where it makes sense to do so,
 as nonterminals don't have an associated enum type.  A violation of this
 rule will be reported as an error during compilation of the grammar.
 
-Special note: Lemon, and therefore Zitron, looks for a magic comment
-in user code.  The magic looks like this:
+##### 4.2.1.2 Write Elision
+
+Sometimes it's the case that an LHS has the same type as the first rule
+on the RHS.  Sometimes that's the only rule.
+
+If both of those things are the case, and it must be the first _rule_ on
+the RHS, not the first _capture_ of the RHS, you may give them the same
+alias, like this:
+
+    expr(E) ::= expr(E) PLUS|MINUS(O) expr(C). { E = plusOrMinus(E, @O, C); }
+
+In this case, they have the same rule name, but that is not necessary.
+What's necessary is that they have the same [`%type`](#token_type).
+Regrettably, Zig and Zitron type check in different ways: Zitron trims
+whitespace and does a string comparison with what's left over.  Please
+don't be disappointed that it doesn't know that you've aliased `u32` to
+`const SpecialNumber = u32;`.  Jokes aside, this does preclude some
+conversions it might be nice to have: specificaly, if the LHS is a `?T`,
+and the RHS is a `T`, those will be judged incompatible.
+
+This is the only circumstance in which aliases are allowed to be
+duplicates.  Any other use of duplicate aliases will result in
+**undefined behavior**.
+
+Given that the types check, and the doubled aliases are found in the
+correct location, Zitron can generate better code.  Why that is will be
+explained later in this section.
+
+A further note: in the general case, it is an error to declare aliases and
+not use them in a code body.  This pattern is an exception, so long as the
+twinned aliases are the only captures in the rule.  In other words, this
+is just fine:
+
+    foo(A) ::= bar(A).
+
+When `foo` and `bar` have the same declared [`%type`](#token_type).
+
+A similar optimization can sometimes be applied when the types differ,
+but Zitron can't determine that it's safe to do so on its own.  Lemon,
+and therefore Zitron, looks for a magic comment in user code.  The magic
+looks like this:
 
     // A-overwrites-Z
 
 Just like that, one space, no trailing whitespace. `A` is a
 left-hand-side alias, and `Z` is a right-hand-side one, specifically
 it must be the first value (not _aliased_ value, just _value_, period).
+It is illegal to refer to `Z` after such a comment.
 
 Why though?  Good question!  These are reduce actions, so named because
 the stack reduces in size.  When you see a rule like:
@@ -781,7 +830,19 @@ find some of the examples to be helpful in this regard.  I am handing
 you a blade, without a hilt, please grasp it from the flat sides.  Thank
 you.
 
-#### 4.2.1 Writing Leak-free Action Code
+##### 4.2.1.3 The {NEVER-REDUCE} Magic Token
+
+Where a codeblock is expected, it is possible to, instead, write _exactly_
+this: `{NEVER-REDUCE}`.  This is your promise to the parser generator that
+the rule will never reduce.  It will insert an assertion to this effect.
+
+Why does this exist?  To what purpose should we put it?  I am not the
+person to ask.  If you find yourself thinking "gee, I'd really like an
+assertion which will trigger if this rule reduces, because I'm certain
+it shouldn't", a) this is how you do that and b) let me know.  I would
+like to understand.
+
+#### 4.2.2 Writing Leak-free Action Code
 
 One key difference between the C code which Lemon generates, and the Zig
 code which Zitron generates: grammar action rules in Zitron are allowed
@@ -830,7 +891,7 @@ to clean it up, just like `a_thing` above.
 
 Your author believes that while this is relatively straightforward,
 it was well worth making a section to discuss, nonetheless.  Debugging
-generated code is a special kind of hell, one best avoided.
+generated code is a special kind of pain, one best avoided.
 
 Also worth noting: the function in which the action code takes place
 will clean up the parser stack only in relation to the rule which

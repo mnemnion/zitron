@@ -1556,13 +1556,11 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                                 .{rp.rhs.len - j},
                             );
                         } else {
+                            // dontUseRhs0 has already been eliminated.
                             const dtnum = if (rhs.type == .multiterminal)
                                 rhs.subsym[0].dtnum
                             else
                                 rhs.dtnum;
-                            if (dontUseRhs0) {
-                                std.debug.print("hmmmm.... {s}\n", .{cp[i..id]});
-                            }
                             try writer.print(
                                 "(yymsp - {d})[1].minor.yy{d}",
                                 .{ rp.rhs.len - j, dtnum },
@@ -1756,11 +1754,11 @@ fn print_stack_union(
     // scan every symbol and count it to determine it.  Which in the original
     // also demands a scan of the string itself to count that length.
 
-    //  Build a hash table of datatypes. The ".dtnum" field of each symbol
-    //  is filled in with the hash index plus 1.  A ".dtnum" value of 0 is
-    //  used for terminal symbols.  If there is no %default_type defined then
-    //  0 is also used as the .dtnum value for nonterminals which do not specify
-    //  a datatype using the %type directive.
+    // Build a hash table of datatypes. The ".dtnum" field of each symbol
+    // is filled in with the hash index plus 1.  A ".dtnum" value of 0 is
+    // used for terminal symbols.  If there is no %default_type defined then
+    // 0 is also used as the .dtnum value for nonterminals which do not specify
+    // a datatype using the %type directive.
     hash: for (zyt.symbols[0..zyt.nsymbol]) |sp| {
         if (sp == zyt.errsym) {
             sp.dtnum = arraysize + 1;
@@ -1795,6 +1793,11 @@ fn print_stack_union(
         }
     }
     var lineno = plineno.*;
+    // TODO: This is the spot, every symbol has a 'dtnum' and we have the
+    // map from dtnums to normalized type names.  Instead of "yy80085", we
+    // can do .@"Typename" in perfect generality, result, much easier-to-read
+    // parser code.
+    //
     // zig fmt: off
     const t_name = if (zyt.tokentype.len > 0) zyt.tokentype else "void";
     try out.print("const YY_TOKEN_TYPE = {s};\n", .{ t_name }); lineno += 1;
@@ -1805,6 +1808,7 @@ fn print_stack_union(
     t_print: for (types, 0..) |variant, i| {
         if (variant.len == 0) continue :t_print;
         try out.print("        yy{d}: {s},\n", .{ i + 1, variant }); lineno += 1;
+        // try out.print("     // @\"{s}\": {s}, \n", .{variant, variant}); lineno += 1;
     }
     if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
         try out.print("        yy{d}: usize,\n", .{errsym.dtnum}); lineno += 1;
@@ -1815,7 +1819,7 @@ fn print_stack_union(
     plineno.* = lineno;
 }
 
-// Return the name of a C datatype able to represent values between
+// Return the name of a Zig datatype able to represent values between
 // lwr and upr, inclusive.  If pnByte!=NULL then also write the sizeof
 // for that type (1, 2, or 4) into *pnByte.  If "loose" we always make
 // sure there's room for one more (else branches on switches)
@@ -1823,9 +1827,8 @@ fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8, loose: bool) []const u8 {
     var zType: []const u8 = "";
     var nByte: ?u8 = null;
     const minus: usize = if (loose) 2 else 1;
-    // TODO: the shifts and then magic numbers here are ugly
-    // (my fault, the original uses the magic excluslively),
-    // come back and use std.math here.
+    // TODO: It would be more elegant to use the minimum power-of-two
+    // to represent these.
     if (lwr >= 0) {
         if (upr <= (1 << 8) - minus) {
             zType = "u8";
@@ -1853,7 +1856,7 @@ fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8, loose: bool) []const u8 {
     return zType;
 }
 
-/// Each state contains a set of token transaction and a set of
+/// Each state contains a set of token transactions and a set of
 /// nonterminal transactions.  Each of these sets makes an instance
 /// of the following structure.  An array of these structures is used
 /// to order the creation of entries in the yy_action[] table.
@@ -2036,19 +2039,17 @@ fn reportTableImpl(
     in_template: [:0]const u8,
     out: anytype,
 ) !void {
-    // defer zyt.allocator.free(in);
-    // var in = in_template;
     var lineno: usize = 1;
     if (zyt.arg.len > 0) {
-        var arg = mem.trim(u8, zyt.arg, C_SPACE);
-        const i = std.mem.indexOfScalar(u8, zyt.arg, ':') orelse 0;
+        const arg_trimmed = mem.trim(u8, zyt.arg, C_SPACE);
+        const i = std.mem.indexOfScalar(u8, arg_trimmed, ':') orelse 0;
         if (i == 0) {
             std.debug.print(
                 "Warning: %extra_argument should look like `arg: Type`, not `{s}`\n",
                 .{zyt.arg},
             );
         }
-        arg = arg[0..i];
+        const arg = arg_trimmed[0..i];
         const allocator = zyt.allocator;
         {
             const arg_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.arg});
@@ -2085,15 +2086,15 @@ fn reportTableImpl(
         }
     }
     if (zyt.ctx.len > 0) {
-        var ctx = mem.trim(u8, zyt.ctx, C_SPACE);
-        const i = std.mem.indexOfScalar(u8, zyt.ctx, ':') orelse 0;
+        const ctx_trimmed = mem.trim(u8, zyt.ctx, C_SPACE);
+        const i = std.mem.indexOfScalar(u8, ctx_trimmed, ':') orelse 0;
         if (i == 0) {
             std.debug.print(
                 "Warning: %extra_context should look like `arg: Type`, not `{s}`\n",
                 .{zyt.ctx},
             );
         }
-        ctx = ctx[0..i];
+        const ctx = ctx_trimmed[0..i];
         const allocator = zyt.allocator;
         {
             const ctx_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.ctx});
@@ -2358,7 +2359,6 @@ fn reportTableImpl(
     try out.writeAll("// zig fmt: off\n");
     lineno += 1;
     try tplt_xfer(zyt.name, &in, out, &lineno);
-    // TODO: something other than mhflag obviously
     if (zyt.opt.enum_file) {
         const t_name = zyt.defines.get("🍋TOKEN_ENUM").?;
         try out.print(
@@ -2450,7 +2450,7 @@ fn reportTableImpl(
     }
     // zig fmt: on
     {
-        // Minimum and maximum token values that have a destructor
+        // Minimum and maximum rule values which have a destructor
         var min: usize = 0;
         var max: usize = 0;
         for (0..zyt.nsymbol) |i| {
@@ -3340,7 +3340,10 @@ const ActTable = struct {
         tab.nLookahead += 1;
     }
 
+    /// NOTE: Used only in (obsolete) internal debug-reporting code.
+    /// should be removed when the rest of that is.
     threadlocal var a_ct: usize = 0;
+
     // [683]
     /// Add the transaction set built up with prior calls to acttab_action()
     /// into the current action table.  Then reset the transaction set back
