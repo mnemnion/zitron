@@ -3559,6 +3559,7 @@ fn resolve_conflict(apx: *Action, apy: *Action) u32 {
         const maybe_spy = apy.x.rp.?.precsym;
         if (maybe_spy == null) {
             // Not enough precedence information
+            apy.type = .srconflict;
             errcnt += 1; // And we can bail early
             return errcnt;
         } // So we can do this:

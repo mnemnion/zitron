@@ -1820,7 +1820,7 @@ fn print_stack_union(
 }
 
 // Return the name of a Zig datatype able to represent values between
-// lwr and upr, inclusive.  If pnByte!=NULL then also write the sizeof
+// lwr and upr, inclusive.  If pnByte != null then also write the sizeof
 // for that type (1, 2, or 4) into *pnByte.  If "loose" we always make
 // sure there's room for one more (else branches on switches)
 fn minimum_size_type(lwr: i64, upr: u32, pNbyte: ?*u8, loose: bool) []const u8 {
@@ -3983,6 +3983,7 @@ fn resolve_conflict(apx: *Action, apy: *Action) u32 {
         const maybe_spy = apy.x.rp.?.precsym;
         if (maybe_spy == null) {
             // Not enough precedence information
+            apy.type = .srconflict;
             errcnt += 1; // And we can bail early
             return errcnt;
         } // So we can do this:
