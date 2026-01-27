@@ -3192,7 +3192,7 @@ fn FindStates(lemp: *Lemon) !void {
     while (rp) |rule| : (rp = rule.next) {
         for (rule.rhs) |rhs| {
             if (rhs == sp) {
-                ErrorMsg(lemp.filename, 0, "" ++
+                ErrorMsg(lemp.filename, rule.line, "" ++
                     "The start symbol \"{s}\" occurs on the " ++
                     "right-hand side of a rule. This will result in a parser which " ++
                     "does not work properly.", .{sp.name});

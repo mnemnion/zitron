@@ -53,7 +53,6 @@ const dprint = std.debug.print;
 
 //| NOTE: these should become build flags
 
-const lemon_classic = true;
 const do_not_optimize_terminals = true;
 const print_aliases = false;
 const print_code = false;
@@ -222,19 +221,24 @@ const Symbol = struct {
     /// Code which executes whenever this symbol is
     /// popped from the stack during error processing
     destructor: []u8,
-    /// Line number for start of destructor.  Set to
-    /// -1 for duplicate destructors.
-    /// For Zig: this is `0` if a line has not been
-    /// set, positive if it has, and `null` to deduplicate
-    /// destructors.
+    /// Line number for start of destructor.  This is
+    /// `0` if a line has not been set, positive if it
+    /// has, and `null` to deduplicate destructors.
     destLineno: ?u32,
     /// The data type of information held by this
     /// object. Only used if type==NONTERMINAL
     datatype: []u8,
-    /// The data type number.  In the parser, the value
-    /// stack is a union.  The .yy%d element of this
-    /// union is the correct data type for this object.
-    dtnum: u32, // This is a hash of the data type string name
+    /// The data type tag.  In the parser, the value
+    /// stack is a union.  This string is used in `.@"{s}"`
+    /// form to access the correct datatype.  Will have the
+    /// same contents (modulo whitespace) as `datatype` when
+    /// the latter isn't "".
+    dttag: []const u8,
+    /// The data type number.  A hash of `dttag`, this was
+    /// originally used to generate the field access, and is
+    /// retained for easy type-comparison.  For tokens, this
+    /// is 0, rather than the hash of %token_type.
+    dtnum: u32,
     /// True if this symbol ever carries content - if
     /// it is ever more than just syntax
     bContent: bool,
@@ -256,12 +260,15 @@ const Symbol = struct {
         .destructor = undefined,
         .destLineno = 0,
         .datatype = undefined,
+        .dttag = "",
         .dtnum = 0,
         .bContent = false,
         .subsym = undefined,
     };
 
-    // Valid, if dodgy, mutable Symbol pointer target:
+    // Valid, if dodgy, mutable Symbol pointer target,
+    // used to initialize ParserState to a non-undefined
+    // value.
     pub var start: Symbol = start: {
         var starter: Symbol = .empty;
         starter.name = "!!!Invalid";
@@ -291,6 +298,8 @@ const Symbol = struct {
     }
 
     pub fn destroy(sp: *Symbol, allocator: Allocator) void {
+        // The []const u8 fields are interned or static,
+        // thus handled elsewhere.
         allocator.free(sp.firstset);
         allocator.free(sp.destructor);
         allocator.free(sp.datatype);
@@ -601,7 +610,7 @@ const State = struct {
     /// yy_action[] offset for nonterminals
     iNtOfst: int,
     /// Default action is to REDUCE by this rule
-    iDfltReduce: int, // Another ?u32 I think
+    iDfltReduce: int,
     /// The default REDUCE rule.
     pDefltReduce: ?*Rule,
     /// True if this is an auto-reduce state
@@ -1431,7 +1440,16 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
         if (rp.lhs.dtnum != rp.rhs[0].dtnum) {
             ErrorMsg(zyt.filename, rp.ruleline, "" ++
                 "{s}({s}) and {s}({s}) share the same label but have " ++
-                "different datatypes.", .{ rp.lhs.name, rp.lhsalias, rp.rhs[0].name, rp.rhsalias[0] });
+                "different datatypes: {s}: {s}, {s}: {s}", .{
+                rp.lhs.name,
+                rp.lhsalias,
+                rp.rhs[0].name,
+                rp.rhsalias[0],
+                rp.lhs.name,
+                rp.lhs.dttag,
+                rp.rhs[0].name,
+                rp.rhs[0].dttag,
+            });
             zyt.errorcnt += 1;
         }
     } else {
@@ -1746,14 +1764,6 @@ fn print_stack_union(
     const types = try zyt.allocator.alloc([]const u8, arraysize);
     defer zyt.allocator.free(types);
     @memset(types, "");
-    // We don't need stddt, it's just a holding cell for a null-terminated
-    // whitespace-trimmed string.  We can just borrow all that.  We reuse
-    // the name for clarity.
-    //
-    // This means there's no use for maxdtlength either, and no reason to
-    // scan every symbol and count it to determine it.  Which in the original
-    // also demands a scan of the string itself to count that length.
-
     // Build a hash table of datatypes. The ".dtnum" field of each symbol
     // is filled in with the hash index plus 1.  A ".dtnum" value of 0 is
     // used for terminal symbols.  If there is no %default_type defined then
@@ -1793,13 +1803,18 @@ fn print_stack_union(
         }
     }
     var lineno = plineno.*;
-    // TODO: This is the spot, every symbol has a 'dtnum' and we have the
-    // map from dtnums to normalized type names.  Instead of "yy80085", we
-    // can do .@"Typename" in perfect generality, result, much easier-to-read
-    // parser code.
-    //
+    // Decorate all symbols with the appropriate .dttag
+    const t_name = if (zyt.tokentype.len > 0) mem.trim(u8, zyt.tokentype, C_SPACE) else "void";
+    for (zyt.symbols[0..zyt.nsymbol]) |sp| {
+        if (sp.dtnum == 0) {
+            sp.dttag = t_name;
+        } else {
+            sp.dttag = types[sp.dtnum - 1];
+        }
+        // XXX: remove
+        try out.print("// {s} will be .@\"{s}\"\n", .{ sp.name, sp.dttag });
+    }
     // zig fmt: off
-    const t_name = if (zyt.tokentype.len > 0) zyt.tokentype else "void";
     try out.print("const YY_TOKEN_TYPE = {s};\n", .{ t_name }); lineno += 1;
     try out.writeAll("pub const YYMINORTYPE = minor: {\n"); lineno += 1;
     try out.writeAll("    @setRuntimeSafety(false);\n"); lineno += 1;
@@ -1808,7 +1823,7 @@ fn print_stack_union(
     t_print: for (types, 0..) |variant, i| {
         if (variant.len == 0) continue :t_print;
         try out.print("        yy{d}: {s},\n", .{ i + 1, variant }); lineno += 1;
-        // try out.print("     // @\"{s}\": {s}, \n", .{variant, variant}); lineno += 1;
+        try out.print("     // @\"{s}\": {s}, \n", .{variant, variant}); lineno += 1;
     }
     if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
         try out.print("        yy{d}: usize,\n", .{errsym.dtnum}); lineno += 1;
@@ -2010,6 +2025,15 @@ fn ReportTable(
 
     const free_buffer, const in = try tplt_open(zyt);
     defer if (free_buffer) zyt.allocator.free(in);
+    const m_out_fh = try file_open(zyt, ".zig", true, .{});
+    if (m_out_fh) |fh| {
+        defer fh.close();
+        var out_buffer: [4096]u8 = undefined;
+        var f_writer = fh.writer(&out_buffer);
+        const out = &f_writer.interface;
+        try reportTableImpl(zyt, in, out);
+        try out.flush();
+    } else {} // No file handle
     if (zyt.opt.sql_flag) {
         const m_sql_fh = try file_open(zyt, ".sql", false, .{});
         if (m_sql_fh) |fh| {
@@ -2019,18 +2043,7 @@ fn ReportTable(
             const out = &f_writer.interface;
             try ReportSql(zyt, out);
             try out.flush();
-        } else return; // No file handle
-    }
-    const m_out_fh = try file_open(zyt, ".zig", true, .{});
-    if (m_out_fh) |fh| {
-        defer fh.close();
-        var out_buffer: [4096]u8 = undefined;
-        var f_writer = fh.writer(&out_buffer);
-        const out = &f_writer.interface;
-        try reportTableImpl(zyt, in, out);
-        try out.flush();
-    } else {
-        return; // No file handle
+        } else {} // No file handle
     }
 }
 
@@ -2040,6 +2053,11 @@ fn reportTableImpl(
     out: anytype,
 ) !void {
     var lineno: usize = 1;
+    // Macros
+    //
+    // Zitron looks for 🍋 followed by a predictable identifier-like pattern,
+    // then looks that string up in `zyt.defines`.  Results are used as
+    // replacements, undefined values are simply removed.
     if (zyt.arg.len > 0) {
         const arg_trimmed = mem.trim(u8, zyt.arg, C_SPACE);
         const i = std.mem.indexOfScalar(u8, arg_trimmed, ':') orelse 0;
@@ -2052,12 +2070,12 @@ fn reportTableImpl(
         const arg = arg_trimmed[0..i];
         const allocator = zyt.allocator;
         {
-            const arg_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.arg});
+            const arg_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{arg_trimmed});
             errdefer allocator.free(arg_sdecl);
             try zyt.defines.put(allocator, "🍋ARG_SDECL", arg_sdecl);
         }
         {
-            const arg_pdecl = try std.fmt.allocPrint(allocator, ", {s}", .{zyt.arg});
+            const arg_pdecl = try std.fmt.allocPrint(allocator, ", {s}", .{arg_trimmed});
             errdefer allocator.free(arg_pdecl);
             try zyt.defines.put(allocator, "🍋ARG_PDECL", arg_pdecl);
         }
@@ -2097,12 +2115,12 @@ fn reportTableImpl(
         const ctx = ctx_trimmed[0..i];
         const allocator = zyt.allocator;
         {
-            const ctx_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{zyt.ctx});
+            const ctx_sdecl = try std.fmt.allocPrint(allocator, "{s},", .{ctx_trimmed});
             errdefer allocator.free(ctx_sdecl);
             try zyt.defines.put(allocator, "🍋CTX_SDECL", ctx_sdecl);
         }
         {
-            const ctx_pdecl = try std.fmt.allocPrint(allocator, ", {s}", .{zyt.ctx});
+            const ctx_pdecl = try std.fmt.allocPrint(allocator, ", {s}", .{ctx_trimmed});
             errdefer allocator.free(ctx_pdecl);
             try zyt.defines.put(allocator, "🍋CTX_PDECL", ctx_pdecl);
         }
@@ -3616,19 +3634,18 @@ fn FindStates(zyt: *Zitron) !void {
     while (rp) |rule| : (rp = rule.next) {
         for (rule.rhs) |rhs| {
             if (rhs == sp) {
-                ErrorMsg(zyt.filename, 0, "" ++
+                ErrorMsg(zyt.filename, rule.line, "" ++
                     "The start symbol \"{s}\" occurs on the " ++
                     "right-hand side of a rule. This will result in a parser which " ++
                     "does not work properly.", .{sp.name});
                 zyt.errorcnt += 1;
             }
-            //| NOTE: the previous comparison says FIX ME:  Deal with multiterminals.
-            //| I think this is the fix, but we leave it out of lemon classic because
-            //| I aim to be mostly bug-compatible.  It's not actually clear this condition
-            //| can be triggered in any case.
-            if (!lemon_classic) if (rhs.type == .multiterminal) {
+            //| NOTE: the previous comparison says FIX ME:  Deal with
+            //| multiterminals.  I think this is the fix, it's not actually
+            //| clear this condition can be triggered in any case.
+            if (rhs.type == .multiterminal) {
                 // Token class: could have the same name.
-                if (mem.eql(rhs.name, sp.name)) {
+                if (mem.eql(u8, rhs.name, sp.name)) {
                     ErrorMsg(zyt.filename, 0, "" ++
                         "The start symbol has a synonym declared as a token class. This will " ++
                         "result in a parser which does not work properly.", .{});
@@ -3642,7 +3659,7 @@ fn FindStates(zyt: *Zitron) !void {
                         zyt.errorcnt += 1;
                     }
                 }
-            };
+            }
         }
     }
     // The basis configuration set for the first state
@@ -3661,6 +3678,7 @@ fn FindStates(zyt: *Zitron) !void {
     _ = try getstate(zyt);
 }
 
+/// Used only in reporting via p_check1
 threadlocal var state_count: usize = 0;
 
 // [967]
@@ -3737,8 +3755,9 @@ fn getstate(zyt: *Zitron) Allocator.Error!*State {
 }
 
 ///
-/// Return true if two symbols are the same.
-///
+/// Return true if two symbols are the same.  Normally this is
+/// a matter of pointer comparison, multiterminals are the
+/// exception.
 fn same_symbol(a: *const Symbol, b: *const Symbol) bool {
     if (a == b) return true;
     if (a.type != .multiterminal) return false;
@@ -3764,7 +3783,7 @@ fn buildshifts(zyt: *Zitron, stp: *State) !void {
         cfp.status = .incomplete;
     }
     maybe_cfp = stp.cfp;
-    //   /* Loop through all configurations of the state "stp".
+    // Loop through all configurations of the state "stp".
     while (maybe_cfp) |cfp| : (maybe_cfp = cfp.next) {
         if (p_debug) dprint("outer config {s}: {s} dot ({d}) nrhs {d} len {d} ", .{
             cfp.rp.lhs.name,
@@ -5827,7 +5846,6 @@ fn ResortStates(zyt: *Zitron) void {
         }
         stp.nTknAct = 0;
         stp.nNtAct = 0;
-        // TODO: probably a null here yeah
         stp.iDfltReduce = -1; //  Init dflt action to "syntax error"
         stp.iTknOfst = NO_OFFSET;
         stp.iNtOfst = NO_OFFSET;
