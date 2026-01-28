@@ -1177,7 +1177,7 @@ type during creation.  If that isn't suitable, you're free to attach a different
 one to an [`%extra_argument`](#extraarg) or [`%extra_context`](#extractx).
 
 Destructor code is not allowed to throw: resource deallocation must
-succed.
+succeed.
 
 
 #### 4.4.3 The `%default_type` directive <a id="default_type">
@@ -1215,7 +1215,7 @@ Consider an example:
        nt(A) ::= ID NUM(N).   { A = try allocator.alloc(u8, N.val.?); }
 
 This example is a bit contrived, but it serves to illustrate how
-destructors work. The example shows a non-terminal named `nt` that
+destructors work.  The example shows a non-terminal named `nt` that
 holds values of type `[]u8`.  We're making the further assumption that
 the token type (see [%token-type](#token_type)) has a `?usize` field
 called `val`, which the tokenizer helpfully fills with the indicated
@@ -1226,13 +1226,13 @@ call `allocator.free` on this allocated space, thus avoiding a memory
 leak. (Note that the symbol `$$` in the destructor code is replaced by
 the value of the non-terminal.)
 
-It is important to note that the value of a non-terminal is passed to
-the destructor whenever the non-terminal is removed from the stack,
-unless the non-terminal is used in a Zig code action.  If the non-terminal
-is used by Zig code, then it is assumed that the Zig code will take care of
-destroying it.  More commonly, the value is used to build some larger
-structure, and we don't want to destroy it, which is why the destructor
-is not called in this circumstance.
+It is important to note that the value of a non-terminal is passed
+to the destructor whenever the non-terminal is removed from the
+stack, unless the non-terminal is used in a Zig code action.  If the
+non-terminal is used by Zig code, then it is assumed that the Zig code
+will take care of destroying it.  More commonly, the value is used to
+build some larger structure, and we don't want to destroy it, which is
+why the destructor is not called in this circumstance.
 
 Destructors help avoid memory leaks by automatically freeing allocated
 objects when they go out of scope.  To do the same using yacc or bison is
@@ -1282,18 +1282,19 @@ in on the `Parse.init` or `Parse.create` functions, instead of on
 
 #### 4.4.6 The `%extra_context` directive <a id="extractx">
 
-The `%extra_context` directive instructs Zitron to add an additional parameter to
-the parameter list of the `Parse.init` and `Parse.create` functions.  Zitron
-doesn't do anything itself with this extra argument, but it does store
-the value and makes it available to Zig code action routines, destructors, and
-so forth. For example, if the grammar file contains:
+The `%extra_context` directive instructs Zitron to add an additional
+parameter to the parameter list of the `Parse.init` and `Parse.create`
+functions.  Zitron doesn't do anything itself with this extra argument,
+but it does store the value and makes it available to Zig code action
+routines, destructors, and so forth.  For example, if the grammar file
+contains:
 
     %extra_context{ p_abc: *MyStruct }
 
 Then the `Parse.init` and `Parse.create` functions will have a third
-(for `init`) and second (for `create`) parameter of type `*MyStruct`, after
-the allocator, and all action routines will have access to a variable
-named `p_abc` that is the value of that parameter.
+(for `init`) and second (for `create`) parameter of type `*MyStruct`,
+after the allocator, and all action routines will have access to a
+variable named `p_abc` that is the value of that parameter.
 
 The `%extra_argument` directive works the same, except that it is
 passed in on the `parser.parse` routine, instead of on `Parse.init` and
@@ -1454,6 +1455,14 @@ in which identifiers are added to a container.  So the existence of
 separate `%include` and `%code` directives is not as critical.  It does
 seem to make grammar files easier to read, however, and there was no
 advantage to be had in removing one of them, so there we have it.
+
+The (first) `%include` block may begin with a top-level doc comment
+`//!`, in which case this will replace the default comment in the
+template.  For obvious reasons a `%code` block should not have such
+a comment.  Note that a 'doc comment' at the top of the source file
+itself, while perfectly legal, will not be detected nor included; it
+must be within the `%include`.  For Zig reasons, it must also be the
+first contents of the first `%include` block.
 
 For best future compatibility with some contemplated features, it's
 best to arrange things so that the parser will compile given only
