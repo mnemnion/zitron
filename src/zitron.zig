@@ -124,8 +124,12 @@ inline fn sint(i: anytype) @Type(.{ .int = .{
 
 const int = i32;
 
-// Set low to exercise exception code
-const MAXRHS = if (builtin.is_test) 5 else 1000;
+// Originally this was:
+// const MAXRHS = if (builtin.is_test) 5 else 1000;
+// which strikes me as too low and is definitely too high.
+// So now we do:
+const MAXRHS = 128;
+// So that the `i8` in the template for `yyRuleInfoNRhs` cashes out.
 
 // Rules of thumb: Capitalize types, convert truthy ints to bool,
 // and otherwise stick to the original types and names insofar as
@@ -1341,7 +1345,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, zyt: *Zitron, lineno: *usize)
     lineno.* += mem.count(u8, cp, "\n");
     while (mem.indexOfPos(u8, cp, cursor, "$$")) |i| {
         try out.writeAll(cp[cursor..i]);
-        try out.print("(yypminor.yy{d})", .{sp.dtnum});
+        try out.print("(yypminor.@\"{s}\")", .{sp.dttag});
         cursor = i + 2;
     }
     try out.writeAll(cp[cursor..]);
@@ -1467,16 +1471,16 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
         }
     }
     if (lhsdirect) {
-        zLhs = std.fmt.bufPrint(&zLhsBuf, "(yymsp - {d})[1].minor.yy{d}", .{
+        zLhs = std.fmt.bufPrint(&zLhsBuf, "(yymsp - {d})[1].minor.@\"{s}\"", .{
             rp.rhs.len,
-            rp.lhs.dtnum,
+            rp.lhs.dttag,
         }) catch unreachable;
     } else {
         rc = true;
         zLhs = std.fmt.bufPrint(
             &zLhsBuf,
-            "yylhsminor.yy{d}",
-            .{rp.lhs.dtnum},
+            "yylhsminor.@\"{s}\"",
+            .{rp.lhs.dttag},
         ) catch unreachable;
     }
     string_builder.clearRetainingCapacity();
@@ -1575,13 +1579,13 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                             );
                         } else {
                             // dontUseRhs0 has already been eliminated.
-                            const dtnum = if (rhs.type == .multiterminal)
-                                rhs.subsym[0].dtnum
+                            const dttag = if (rhs.type == .multiterminal)
+                                rhs.subsym[0].dttag
                             else
-                                rhs.dtnum;
+                                rhs.dttag;
                             try writer.print(
-                                "(yymsp - {d})[1].minor.yy{d}",
-                                .{ rp.rhs.len - j, dtnum },
+                                "(yymsp - {d})[1].minor.@\"{s}\"",
+                                .{ rp.rhs.len - j, dttag },
                             );
                         }
                         used[j].used = true;
@@ -1662,7 +1666,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     // If unable to write LHS values directly into the stack, write the
     // saved LHS value now.
     if (!lhsdirect) {
-        try writer.print("(yymsp - {d})[1].minor.yy{d} = ", .{ rp.rhs.len, rp.lhs.dtnum });
+        try writer.print("(yymsp - {d})[1].minor.@\"{s}\" = ", .{ rp.rhs.len, rp.lhs.dttag });
         try writer.print("{s};", .{zLhs});
     }
     // Suffix code generation complete
@@ -1811,22 +1815,21 @@ fn print_stack_union(
         } else {
             sp.dttag = types[sp.dtnum - 1];
         }
-        // XXX: remove
-        try out.print("// {s} will be .@\"{s}\"\n", .{ sp.name, sp.dttag });
     }
     // zig fmt: off
     try out.print("const YY_TOKEN_TYPE = {s};\n", .{ t_name }); lineno += 1;
     try out.writeAll("pub const YYMINORTYPE = minor: {\n"); lineno += 1;
     try out.writeAll("    @setRuntimeSafety(false);\n"); lineno += 1;
     try out.writeAll("    break :minor union {\n"); lineno += 1;
-    try out.writeAll("        yy0: YY_TOKEN_TYPE,\n"); lineno += 1;
+    try out.print("        @\"{s}\": YY_TOKEN_TYPE,\n", .{t_name}); lineno += 1;
     t_print: for (types, 0..) |variant, i| {
+        _ = i;
         if (variant.len == 0) continue :t_print;
-        try out.print("        yy{d}: {s},\n", .{ i + 1, variant }); lineno += 1;
-        try out.print("     // @\"{s}\": {s}, \n", .{variant, variant}); lineno += 1;
+        // try out.print("      // yy{d}: {s},\n", .{ i + 1, variant }); lineno += 1;
+        try out.print("        @\"{s}\": {s}, \n", .{variant, variant}); lineno += 1;
     }
     if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
-        try out.print("        yy{d}: usize,\n", .{errsym.dtnum}); lineno += 1;
+        try out.print("        @\"{s}\": usize,\n", .{errsym.dttag}); lineno += 1;
     };
     try out.writeAll("    };\n};\n");
     // zig fmt: on
@@ -2154,6 +2157,11 @@ fn reportTableImpl(
             try zyt.defines.put(allocator, "🍋CTX_GUARD", ctx_guard);
         }
     }
+    {
+        const t_name = if (zyt.tokentype.len > 0) mem.trim(u8, zyt.tokentype, C_SPACE) else "void";
+        const tok_field = try std.fmt.allocPrint(zyt.allocator, "@\"{s}\"", .{t_name});
+        try zyt.defines.put(zyt.allocator, "🍋TOKEN_FIELD", tok_field);
+    }
     if (zyt.token_enum.len > 0) {
         try zyt.defines.put(zyt.allocator, "🍋TOKEN_ENUM", try zyt.allocator.dupe(u8, zyt.token_enum));
     } else {
@@ -2413,7 +2421,7 @@ fn reportTableImpl(
     if (zyt.errsym) |errsym| if (errsym.useCnt > 0) {
         try out.writeAll("const YYHAS_ERRORSYMBOL = true;\n"); lineno += 1;
         try out.print("const YYERRORSYMBOL = {d};\n", .{errsym.index}); lineno += 1;
-        try out.print("const YYERRSYMDT = @FieldType(YYMINORTYPE, \"yy{d}\");\n", .{errsym.dtnum}); lineno += 1;
+        try out.print("const YYERRSYMDT = @FieldType(YYMINORTYPE, \"{s}\");\n", .{errsym.dttag}); lineno += 1;
     } else {} else {
         try out.writeAll("const YYHAS_ERRORSYMBOL = false;\n"); lineno += 1;
     }
@@ -2904,9 +2912,8 @@ fn reportTableImpl(
         while (m_rp) |rp| : (m_rp = rp.next) {
             if (rp.codeEmitted) continue;
             dbgassert(rp.noCode);
-            // try out.print("      // ({d}) ", .{rp.iRule});
             if (rp.neverReduce) {
-                try out.print("         yy_assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
+                try out.print("            yy_assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
                 try writeRuleText(out, rp);
                 try out.writeAll(" (NEVER REDUCES)\n");
                 lineno += 1;
@@ -2916,7 +2923,7 @@ fn reportTableImpl(
                 try out.writeByte('\n');
                 lineno += 1;
             } else {
-                try out.print("         yy_assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
+                try out.print("            yy_assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
                 try writeRuleText(out, rp);
                 try out.writeAll(" (OPTIMIZED OUT) \n");
                 lineno += 1;
@@ -4955,6 +4962,8 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         },
         .rhs_alias_1 => {
             if (isAlpha(x[0])) {
+                // MAXRHS note: the resync skips all these if that value is
+                // exceeded.
                 psp.alias[psp.nrhs - 1] = x;
                 psp.state = .rhs_alias_2;
             } else {
@@ -4983,7 +4992,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     var min_lev: usize = min_idx;
                     // Let's see if we can infer what was meant and give a nice suggestion.
                     for (directive_list, 0..) |d_entry, i| {
-                        const lev = levenshtein(psp.gp.allocator, x, d_entry.@"0") catch std.math.maxInt(usize);
+                        const lev = levenshtein(x, d_entry.@"0") catch std.math.maxInt(usize);
                         if (lev < min_lev) {
                             min_idx = i;
                             min_lev = lev;
@@ -4991,7 +5000,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     }
                     // The ifdefs look like directives but don't switch like them, so we look at those too:
                     for (pp_list, directive_list.len..) |p_entry, i| {
-                        const lev = levenshtein(psp.gp.allocator, x, p_entry) catch std.math.maxInt(usize);
+                        const lev = levenshtein(x, p_entry) catch std.math.maxInt(usize);
                         if (lev < min_lev) {
                             min_idx = i;
                             min_lev = lev;
@@ -5504,6 +5513,14 @@ const directive_list = [_]struct { []const u8, Declaration }{
     .{ "token_class", .token_class },
 };
 
+const max_cols: usize = maxcol: {
+    var max: usize = 0;
+    for (directive_list) |d| {
+        max = @max(max, d[0].len);
+    }
+    break :maxcol @max(max + 1, max_opt);
+};
+
 const declarations = std.StaticStringMap(Declaration).initComptime(directive_list);
 
 /// Lemon puts the scanner loop in `Parse`, I prefer it separate.
@@ -5645,32 +5662,30 @@ fn scan(ps: *ParserState, fb: [:0]const u8) !void {
 
 //| Nicer error messages
 
-/// Return the Levenshtein edit distance between two slices.  Uses the allocator because
-/// this is for an error message and I'm lazy.
-fn levenshtein(allocator: std.mem.Allocator, a_in: []const u8, b_in: []const u8) !usize {
+/// Return the Levenshtein edit distance between two slices.
+fn levenshtein(a_in: []const u8, b_in: []const u8) !usize {
     var a = a_in;
     var b = b_in;
     if (a.len > b.len) {
         // Ensure a is the shorter side
-        const tmp = a;
-        a = b;
-        b = tmp;
+        b = a_in;
+        a = b_in;
     }
 
     const cols = a.len + 1;
 
-    var prev = try allocator.alloc(usize, cols);
-    defer allocator.free(prev);
-    var curr = try allocator.alloc(usize, cols);
-    defer allocator.free(curr);
+    var p_buf: [max_cols]u16 = undefined;
+    var c_buf: [max_cols]u16 = undefined;
+    var prev = p_buf[0..cols];
+    var curr = c_buf[0..cols];
 
     // Initialize prev row: distance from empty prefix of b to prefixes of a
     // prev[j] = j
-    for (prev, 0..) |*p, j| p.* = j;
+    for (prev, 0..) |*p, j| p.* = @truncate(j);
 
     // DP over rows of b
     for (b, 0..) |bch, i_idx| {
-        const i = i_idx + 1;
+        const i: u16 = @truncate(i_idx + 1);
         curr[0] = i; // distance from first i bytes of b to empty a
 
         // Fill row
@@ -6133,6 +6148,14 @@ const option_list = [_]struct { []const u8, OptionKind }{
 
 const opt_map = std.StaticStringMap(OptionKind).initComptime(option_list);
 
+const max_opt: usize = maxopt: {
+    var max: usize = 0;
+    for (option_list) |o| {
+        max = @max(max, o[0].len);
+    }
+    break :maxopt max + 1;
+};
+
 /// Return the argument of an option which takes one, or a
 /// useful error otherwise.
 fn optionArgument(args: [][:0]u8, n: *usize, i: *usize) ![:0]const u8 {
@@ -6349,7 +6372,7 @@ fn optionsInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !usize {
                     var min_idx: usize = 0;
                     var min_lev: usize = std.math.maxInt(usize);
                     for (option_list, 0..) |o_entry, idx| {
-                        const lev = levenshtein(opt.allocator, args[n][2..], o_entry.@"0") catch std.math.maxInt(usize);
+                        const lev = levenshtein(args[n][2..], o_entry.@"0") catch std.math.maxInt(usize);
                         if (lev < min_lev) {
                             min_idx = idx;
                             min_lev = lev;

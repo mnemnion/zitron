@@ -57,7 +57,7 @@ const NDEBUG = builtin.mode != .Debug;
 //    YYMINORTYPE        is the data type used for all minor types.
 //                       This is typically a union of many types, one of
 //                       which is YY_TOKEN_TYPE.  The entry in the union
-//                       for terminal symbols is called "yy0".
+//                       for terminal symbols is called `🍋TOKEN_FIELD`.
 //    YYSTACKDEPTH       is the maximum depth of the parser's stack.  If
 //                       zero the stack is dynamically sized using realloc()
 //    ParseARG_SDECL     A static variable declaration for the %extra_argument
@@ -280,9 +280,6 @@ pub const 🍋PARSER_NAME = struct {
     pub const parse = yyParse;
 };
 
-// TODO: Add ParseTrace
-
-
 // For tracing shifts, the names of all terminals and nonterminals
 // are required.  The following table supplies these names.
 pub const yyTokenName = [_][:0]const u8{
@@ -364,8 +361,6 @@ fn yy_pop_parser_stack(yypParser: *🍋PARSER_NAME) void {
 }
 
 
-// TODO: deal with this stuff
-//
 ///
 /// Clear all secondary memory allocations from the parser
 ///
@@ -382,6 +377,7 @@ fn yy_parse_reset(yypParser: *🍋PARSER_NAME) void {
     }
 }
 
+// TODO: deal with this stuff
 //
 // /*
 // ** Return the peak depth of the stack for a parser.
@@ -515,8 +511,6 @@ fn yy_find_reduce_action(
 
 /// The following routine is called if the stack overflows.
 fn yyStackOverflow(yypParser: *🍋PARSER_NAME) 🍋PARSER_ERROR!void {
-    // Justify the !
-    if (false) return error.YyImpossibleError;
     🍋ARG_FETCH
     🍋CTX_FETCH
     defer {
@@ -591,7 +585,7 @@ fn yy_shift(
     }
     yytos[0].stateno = yy_new;
     yytos[0].major = yyMajor;
-    yytos[0].minor.yy0 = yyMinor;
+    yytos[0].minor.🍋TOKEN_FIELD = yyMinor;
     yyTraceShift(yypParser, yy_new, "Shift");
 }
 
@@ -628,7 +622,6 @@ fn yy_reduce(
     /// Value of the lookahead token */
     yyLookaheadToken: YY_TOKEN_TYPE
 ) 🍋PARSER_ERROR!YYACTIONTYPE {
-    if (false) return error.YyImpossibleFakeError; // Now user code is throwable
     🍋ARG_FETCH
     🍋CTX_FETCH
     defer {
@@ -683,7 +676,6 @@ fn yy_parse_failed(
     /// The parser
     yypParser: *🍋PARSER_NAME,
 ) 🍋PARSER_ERROR!void {
-    if (false) return error.YyImpossibleFakeError; // Now user code is throwable
     🍋ARG_FETCH
     🍋CTX_FETCH
     defer {
@@ -716,7 +708,6 @@ fn yy_syntax_error(
     /// The minor type of the error token */
     yyminor: YY_TOKEN_TYPE,
 ) 🍋PARSER_ERROR!void {
-    if (false) return error.YyImpossibleFakeError; // Now user code is throwable
     🍋ARG_FETCH
     🍋CTX_FETCH
     defer {
@@ -738,7 +729,6 @@ fn yy_accept(
     /// The parser
     yypParser: *🍋PARSER_NAME,
 ) 🍋PARSER_ERROR!void {
-    if (false) return error.YyImpossibleFakeError; // Now user code is throwable
     🍋ARG_FETCH
     🍋CTX_FETCH
     defer {
@@ -808,7 +798,10 @@ fn yyParse(
     var yyact: YYACTIONTYPE = undefined;   // The parser action.
     var yyendofinput: bool = false;
     var yyerrorhit: bool = false;
-    const yymajor: YYCODETYPE = @intFromEnum(yy_token);
+    // Enum integer type is user-configurable, but Zitron counts everything
+    // and uses that number to determine internal integer widths.  So this
+    // cast cannot fail.
+    const yymajor: YYCODETYPE = @intCast(@intFromEnum(yy_token));
     🍋ARG_STORE
     if (comptime (!YYHAS_ERRORSYMBOL and !YYNOERRORRECOVERY)) {
         yyendofinput = (yymajor==0);
@@ -859,7 +852,7 @@ fn yyParse(
             return;
         } else {
             yy_assert( yyact == YY_ERROR_ACTION );
-            yyminorunion = .{.yy0 = yyminor};
+            yyminorunion = .{.🍋TOKEN_FIELD = yyminor};
             if (comptime !NDEBUG) {
                 🍋TRACE_SYNTAX_ERROR
             }
