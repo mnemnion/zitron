@@ -214,7 +214,7 @@ accomplished by calling the following function once for each token:
        try a_parser.parse(token_enum, token_data [, extra_argument]);
 
 The `token_enum` argument is the name of the token.  For reasons soon
-to be explained, this will be all capital letters[^⁕], which is not at
+to be explained, this will be all capital letters[^1], which is not at
 all the typical Zig style.  It is, by default, of type `TokenKind`,
 although this may be renamed if desired.  The `token_data` argument
 is, by default, of type `void`, but useful parsers will invariably
@@ -288,7 +288,7 @@ parameter.  If you define one, you must provide it to both `parse` and
 and it's normal for the end of input to trigger a final reduction, which
 may have user code which makes use of the argument.
 
-[^⁕]: Structurally a token only needs to begin with a capital letter,
+[^1]: Structurally a token only needs to begin with a capital letter,
 the rest is convention.
 
 #### 3.2.1 Allocating The Parser On Stack <a id="onstack">
@@ -356,7 +356,7 @@ Notes:
 One final observation: Lemon is comfortable to use in a single-file
 fashion, an example being [Pikchr](https://pikchr.org/), which is wholly
 contained in the file `pikchr.y`.  Zig offers a few reasons not to
-do this: for one, it has no equivalent of a `#line` macro[^†], so finding
+do this: for one, it has no equivalent of a `#line` macro[^2], so finding
 code errors while developing would be more exciting.  Also, ZLS is
 not going to help you with a `.zy` file in any manner, adding further
 friction to this style of development.
@@ -368,7 +368,7 @@ the [%include](#pinclude) and [%code](#pcode) directives, just enough to
 give reduce actions access to the namespaces and types which they need
 in order to execute.
 
-[^†]: Zitron has an option to print the line numbers as comments, but this
+[^2]: Zitron has an option to print the line numbers as comments, but this
 is simply not as helpful as a proper `#line` directive.  It was left in
 because there's little motive to remove it, and in the faint hope that it
 might assist someone, at some point.  Potentially a language server could
@@ -983,7 +983,7 @@ For example:
 
 In the preceding sequence of directives, the AND operator is defined to
 have the lowest precedence.  The OR operator is one precedence level
-higher[^¬].  And so forth.  Hence, the grammar would attempt to group the
+higher[^3].  And so forth.  Hence, the grammar would attempt to group the
 ambiguous expression
 
          a AND b OR c
@@ -1074,7 +1074,7 @@ Reduce-reduce conflicts are resolved this way:
 - Otherwise, resolve the conflict by reducing by the rule that appears
   first in the grammar, and report a parsing conflict.
 
-[^¬]: The keen-eyed will note that this precendence is opposite of how
+[^3]: The keen-eyed will note that this precendence is opposite of how
 C (and Zig) do things vis. a vis. and'ing and or'ing.  The example is
 lifted straight from the Lemon manual, so your author cannot speak to
 why this is.  He has regretted that it is as it is on more than one
@@ -1440,7 +1440,7 @@ you try it.
 #### 4.4.9 The `%include` directive <a id="pinclude">
 
 The `%include` directive specifies Zig code that is included at the top of
-the generated parser.  You can include any text you want[^‡] - the Zitron
+the generated parser.  You can include any text you want[^4] - the Zitron
 parser generator copies it blindly.  If you have multiple `%include`
 directives in your grammar file, their values are concatenated so that
 all `%include` code ultimately appears near the top of the generated
@@ -1458,8 +1458,7 @@ advantage to be had in removing one of them, so there we have it.
 
 The (first) `%include` block may begin with a top-level doc comment
 `//!`, in which case this will replace the default comment in the
-template.  For obvious reasons a `%code` block should not have such
-a comment.  Note that a 'doc comment' at the top of the source file
+template.  Note that a 'doc comment' at the top of the source file
 itself, while perfectly legal, will not be detected nor included; it
 must be within the `%include`.  For Zig reasons, it must also be the
 first contents of the first `%include` block.
@@ -1476,7 +1475,7 @@ You will never have to organize things that way, except to take
 advantage of some things Zitron doesn't currently do, in the event that
 it starts to do them.
 
-[^‡]: The minimum amount of structurally-necessary parsing is
+[^4]: The minimum amount of structurally-necessary parsing is
 performed, such that a Zig token such as `"oops! } lol"` does not
 prematurely terminate the code block.  This parser is meant to reliably
 accept valid Zig code, but much which is not valid Zig code can also
@@ -1560,11 +1559,11 @@ this value will be used as the error type instead.
 
 #### 4.4.15 The `%parse_failure` directive <a id="parse_failure">
 
-The `%parse_failure` directive specifies a block of Zig code that is
-executed whenever the parser fails complete. This code is not executed
-until the parser has tried and failed to resolve an input error using is
-usual error recovery strategy. The routine is only invoked when parsing
-is unable to continue.
+The `%parse_failure` directive specifies a block of Zig code that
+is executed whenever the parser fails completely.  This code is not
+executed until the parser has tried and failed to resolve an input error
+using its usual error recovery strategy.  The routine is only invoked
+when parsing is unable to continue.
 
     %parse_failure {
         std.debug.print("Giving up.  Parser is hopelessly lost...\n", .{});
@@ -1577,7 +1576,7 @@ error in some other manner.
 #### 4.4.16 The `%right` directive <a id="pright">
 
 This directive is used to assign right-associative precedence to one or
-more terminal symbols. See the section on [precedence rules](#precrules)
+more terminal symbols.  See the section on [precedence rules](#precrules)
 or on the [%left](#pleft) directive for additional information.
 
 
@@ -1585,7 +1584,7 @@ or on the [%left](#pleft) directive for additional information.
 
 The `%stack_overflow` directive specifies a block of Zig code that is
 executed if the parser's internal stack ever overflows.  Typically this
-just prints an error message. After a stack overflow, the parser will be
+just prints an error message.  After a stack overflow, the parser will be
 unable to continue and must be reset.
 
     %stack_overflow {
@@ -1918,7 +1917,7 @@ at least in concert with examining the generated code.
 
 After extensive experimentation over several years, it has been
 discovered that the error recovery strategy used by yacc is about as
-good as it gets[^⁙].  And so that is what Zitron uses.
+good as it gets[^5].  And so that is what Zitron uses.
 
 When a Zitron-generated parser encounters a syntax error, it first
 invokes the code specified by the `%syntax_error` directive, if any.  It
@@ -1940,7 +1939,7 @@ Note that if you throw from `%syntax_error`, no recovery will
 be attempted, but the stack will not be reset either.  Calling
 `parser.reset|deinit|destroy` will take care of that for you.
 
-[^⁙]: The author of Zitron is [not sure he agrees with this
+[^5]: The author of Zitron is [not sure he agrees with this
 assessment][jefferey].  On a long-term time horizon it would be
 quite nice to integrate that work into Zitron, perhaps with a bit of
 [Tratt][tratt] as well.
