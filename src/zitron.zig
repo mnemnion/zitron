@@ -1404,7 +1404,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     var string_builder: ArrayList(u8) = .empty;
     defer string_builder.deinit(f_alloc);
     const writer = string_builder.writer(f_alloc);
-    const cp = std.mem.trim(u8, rp.code, C_SPACE);
+    const cp = if (zyt.opt.linenos) rp.code else std.mem.trim(u8, rp.code, C_SPACE);
     if (cp.len == 0) {
         rp.code = "\n";
         rp.noCode = true;
@@ -1679,6 +1679,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
 // the code to "out".  Make sure lineno stays up-to-date.
 //
 fn emit_code(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !void {
+    if (zyt.opt.linenos) return emit_code_no_indent(out, rp, zyt, lineno);
     //
     // Generate code to do the reduce action
     try out.writeAll("        => {\n");
@@ -1688,17 +1689,9 @@ fn emit_code(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !void {
         const extra: usize = if (try writeToIndent(out, rp.codePrefix, 12)) 1 else 0;
         lineno.* += mem.count(u8, rp.codePrefix, "\n") + extra;
     }
-    if (zyt.linenosflag) {
-        lineno.* += 1;
-        try tplt_linedir(out, rp.line, zyt.filename);
-    }
     if (rp.code.len > 0) {
         const extra: usize = if (try writeToIndent(out, rp.code, 12)) 1 else 0;
         lineno.* += mem.count(u8, rp.code, "\n") + extra;
-        if (zyt.linenosflag) {
-            lineno.* += 1;
-            try tplt_linedir(out, lineno.* + 1, zyt.outname);
-        }
     }
     // Generate breakdown code that occurs after the #line directive
     if (rp.codeSuffix.len > 0) {
@@ -1708,6 +1701,39 @@ fn emit_code(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !void {
     try out.writeAll("        },\n");
     lineno.* += 1;
 
+    return;
+}
+
+fn emit_code_no_indent(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !void {
+    // Generate code to do the reduce action
+    try out.writeAll("        => {\n");
+    lineno.* += 1;
+    // Setup code prior to the #line directive
+    if (rp.codePrefix.len > 0) {
+        try out.print("{s}", .{rp.codePrefix});
+        lineno.* += mem.count(u8, rp.codePrefix, "\n");
+    }
+    // Generate code to do the reduce action
+    if (rp.code.len > 0) {
+        if (zyt.opt.linenos) {
+            lineno.* += 1;
+            try tplt_linedir(out, rp.line, zyt.filename);
+        }
+        try out.print("{s}", .{rp.code});
+        lineno.* += mem.count(u8, rp.code, "\n");
+        if (zyt.opt.linenos) {
+            lineno.* += 1;
+            try tplt_linedir(out, lineno.*, zyt.outname);
+        }
+    }
+
+    // Generate breakdown code that occurs after the #line directive
+    if (rp.codeSuffix.len > 0) {
+        try out.print("{s}", .{rp.codeSuffix});
+        lineno.* += mem.count(u8, rp.codeSuffix, "\n");
+    }
+    try out.writeAll("},\n");
+    lineno.* += 1;
     return;
 }
 
@@ -2826,11 +2852,15 @@ fn reportTableImpl(
         }
         try emit_destructor_code(out, sp, zyt, &lineno);
     }
+    // NOTE: This is pure fudge, we have a dropped line between destructor
+    // and reduce emits. ¯\_(ツ)_/¯
+    lineno += 1;
     try tplt_xfer(zyt.name, &in, out, &lineno);
     // Generate code which executes whenever the parser stack overflows
     try tplt_print(out, zyt, zyt.overflow, &lineno);
     try tplt_xfer(zyt.name, &in, out, &lineno);
 
+    //
     // Generate the tables of rule information.  yyRuleInfoLhs[] and
     // yyRuleInfoNRhs[].
     //
@@ -2945,7 +2975,6 @@ fn reportTableImpl(
     try tplt_print(out, zyt, zyt.accept, &lineno);
     try tplt_xfer(zyt.name, &in, out, &lineno);
 
-    lineno += 1; // mysterious!
     // Append any addition code the user desires.
     try tplt_print(out, zyt, zyt.extracode, &lineno);
 }
