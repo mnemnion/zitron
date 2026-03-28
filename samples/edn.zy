@@ -1,0 +1,522 @@
+%include {
+//! Parser for EDN notation
+const tokenize = @import("tokenize.zig");
+const Token = tokenize.Token;
+const Tokenizer = tokenize.Tokenizer;
+
+const types = @import("types.zig");
+const Atom = types.Atom;
+const Map = types.Map;
+const List = types.List;
+const Vector = types.Vector;
+const Set = types.Set;
+const Form = types.Form;
+const FormCons = types.FormCons;
+const Pair = types.Pair;
+const Tagged = types.Tagged;
+const Forms = std.ArrayList(Form);
+
+const Allocator = std.mem.Allocator;
+
+/// Collects the forms at the end of the parse.
+const ParseContext = struct {
+    forms: []Form,
+
+    pub fn format(pc: *const ParseContext, writer: *std.Io.Writer) !void {
+        for (pc.forms) |form| {
+            try writer.print("{f}\n", .{form});
+        }
+    }
+
+    pub fn deinit(pc: *ParseContext, allocator: Allocator) void {
+        for (pc.forms) |form| {
+            form.deinit(allocator);
+        }
+        allocator.free(pc.forms);
+    }
+};
+
+fn freeSet(set: *Set, allocator: Allocator) void {
+    const keys = set.keys();
+    for (keys) |form| {
+        form.deinit(allocator);
+    }
+    set.deinit(allocator);
+    allocator.destroy(set);
+}
+
+fn freeMap(map: *Map, allocator: Allocator) void {
+    var iter = map.iterator();
+    while (iter.next()) |entry| {
+        entry.key_ptr.deinit(allocator);
+        entry.value_ptr.deinit(allocator);
+    }
+    map.deinit(allocator);
+    allocator.destroy(map);
+}
+
+
+%ifdef TRACE
+threadlocal var trace_me: *std.Io.Writer = undefined;
+
+const zitron_trace_prompt = "-> ";
+%endif
+
+} /* end include */
+
+%ifdef TRACE
+%trace_writer "trace_me"
+%endif
+
+/* Types */
+
+%extra_context { result: ParseContext }
+
+%token_type Token
+
+%type edn {[]Form}
+%destructor edn { for ($$) |form| form.deinit(allocator); }
+
+%type forms {*Forms}
+%destructor forms {
+    for ($$.items) |form| form.deinit(allocator);
+    $$.deinit(allocator);
+    allocator.destroy($$);
+}
+
+%type form {?Form}
+%destructor form { if ($$) |form| form.deinit(allocator); }
+
+%type atom {Form}
+%destructor atom { $$.deinit(allocator); }
+
+%type list {Form}
+%destructor list { $$.deinit(allocator); }
+
+%type vector {Form}
+%destructor vector { $$.deinit(allocator); }
+
+%type map {Form}
+%destructor map { $$.deinit(allocator); }
+
+%type set {Form}
+%destructor set { $$.deinit(allocator); }
+
+%type v_forms {*Vector}
+%destructor v_forms {
+    for ($$.items) |form| form.deinit(allocator);
+    $$.deinit(allocator);
+    allocator.destroy($$);
+}
+
+%type s_forms {*Set}
+%destructor s_forms { freeSet($$, allocator); }
+
+%type l_forms {?*FormCons}
+%destructor l_forms { if ($$) |f_cons| f_cons.deinit(allocator); }
+
+%type discard { ?Form }
+%destructor discard { if ($$) |form| form.deinit(allocator); }
+
+%type tagged {Form}
+%destructor tagged { $$.deinit(allocator); }
+
+%type boolean {*Atom}
+%destructor boolean { $$.destroy(allocator); }
+
+%type pair {?*Pair}
+%destructor pair { if ($$) |pair| pair.destroy(allocator); }
+
+%type pairs {*Map}
+%destructor pairs { freeMap($$, allocator); }
+
+%type m_form {Form}
+%destructor m_form { $$.deinit(allocator); }
+
+%type t_form {Form}
+%destructor t_form { $$.deinit(allocator); }
+
+/* Grammar */
+
+edn(E) ::= forms(Fs).  @edn_forms(E;Fs)
+
+forms(Fs) ::= forms(Fs) form(F).  @forms_append(Fs; Fs, F)
+forms(Fs) ::= form(F).            @forms_new(Fs;F)
+
+form(F) ::= list(L).     @f_list(F;L)
+  ``        map(M).      @f_map(F;M)
+  ``        vector(V).   @f_vector(F;V)
+  ``        set(S).      @f_set(F;S)
+  ``        tagged(T).   @f_tagged(F;T)
+  ``        atom(A).     @f_atom(F;A)
+  ``        discard(D).  @discard_form(F;D)
+
+list(F) ::= PAL l_forms(L) PAR.             @list_form(F;L)
+list(F) ::= PAL PAR.                        @empty_list(F)
+map(F) ::= CRL pairs(M) CRR.                @map_form(F;M)
+map(F) ::= CRL CRR.                         @empty_map(F)
+vector(F)  ::= SQL v_forms(V) SQR.          @vector_form(F;V)
+vector(F)  ::= SQL SQR.                     @empty_vector(F)
+set(F) ::= LSET s_forms(S) CRR.             @set_form(F;S)
+set(S) ::= LSET CRR.                        @empty_set(S)
+tagged(F) ::= TAGGED(T) t_form(E).          @tagged_form(F; T, E)
+tagged(F) ::= TAGGED(T) discard t_form(E).  @tagged_form2(F; T, E)
+discard(D) ::= DISCARD form(F).             @on_discard(D;F)
+
+l_forms(L) ::= form(F) l_forms(Cdr).  @list_cons(L; F, Cdr)
+l_forms(L) ::= form(F).               @lforms_form(L;F)
+
+v_forms(V) ::= v_forms(Vlist) form(F).  @vector_build(V; Vlist, F)
+v_forms(V) ::= form(F).                 @vector_init(V;F)
+
+pairs(M) ::= pairs(Mcdr) pair(P).          @map_build(M; Mcdr, P)
+pairs(M) ::= pair(P).                      @map_init(M;P)
+pair(P)  ::= m_form(K) m_form(V).          @on_pair(P; K, V)
+pair(P)  ::= m_form(K) discard m_form(V).  @on_pair2(P; K, V)
+pair(P)  ::= discard.                      @discard_in_map(P)
+
+s_forms(S) ::= s_forms(Set) form(F). @set_build(S; Set, F)
+  ``           form(F).              @set_init(S;F)
+
+m_form(F) ::= list(F).
+  ``          map(F).
+  ``          vector(F).
+  ``          set(F).
+  ``          tagged(F).
+  ``          atom(F).
+
+t_form(F) ::= list(F).
+  ``          map(F).
+  ``          vector(F).
+  ``          set(F).
+  ``          atom(F).
+
+atom(A) ::= SYMBOL(S).      @atom_symbol(A;S)
+ ``         NUMBER(N).      @atom_number(A;N)
+ ``         STRING(S).      @atom_string(A;S)
+ ``         KEYWORD(K).     @atom_keyword(A;K)
+ ``         CHARACTER(C).   @atom_character(A;C)
+ ``         NIL(N).         @atom_nil(A;N)
+ ``         TRUE|FALSE(B).  @atom_boolean(A;B)
+
+/* Code Actions */
+
+%impl @edn_forms(E;Fs) {
+    E = try Fs.toOwnedSlice(allocator);
+    result.forms = E;
+    Fs.deinit(allocator);
+    allocator.destroy(Fs);
+}
+
+%impl @forms_append(Fs; Fs, F) {
+    if (F) |form| {
+        errdefer form.deinit(allocator);
+        try Fs.append(allocator, form);
+    }
+}
+
+%impl @forms_new(Fs; F) {
+    errdefer if (F) |form| form.deinit(allocator);
+    var forms: *Forms = try allocator.create(Forms);
+    forms.* = .empty;
+    errdefer allocator.destroy(forms);
+    if (F) |form| {
+        try forms.append(allocator, form);
+    }
+    Fs = forms;
+}
+
+%impl @f_list(F;L) {
+    F = L; // F-overwrites-L
+}
+
+%impl @f_map(F;M)  {
+    F = M; // F-overwrites-M
+}
+
+%impl @f_vector(F;V)  {
+    F = V; // F-overwrites-V
+}
+
+%impl @f_set(F;S)  {
+    F = S; // F-overwrites-S
+}
+
+%impl @f_tagged(F;T)  {
+    F = T; // F-overwrites-T
+}
+
+%impl @f_atom(F;A) {
+    F = A; // F-overwrites-A
+}
+
+%impl @discard_form(F;D) {
+    F = D; // F-overwrites-D
+}
+
+
+%impl @list_form(F;L) {
+    F = Form.new(L);
+}
+
+%impl @empty_list(F) {
+    F = Form.new(null);
+}
+
+%impl @map_form(F;M) {
+    F = Form.new(M);
+}
+
+%impl @empty_map(F) {
+    const map = try allocator.create(Map);
+    map.* = .empty;
+    F = Form.new(map);
+}
+
+%impl @vector_form(F;V) {
+    F = Form.new(V);
+}
+
+%impl @empty_vector(F) {
+    const vec = try allocator.create(Vector);
+    vec.* = .empty;
+    F = Form.new(vec);
+}
+
+%impl @set_form(F;S) {
+    F = Form.new(S);
+}
+
+%impl @empty_set(S) {
+    const set = try allocator.create(Set);
+    set.* = .empty;
+    S = Form.new(set);
+}
+
+%impl @tagged_form(F; T, E) {
+    const tag = try Tagged.new(allocator, &T, &E);
+    F = Form.new(tag);
+    // F-overwrites-T
+}
+
+%impl @tagged_form2(F; T, E) {
+    const tag = try Tagged.new(allocator, &T, &E);
+    F = Form.new(tag);
+    // F-overwrites-T
+}
+
+%impl @on_discard(D;F) {
+    if (F) |form| form.deinit(allocator);
+    D = null;
+}
+
+%impl @list_cons(L; F, Cdr) {
+    if (F) |form| {
+        L = try FormCons.create(allocator, form);
+        L.?.cons(Cdr);
+    } else {
+        L = Cdr;
+    }
+}
+
+%impl @lforms_form(L;F) {
+    if (F) |form| {
+        errdefer form.deinit(allocator);
+        L = try FormCons.create(allocator, form);
+    } else {
+        L = null;
+    }
+}
+
+%impl  @vector_build(V; Vlist, F) {
+    if (F) |form| {
+        errdefer form.deinit(allocator);
+        try Vlist.append(allocator, form);
+    }
+    V = Vlist;
+    // V-overwrites-Vlist
+}
+
+%impl @vector_init(V;F) {
+    errdefer if (F) |form| form.deinit(allocator);
+    V = try allocator.create(Vector);
+    V.* = .empty;
+    if (F) |form| {
+        try V.append(allocator, form);
+    }
+}
+
+%impl @map_build(M; Mcdr, P) {
+    if (P) |pair| {
+        errdefer pair.destroy(allocator);
+        if (try Mcdr.fetchPut(allocator, pair.key, pair.value)) |kv| {
+            kv.key.deinit(allocator);
+            kv.value.deinit(allocator);
+        }
+        allocator.destroy(pair);
+    }
+    M = Mcdr;
+}
+
+%impl @map_init(M;P) {
+    errdefer if (P) |pair| pair.destroy(allocator);
+    const map = try allocator.create(Map);
+    map.* = .empty;
+    if (P) |pair| {
+        try map.put(allocator, pair.key, pair.value);
+        allocator.destroy(pair);
+    }
+    M = map;
+}
+
+%impl @on_pair(P; K, V) {
+    P = try Pair.create(allocator, K, V);
+}
+
+%impl @on_pair2(P; K, V) {
+    P = try Pair.create(allocator, K, V);
+}
+
+%impl @discard_in_map(P) {
+    P = null;
+}
+
+%impl @set_build(S; Set, F) {
+    if (F) |form| {
+        errdefer form.deinit(allocator);
+        if (try Set.fetchPut(allocator, form, {})) |entry| {
+            entry.key.deinit(allocator);
+        }
+    }
+    S = Set;
+}
+
+%impl @set_init(S; F) {
+    const set = try allocator.create(Set);
+    set.* = .empty;
+    if (F) |form| {
+        errdefer form.deinit(allocator);
+        try set.put(allocator, form, {});
+    }
+    S = set;
+}
+
+%impl @atom_symbol(A;S) {
+    const atom = try Atom.new(S, allocator);
+    A = Form.new(atom);
+}
+
+%impl @atom_number(A;N) {
+    const atom = try Atom.new(N, allocator);
+    A = Form.new(atom);
+}
+
+%impl @atom_string(A;S) {
+    const atom = try Atom.new(S, allocator);
+    A = Form.new(atom);
+}
+
+%impl @atom_keyword(A;K) {
+    const atom = try Atom.new(K, allocator);
+    A = Form.new(atom);
+}
+
+%impl @atom_character(A;C) {
+    const atom = try Atom.new(C, allocator);
+    A = Form.new(atom);
+}
+
+%impl @atom_nil(A;N) {
+    const atom = try Atom.new(N, allocator);
+    A = Form.new(atom);
+}
+
+%impl @atom_boolean(A;B) {
+    const atom = try Atom.new(B, allocator);
+    A = Form.new(atom);
+}
+
+%code {
+
+const OhSnap = @import("ohsnap");
+
+fn snapTest(snap: OhSnap.Snap, string: [:0]const u8) !void {
+    const allocator = std.testing.allocator;
+    const result: ParseContext = undefined;
+    var parser = try Parser.create(allocator, result);
+    defer parser.destroy();
+    defer parser.result.deinit(allocator);
+    var tok = Tokenizer.init(string);
+    while (try tok.next()) |t| {
+        try parser.parse(t.kind, t);
+    } else {
+        try parser.finalize();
+    }
+    try snap.expectEqualFmt(parser.result);
+}
+
+test "List atoms" {
+    const oh: OhSnap = .{};
+    const list_atoms = oh.snap(@src(),
+        \\(foo, :bar, "baz", 12, 4.2)
+        \\
+        ,
+    );
+    const list_str =  \\(foo :bar "baz" 12 #_23 4.2)
+        ;
+    try snapTest(list_atoms, list_str);
+}
+
+test "map" {
+    const oh: OhSnap = .{};
+    const map_atoms = oh.snap(@src(),
+        \\{ foo :bar  "baz" 12  4.2 [yo yoo yo] }
+        \\
+        ,
+    );
+    const map_str =  \\{foo :bar ,"baz" 12 #_23 4.2 [yo yoo yo] #_:junk}
+        ;
+    try snapTest(map_atoms, map_str);
+}
+
+test "char" {
+    const oh: OhSnap = .{};
+    const char_atoms = oh.snap(@src(),
+        \\(%, '\t', '∅', 'ሴ', '\n', '\')
+        \\
+        ,);
+    const char_str =  \\(% \tab \∅ \u1234 \newline \\)
+    ;
+    try snapTest(char_atoms, char_str);
+}
+
+test "parse list" {
+    if (true) return;
+%ifdef TRACE
+    var stderr_buffer: [1024]u8 = undefined;
+    var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
+    trace_me = &stderr_writer.interface;
+%endif
+    const allocator = std.testing.allocator;
+    const result: ParseContext = undefined;
+    var parser = try Parser.create(allocator, result);
+    defer parser.destroy();
+    defer parser.result.deinit(allocator);
+    var tok = Tokenizer.init(
+    \\   (foo bar baz () #_12 true)
+    \\   (quux #_:crux :quuux "quuuux")
+    \\   {k1 #_toss :v1, #_toss k2 "v2" #_toss} {}
+    \\   #{ :moe, "curly" larry #_shemp } #{}
+    \\   [2 4 6.0 :eight] []
+    \\   #tag/thing #_:bye :thing #tag_1 12e7
+    \\   nil
+    );
+    while (try tok.next()) |t| {
+        try parser.parse(t.kind, t);
+    } else {
+        try parser.finalize();
+    }
+    std.debug.print("{f}", .{parser.result});
+}
+
+}

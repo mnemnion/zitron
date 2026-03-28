@@ -20,7 +20,7 @@ def main():
     path = sys.argv[1]
     basename = normalize_basename(os.path.basename(path))
 
-    line_re = re.compile(r'^#line\s+(\d+)\s+"([^"]+)"')
+    line_re = re.compile(r'^\s*// #line\s+(\d+)\s+(.+)')
 
     with open(path, 'r', encoding='utf-8') as f:
         for lineno, line in enumerate(f, start=1):

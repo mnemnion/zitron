@@ -1353,7 +1353,7 @@ fn emit_destructor_code(out: anytype, sp: *Symbol, zyt: *Zitron, lineno: *usize)
     lineno.* += 1;
     if (zyt.linenosflag) {
         lineno.* += 1;
-        try tplt_linedir(out, lineno.*, zyt.outname);
+        try tplt_linedir(out, lineno.* + 1, zyt.outname);
     }
     try out.writeAll("        },\n");
     lineno.* += 1;
@@ -1697,7 +1697,7 @@ fn emit_code(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !void {
         lineno.* += mem.count(u8, rp.code, "\n") + extra;
         if (zyt.linenosflag) {
             lineno.* += 1;
-            try tplt_linedir(out, lineno.*, zyt.outname);
+            try tplt_linedir(out, lineno.* + 1, zyt.outname);
         }
     }
     // Generate breakdown code that occurs after the #line directive
@@ -2898,7 +2898,6 @@ fn reportTableImpl(
                 }
             }
             try emit_code(out, rp, zyt, &lineno);
-            lineno += 1;
             rp.codeEmitted = true;
         }
     }
@@ -2946,7 +2945,8 @@ fn reportTableImpl(
     try tplt_print(out, zyt, zyt.accept, &lineno);
     try tplt_xfer(zyt.name, &in, out, &lineno);
 
-    // Append any addition code the user desires
+    lineno += 1; // mysterious!
+    // Append any addition code the user desires.
     try tplt_print(out, zyt, zyt.extracode, &lineno);
 }
 
@@ -5037,7 +5037,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     psp.declargslot = &psp.gp.include;
                 },
                 .impl => {
-                    psp.insertLineMacro = true;
+                    psp.insertLineMacro = false;
                     psp.state = .waiting_for_impl_directive;
                 },
                 .code => {
@@ -5245,6 +5245,9 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 }
                 if (psp.decllinenoslot) |linenoslot| if (linenoslot.* == 0) {
                     psp.decllinenoslot.?.* = @intCast(psp.tokenlineno);
+                };
+                if (psp.impl) |impl| if (impl.line == 0) {
+                    impl.line = psp.tokenlineno;
                 };
                 @memcpy(zBuf[zIdx..][0..zNew.len], zNew);
                 zIdx += zNew.len;
@@ -6640,6 +6643,9 @@ pub fn main() !void {
             // Code generally lives in the Str_safe, I think it's
             // better policy to keep it there.
             rule.code = try Strsafe(impl.code);
+            if (impl.line > 0) {
+                rule.line = impl.line;
+            }
             rule.noCode = false;
             impl.code = try zyt.allocator.realloc(impl.code, 0);
         } else {
