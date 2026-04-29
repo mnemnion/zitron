@@ -541,10 +541,8 @@ fn yyTraceShift(yypParser: *🍋PARSER_NAME, yyNewState: usize, zTag: []const u8
     }
 }
 
-inline fn yy_sint(i: anytype) @Type(.{ .int = .{
-    .bits = @typeInfo(@TypeOf(i)).int.bits + 1,
-    .signedness = .signed,
-} }) {
+inline fn yy_sint(i: anytype) @Int(.signed,
+     @typeInfo(@TypeOf(i)).int.bits + 1) {
     if (@typeInfo(@TypeOf(i)).int.signedness == .signed) {
         @compileError("Value is already a signed type");
     }

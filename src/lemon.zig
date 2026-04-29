@@ -25,10 +25,11 @@ const builtin = @import("builtin");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArrayHashMap = std.ArrayHashMapUnmanaged;
-const MemoryPool = std.heap.MemoryPool;
+const MemoryPool = std.heap.memory_pool.Managed;
 const ArrayList = std.ArrayListUnmanaged;
 const StringArrayHashMap = std.StringArrayHashMapUnmanaged;
-const File = std.fs.File;
+const File = std.Io.File;
+const AllocatingWriter = std.Io.Writer.Allocating;
 
 const OOM = Allocator.Error;
 
@@ -111,20 +112,14 @@ inline fn cast(T: type, val: anytype) T {
     return @as(T, @intCast(val));
 }
 
-inline fn uint(i: anytype) @Type(.{ .int = .{
-    .bits = @typeInfo(@TypeOf(i)).int.bits,
-    .signedness = .unsigned,
-} }) {
+inline fn uint(i: anytype) @Int(.unsigned, @typeInfo(@TypeOf(i)).int.bits) {
     if (@typeInfo(@TypeOf(i)).int.signedness == .unsigned) {
         @compileError("Value is already an unsigned type");
     }
     return @intCast(i);
 }
 
-inline fn sint(i: anytype) @Type(.{ .int = .{
-    .bits = @typeInfo(@TypeOf(i)).int.bits + 1,
-    .signedness = .signed,
-} }) {
+inline fn sint(i: anytype) @Int(.signed, @typeInfo(@TypeOf(i)).int.bits + 1) {
     if (@typeInfo(@TypeOf(i)).int.signedness == .signed) {
         @compileError("Value is already a signed type");
     }
@@ -745,14 +740,14 @@ fn assign_outname(lemp: *Lemon, suffix: []const u8, escape: bool) OOM!void {
         if (lemp.quoted_outname.len > 0) lemp.allocator.free(lemp.quoted_outname);
     }
     lemp.outname = try file_makename(lemp, suffix);
-    if (escape) lemp.quoted_outname = try esc_filename(lemp.allocator, lemp.outname);
+    if (escape) lemp.quoted_outname = esc_filename(lemp.allocator, lemp.outname) catch return error.OutOfMemory;
 }
 
 fn file_makename(lemp: *Lemon, suffix: []const u8) OOM![]const u8 {
-    var buf = ArrayList(u8){};
-    errdefer buf.deinit(lemp.allocator);
+    var buf: AllocatingWriter = .init(lemp.allocator);
+    errdefer buf.deinit();
 
-    var w = buf.writer(lemp.allocator);
+    const w = &buf.writer;
     var filename = lemp.filename;
 
     if (lemp.opt.output_directory.len > 0) {
@@ -760,16 +755,16 @@ fn file_makename(lemp: *Lemon, suffix: []const u8) OOM![]const u8 {
         if (std.mem.lastIndexOfScalar(u8, filename, '/')) |i| {
             filename = filename[i + 1 ..];
         }
-        try w.print("{s}/", .{dir});
+        w.print("{s}/", .{dir}) catch return error.OutOfMemory;
     }
 
     if (std.mem.lastIndexOfScalar(u8, filename, '.')) |dot| {
         filename = filename[0..dot];
     }
 
-    try w.print("{s}{s}", .{ filename, suffix });
+    w.print("{s}{s}", .{ filename, suffix }) catch return error.OutOfMemory;
 
-    return buf.toOwnedSlice(lemp.allocator);
+    return buf.toOwnedSlice();
 }
 
 /// Open a file with a name based on the name of the input file,
@@ -777,7 +772,7 @@ fn file_makename(lemp: *Lemon, suffix: []const u8) OOM![]const u8 {
 /// to the stream.
 fn file_open(lemp: *Lemon, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
     try assign_outname(lemp, suffix, escape);
-    const fh = std.fs.cwd().createFile(lemp.outname, mode) catch |err| {
+    const fh = std.Io.Dir.cwd().createFile(lemp.io, lemp.outname, mode) catch |err| {
         lemp.errorcnt += 1;
         switch (err) {
             error.IsDir => {
@@ -827,7 +822,7 @@ fn rule_print(writer: anytype, rp: *Rule) !void {
 /// on rules
 fn Reprint(lemp: *Lemon) !void {
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(lemp.io, &stdout_buffer);
     const out = &stdout_writer.interface;
     try out.print("// Reprint of input file {s}.\n// Symbols:\n", .{lemp.quoted_filename});
     var maxlen: usize = 10;
@@ -990,9 +985,9 @@ fn PrintAction(
 fn ReportOutput(lemp: *Lemon) !void {
     const m_fh = try file_open(lemp, ".out", false, .{});
     if (m_fh) |fh| {
-        defer fh.close();
+        defer fh.close(lemp.io);
         var out_buffer: [4096]u8 = undefined;
-        var f_writer = fh.writer(&out_buffer);
+        var f_writer = fh.writer(lemp.io, &out_buffer);
         const out = &f_writer.interface;
         try reportOutputImpl(lemp, out);
         try out.flush();
@@ -1278,9 +1273,9 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
     const alloc = lemp.allocator;
     var fallback = std.heap.stackFallback(2048, alloc);
     const f_alloc = fallback.get();
-    var string_builder: ArrayList(u8) = .empty;
-    defer string_builder.deinit(f_alloc);
-    const writer = string_builder.writer(f_alloc);
+    var string_builder: AllocatingWriter = .init(f_alloc);
+    defer string_builder.deinit();
+    const writer = &string_builder.writer;
     if (rp.code.len == 0) {
         rp.code = "\n";
         rp.noCode = true;
@@ -1303,8 +1298,8 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
                 .{ rp.rhs[0].index, 1 - sint(rp.rhs.len) },
             );
             alloc.free(rp.codePrefix);
-            rp.codePrefix = try Strsafe(string_builder.items);
-            string_builder.clearRetainingCapacity();
+            rp.codePrefix = try Strsafe(string_builder.writer.buffer[0..string_builder.writer.end]);
+            string_builder.shrinkRetainingCapacity(0);
             rp.noCode = false;
         }
     } else if (rp.lhsalias.len == 0) {
@@ -1323,9 +1318,9 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
             lemp.errorcnt += 1;
         }
     } else {
-        string_builder.clearRetainingCapacity();
+        string_builder.shrinkRetainingCapacity(0);
         try writer.print("/*{s}-overwrites-{s}*/", .{ rp.lhsalias, rp.rhsalias[0] });
-        if (mem.indexOf(u8, rp.code, string_builder.items)) |skip_idx| {
+        if (mem.indexOf(u8, rp.code, string_builder.writer.buffer[0..string_builder.writer.end])) |skip_idx| {
             // The code contains a special comment that indicates that it is safe
             // for the LHS label to overwrite left-most RHS label.
             zSkip = skip_idx;
@@ -1343,7 +1338,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         rc = true;
         zLhs = std.fmt.bufPrint(&zLhsBuf, "yylhsminor.yy{d}", .{rp.lhs.dtnum}) catch unreachable;
     }
-    string_builder.clearRetainingCapacity();
+    string_builder.shrinkRetainingCapacity(0);
     {
         // Build the translated code
         var i: usize = 0;
@@ -1420,8 +1415,8 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         try writer.writeAll(cp[start..]);
         // Main code generation completed
         // The previous value was also interned (in parseonetoken) so it's freed at the end:
-        rp.code = try Strsafe(string_builder.items);
-        string_builder.clearRetainingCapacity();
+        rp.code = try Strsafe(string_builder.writer.buffer[0..string_builder.writer.end]);
+        string_builder.shrinkRetainingCapacity(0);
     }
 
     // Check to make sure the LHS has been used
@@ -1477,7 +1472,7 @@ fn translate_code(lemp: *Lemon, rp: *Rule) !bool {
         try writer.print("{s};\n", .{zLhs});
     }
     // Suffix code generation complete
-    rp.codeSuffix = try Strsafe(string_builder.items);
+    rp.codeSuffix = try Strsafe(string_builder.writer.buffer[0..string_builder.writer.end]);
     return rc;
 }
 
@@ -1521,12 +1516,12 @@ fn emit_code(out: anytype, rp: *Rule, lemp: *Lemon, lineno: *usize) !void {
 
 /// Handle any crazy-pants filenames we might happen to encounter.
 fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
-    var a_list: ArrayList(u8) = .empty;
-    defer a_list.deinit(allocator);
-    try a_list.ensureTotalCapacity(allocator, filename.len + 2);
-    const writer = a_list.writer(allocator);
+    var a_list: AllocatingWriter = .init(allocator);
+    defer a_list.deinit();
+    try a_list.ensureTotalCapacity(filename.len + 2);
+    const writer = &a_list.writer;
     var i: usize = 0;
-    try writer.writeByte('"');
+    writer.writeByte('"') catch return error.OutOfMemory;
     const skipper = if (extra_suffix.len > 0) mem.indexOf(u8, filename, ".zig") else null;
     while (i < filename.len) : (i += 1) {
         if (skipper) |skip| {
@@ -1536,20 +1531,20 @@ fn esc_filename(allocator: Allocator, filename: []const u8) ![]const u8 {
             }
         }
         switch (filename[i]) {
-            '\t' => try writer.writeAll("\\t"),
-            '\n' => try writer.writeAll("\\n"),
-            '\\' => try writer.writeAll("\\\\"), // chopstix
-            '"' => try writer.writeAll("\\\""), // thanks I hate it
+            '\t' => writer.writeAll("\\t") catch return error.OutOfMemory,
+            '\n' => writer.writeAll("\\n") catch return error.OutOfMemory,
+            '\\' => writer.writeAll("\\\\") catch return error.OutOfMemory, // chopstix
+            '"' => writer.writeAll("\\\"") catch return error.OutOfMemory, // thanks I hate it
             // All the weird stuff gets octal:
             0x01...0x08, 0x0b...0x1f, 0x7f...0xff => |b| {
-                try writer.print("\\{o:>3}", .{b});
+                writer.print("\\{o:>3}", .{b}) catch return error.OutOfMemory;
             },
-            ' ', '!', '#'...'[', ']'...'~' => |c| try writer.writeByte(c),
+            ' ', '!', '#'...'[', ']'...'~' => |c| writer.writeByte(c) catch return error.OutOfMemory,
             0x00 => @panic("NUL byte in filename (POSIX is angry)"),
         }
     }
-    try writer.writeByte('"');
-    return a_list.toOwnedSlice(allocator);
+    writer.writeByte('"') catch return error.OutOfMemory;
+    return a_list.toOwnedSlice();
 }
 
 /// Print the definition of the union used for the parser's data stack.
@@ -1825,9 +1820,9 @@ fn ReportTable(
     if (sqlflag) {
         const m_sql_fh = try file_open(lemp, ".sql", false, .{});
         if (m_sql_fh) |fh| {
-            defer fh.close();
+            defer fh.close(lemp.io);
             var out_buffer: [4096]u8 = undefined;
-            var f_writer = fh.writer(&out_buffer);
+            var f_writer = fh.writer(lemp.io, &out_buffer);
             const out = &f_writer.interface;
             try ReportSql(lemp, out);
             try out.flush();
@@ -1835,9 +1830,9 @@ fn ReportTable(
     }
     const m_out_fh = try file_open(lemp, ".zig", true, .{});
     if (m_out_fh) |fh| {
-        defer fh.close();
+        defer fh.close(lemp.io);
         var out_buffer: [4096]u8 = undefined;
-        var f_writer = fh.writer(&out_buffer);
+        var f_writer = fh.writer(lemp.io, &out_buffer);
         const out = &f_writer.interface;
         try reportTableImpl(lemp, in, out, mhflag);
         try out.flush();
@@ -2530,9 +2525,9 @@ fn ReportHeader(lemp: *Lemon) !void {
     const prefix = lemp.tokenprefix;
     const m_fh = try file_open(lemp, ".h", false, .{});
     if (m_fh) |fh| {
-        defer fh.close();
+        defer fh.close(lemp.io);
         var out_buffer: [4096]u8 = undefined;
-        var f_writer = fh.writer(&out_buffer);
+        var f_writer = fh.writer(lemp.io, &out_buffer);
         const out = &f_writer.interface;
         for (1..lemp.nterminal) |i| {
             try out.print("#define {s}{s: <30} {d:>3}\n", .{ prefix, lemp.symbols[i].name, i });
@@ -2645,8 +2640,10 @@ const Lemon = struct {
     has_fallback: bool,
     /// True if #line statements should not be printed
     nolinenosflag: bool,
+    /// Process IO handle for file and stdio operations
+    io: std.Io,
     /// Command-line arguments
-    argv: [][:0]u8,
+    argv: []const [:0]const u8,
 
     // TODO: we leave several things undefined here which are not
     // guaranteed to be defined in the presence of bad inputs.
@@ -2711,6 +2708,7 @@ const Lemon = struct {
         .printPreprocessed = false,
         .has_fallback = false,
         .nolinenosflag = false,
+        .io = undefined,
         .argv = &.{},
     };
 
@@ -2719,7 +2717,7 @@ const Lemon = struct {
         errdefer allocator.destroy(gp);
         gp.* = .empty;
         gp.allocator = allocator;
-        gp.sorted = try allocator.alloc(*Symbol, 0);
+        gp.sorted = try allocator.alloc(*State, 0);
         errdefer allocator.free(gp.sorted);
         gp.name = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.name);
@@ -3977,18 +3975,18 @@ fn Parse(psp: *PState) !void {
     // TODO: the original creates PState (and Lemon) on the stack,
     // and does the former here, passing in the latter.  Cleanup should
     // do likewise.
-    const file = if (std.fs.cwd().openFile(psp.filename, .{})) |f| file: {
+    const file = if (std.Io.Dir.cwd().openFile(psp.gp.io, psp.filename, .{})) |f| file: {
         break :file f;
     } else |err| {
         // TODO: nicer message here
         std.debug.print("File open error {s}", .{@errorName(err)});
         exit(@truncate(@intFromError(err)));
     };
-    defer file.close();
-    const end_pos = try file.getEndPos();
+    defer file.close(psp.gp.io);
+    const end_pos = (try file.stat(psp.gp.io)).size;
     const filebuf = try psp.allocator.allocSentinel(u8, end_pos, 0);
     defer psp.allocator.free(filebuf);
-    const read_bytes = try file.readAll(filebuf);
+    const read_bytes = try file.readPositionalAll(psp.gp.io, filebuf, 0);
     if (read_bytes < end_pos) {
         std.debug.print("didnt read to end of file {s}\n", .{psp.filename});
         std.process.exit(1);
@@ -3998,7 +3996,7 @@ fn Parse(psp: *PState) !void {
     if (psp.gp.errorcnt > 0) return;
     if (psp.gp.printPreprocessed) {
         var stdout_buffer: [1024]u8 = undefined;
-        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        var stdout_writer = std.Io.File.stdout().writer(psp.gp.io, &stdout_buffer);
         const stdout = &stdout_writer.interface;
         try stdout.print("{s}\n", .{filebuf});
         try stdout.flush();
@@ -4824,7 +4822,7 @@ fn CompressTables(lemp: *Lemon) !void {
         if (p_check1) {
             m_ap = stp.ap;
             var stderr_buffer: [1024]u8 = undefined;
-            var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
+            var stderr_writer = std.Io.File.stderr().writer(lemp.io, &stderr_buffer);
             const stderr = &stderr_writer.interface;
             while (m_ap) |ap| : (m_ap = ap.next) {
                 _ = try PrintAction(stderr, ap, 0, lemp.opt.show_precedence_conflict);
@@ -5124,7 +5122,7 @@ const Options = struct {
     }
 };
 
-fn argindex(args: [][:0]u8, n: i65) ?usize {
+fn argindex(args: []const [:0]const u8, n: i65) ?usize {
     var n2 = n;
     var dashdash: bool = false;
     for (args[1..], 1..) |arg, i| {
@@ -5141,12 +5139,12 @@ fn isOpt(arg: []const u8) bool {
     return arg[0] == '-' or arg[0] == '+' or mem.indexOfScalar(u8, arg, '=') != null;
 }
 
-fn OptArg(args: [][:0]u8, n: usize) []const u8 {
+fn OptArg(args: []const [:0]const u8, n: usize) []const u8 {
     const m_i = argindex(args, n);
     return if (m_i) |i| args[i] else "";
 }
 
-fn OptNArgs(args: [][:0]u8) usize {
+fn OptNArgs(args: []const [:0]const u8) usize {
     var cnt: usize = 0;
     var dashdash: bool = false;
     for (args[1..]) |arg| {
@@ -5170,7 +5168,7 @@ fn OptNArgs(args: [][:0]u8) usize {
 
 /// Print the command line with a carrot pointing to the k-th character
 /// of the n-th field.
-fn errline(args: [][:0]u8, i: usize) void {
+fn errline(args: []const [:0]const u8, i: usize) void {
     _ = .{ args, i };
 }
 
@@ -5230,7 +5228,7 @@ fn handleswitch(opt: *Options, arg: []const u8, allocator: Allocator) !usize {
     return try handleflags(opt, opt_t, opt_rest, true, allocator);
 }
 
-fn OptInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !void {
+fn OptInit(opt: *Options, args: []const [:0]const u8, allocator: Allocator) !void {
     errdefer opt.deinit(allocator);
     if (lemon_classic) {
         var errcnt: usize = 0;
@@ -5283,7 +5281,7 @@ const help_string =
     \\  -W<string>   Ignored.  (Placeholder for '-W' compiler options.)
 ;
 
-fn OptPrint(args: [][:0]u8) noreturn {
+fn OptPrint(args: []const [:0]const u8) noreturn {
     const idx = if (mem.lastIndexOfScalar(u8, args[0], '/')) |i| i + 1 else 0;
     dprint(help_string, .{args[0][idx..]});
     exit(1);
@@ -5346,7 +5344,7 @@ fn stats_line(in: anytype, zLabel: []const u8, iValue: usize) !void {
     try in.print(" {d: >5}\n", .{iValue});
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var gpa = gpa: {
         if (is_debug) {
             const dbgpa: std.heap.DebugAllocator(.{}) = .init;
@@ -5373,7 +5371,7 @@ pub fn main() !void {
         Plink_deinit();
         is_plink_freelist = false;
     }
-    try plink_freelist.preheat(100);
+    try plink_freelist.addCapacity(100);
     Strsafe_init(allocator);
     defer Strsafe_free();
     Symbol_init(allocator);
@@ -5392,8 +5390,8 @@ pub fn main() !void {
         }
     }
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(allocator);
+    defer allocator.free(args);
     var opt: Options = .{};
     defer opt.deinit(allocator);
     {
@@ -5403,7 +5401,7 @@ pub fn main() !void {
     }
     if (opt.version) {
         var stdout_buffer: [128]u8 = undefined;
-        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
         const stdout = &stdout_writer.interface;
         stdout.writeAll("Lemon.zig version 0.1\n") catch {};
         stdout.flush() catch {};
@@ -5420,6 +5418,7 @@ pub fn main() !void {
         break :lemon try Lemon.create(allocator);
     };
     defer lem.destroy(allocator);
+    lem.io = init.io;
     lem.opt = opt;
     lem.argv = args;
     lem.filename = filename;
@@ -5575,7 +5574,7 @@ pub fn main() !void {
     }
     if (opt.statistics) {
         var stdin_buffer: [1024]u8 = undefined;
-        var stdin_writer = std.fs.File.stdin().writer(&stdin_buffer);
+        var stdin_writer = std.Io.File.stdin().writer(lem.io, &stdin_buffer);
         const in = &stdin_writer.interface;
         try in.writeAll("Parser statistics:\n");
         try stats_line(in, "terminal symbols", lem.nterminal);
@@ -5594,7 +5593,7 @@ pub fn main() !void {
     }
     // return 0 on success, 1 on failure.
     if (lem.errorcnt > 0 or lem.nconflict > 0) exit(1);
-    std.process.cleanExit();
+    std.process.cleanExit(init.io);
 }
 
 //| [1809] MergeSort

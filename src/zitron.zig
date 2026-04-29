@@ -18,11 +18,11 @@ const config = @import("config");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArrayHashMap = std.ArrayHashMapUnmanaged;
-const MemoryPool = std.heap.MemoryPool;
+const MemoryPool = std.heap.memory_pool.Managed;
 const ArrayList = std.ArrayListUnmanaged;
 const StringArrayHashMap = std.StringArrayHashMapUnmanaged;
 const AllocatingWriter = std.Io.Writer.Allocating;
-const File = std.fs.File;
+const File = std.Io.File;
 
 const OOM = Allocator.Error;
 
@@ -98,20 +98,14 @@ inline fn cast(T: type, val: anytype) T {
     return @as(T, @intCast(val));
 }
 
-inline fn uint(i: anytype) @Type(.{ .int = .{
-    .bits = @typeInfo(@TypeOf(i)).int.bits,
-    .signedness = .unsigned,
-} }) {
+inline fn uint(i: anytype) @Int(.unsigned, @typeInfo(@TypeOf(i)).int.bits) {
     if (@typeInfo(@TypeOf(i)).int.signedness == .unsigned) {
         @compileError("Value is already an unsigned type");
     }
     return @intCast(i);
 }
 
-inline fn sint(i: anytype) @Type(.{ .int = .{
-    .bits = @typeInfo(@TypeOf(i)).int.bits + 1,
-    .signedness = .signed,
-} }) {
+inline fn sint(i: anytype) @Int(.signed, @typeInfo(@TypeOf(i)).int.bits + 1) {
     if (@typeInfo(@TypeOf(i)).int.signedness == .signed) {
         @compileError("Value is already a signed type");
     }
@@ -820,10 +814,10 @@ fn assign_outname(zyt: *Zitron, suffix: []const u8, escape: bool) OOM!void {
 }
 
 fn file_makename(zyt: *Zitron, suffix: []const u8) OOM![]const u8 {
-    var buf = ArrayList(u8){};
-    errdefer buf.deinit(zyt.allocator);
+    var buf: AllocatingWriter = .init(zyt.allocator);
+    errdefer buf.deinit();
 
-    var w = buf.writer(zyt.allocator);
+    const w = &buf.writer;
     var filename = if (zyt.opt.output_file.len > 0) zyt.opt.output_file else zyt.filename;
 
     if (zyt.opt.output_directory.len > 0) {
@@ -831,16 +825,16 @@ fn file_makename(zyt: *Zitron, suffix: []const u8) OOM![]const u8 {
         if (std.mem.lastIndexOfScalar(u8, filename, '/')) |i| {
             filename = filename[i + 1 ..];
         }
-        try w.print("{s}/", .{dir});
+        w.print("{s}/", .{dir}) catch return error.OutOfMemory;
     }
 
     if (std.mem.lastIndexOfScalar(u8, filename, '.')) |dot| {
         filename = filename[0..dot];
     }
 
-    try w.print("{s}{s}", .{ filename, suffix });
+    w.print("{s}{s}", .{ filename, suffix }) catch return error.OutOfMemory;
 
-    return buf.toOwnedSlice(zyt.allocator);
+    return buf.toOwnedSlice();
 }
 
 /// Open a file with a name based on the name of the input file,
@@ -853,7 +847,7 @@ fn file_open(zyt: *Zitron, suffix: []const u8, escape: bool, mode: File.CreateFl
 }
 
 fn open_file(zyt: *Zitron, name: []const u8, mode: File.CreateFlags) OOM!?File {
-    return std.fs.cwd().createFile(name, mode) catch |err| {
+    return std.Io.Dir.cwd().createFile(zyt.io, name, mode) catch |err| {
         zyt.errorcnt += 1;
         switch (err) {
             error.IsDir => {
@@ -902,7 +896,7 @@ fn rule_print(writer: anytype, rp: *Rule) !void {
 /// on rules
 fn Reprint(zyt: *Zitron) !void {
     var stdout_buffer: [4096]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(zyt.io, &stdout_buffer);
     const out = &stdout_writer.interface;
     try out.print("// Reprint of input file {s}.\n// Symbols:\n", .{zyt.filename});
     var maxlen: usize = 10;
@@ -1065,9 +1059,9 @@ fn PrintAction(
 fn ReportOutput(zyt: *Zitron) !void {
     const m_fh = try file_open(zyt, ".out", false, .{});
     if (m_fh) |fh| {
-        defer fh.close();
+        defer fh.close(zyt.io);
         var out_buffer: [4096]u8 = undefined;
-        var f_writer = fh.writer(&out_buffer);
+        var f_writer = fh.writer(zyt.io, &out_buffer);
         const out = &f_writer.interface;
         try reportOutputImpl(zyt, out);
         try out.flush();
@@ -1268,17 +1262,17 @@ fn tplt_skip_header(in: *[:0]const u8) void {
 /// second must be freed.
 fn tplt_open(zyt: *Zitron) !struct { bool, [:0]const u8 } {
     if (zyt.opt.user_templatename.len > 0) {
-        const file = if (std.fs.cwd().openFile(zyt.opt.user_templatename, .{})) |f| file: {
+        const file = if (std.Io.Dir.cwd().openFile(zyt.io, zyt.opt.user_templatename, .{})) |f| file: {
             break :file f;
         } else |err| {
             std.debug.print("Template file open error {s}", .{@errorName(err)});
             exit(@truncate(@intFromError(err)));
         };
-        defer file.close();
-        const end_pos = try file.getEndPos();
+        defer file.close(zyt.io);
+        const end_pos = (try file.stat(zyt.io)).size;
         const filebuf = try zyt.allocator.allocSentinel(u8, end_pos, 0);
         defer zyt.allocator.free(filebuf);
-        const read_bytes = try file.readAll(filebuf);
+        const read_bytes = try file.readPositionalAll(zyt.io, filebuf, 0);
         if (read_bytes < end_pos) {
             std.debug.print(
                 "Didnt read to end of file {s}\n",
@@ -1401,9 +1395,9 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     const alloc = zyt.allocator;
     var fallback = std.heap.stackFallback(2048, alloc);
     const f_alloc = fallback.get();
-    var string_builder: ArrayList(u8) = .empty;
-    defer string_builder.deinit(f_alloc);
-    const writer = string_builder.writer(f_alloc);
+    var string_builder: AllocatingWriter = .init(f_alloc);
+    defer string_builder.deinit();
+    const writer = &string_builder.writer;
     const cp = if (zyt.opt.linenos) rp.code else std.mem.trim(u8, rp.code, C_SPACE);
     if (cp.len == 0) {
         rp.code = "\n";
@@ -1427,8 +1421,8 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                 .{ rp.rhs[0].index, rp.rhs.len },
             );
             alloc.free(rp.codePrefix);
-            rp.codePrefix = try Strsafe(string_builder.items);
-            string_builder.clearRetainingCapacity();
+            rp.codePrefix = try Strsafe(string_builder.writer.buffer[0..string_builder.writer.end]);
+            string_builder.shrinkRetainingCapacity(0);
             rp.noCode = false;
         }
     } else if (rp.lhsalias.len == 0) {
@@ -1457,11 +1451,11 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
             zyt.errorcnt += 1;
         }
     } else {
-        string_builder.clearRetainingCapacity();
+        string_builder.shrinkRetainingCapacity(0);
         try writer.print("// {s}-overwrites-{s}\n", .{ rp.lhsalias, rp.rhsalias[0] });
         // `trimLeft` because we `trim` the code, so the index will be correct this way.
         // just `trim` can remove the newline, which we want to detect.
-        if (mem.indexOf(u8, std.mem.trimLeft(u8, rp.code, C_SPACE), string_builder.items)) |skip_idx| {
+        if (mem.indexOf(u8, std.mem.trimStart(u8, rp.code, C_SPACE), string_builder.writer.buffer[0..string_builder.writer.end])) |skip_idx| {
             // The code contains a special comment that indicates that it is safe
             // for the LHS label to overwrite left-most RHS label.
             zSkip = skip_idx;
@@ -1483,7 +1477,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
             .{rp.lhs.dttag},
         ) catch unreachable;
     }
-    string_builder.clearRetainingCapacity();
+    string_builder.shrinkRetainingCapacity(0);
     {
         // Build the translated code
         var i: usize = 0;
@@ -1600,8 +1594,8 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
         try writer.writeAll(cp[start..]);
         // Main code generation completed
         // The previous value was also interned (in parseonetoken) so it's freed at the end:
-        rp.code = try Strsafe(string_builder.items);
-        string_builder.clearRetainingCapacity();
+        rp.code = try Strsafe(string_builder.writer.buffer[0..string_builder.writer.end]);
+        string_builder.shrinkRetainingCapacity(0);
     }
 
     // Check to make sure the LHS has been used
@@ -1661,8 +1655,8 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
             );
         }
     }
-    rp.codePrefix = try Strsafe(string_builder.items);
-    string_builder.clearRetainingCapacity();
+    rp.codePrefix = try Strsafe(string_builder.writer.buffer[0..string_builder.writer.end]);
+    string_builder.shrinkRetainingCapacity(0);
     // If unable to write LHS values directly into the stack, write the
     // saved LHS value now.
     if (!lhsdirect) {
@@ -1670,7 +1664,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
         try writer.print("{s};", .{zLhs});
     }
     // Suffix code generation complete
-    rp.codeSuffix = try Strsafe(string_builder.items);
+    rp.codeSuffix = try Strsafe(string_builder.writer.buffer[0..string_builder.writer.end]);
     return rc;
 }
 
@@ -2056,9 +2050,9 @@ fn ReportTable(
     defer if (free_buffer) zyt.allocator.free(in);
     const m_out_fh = try file_open(zyt, ".zig", true, .{});
     if (m_out_fh) |fh| {
-        defer fh.close();
+        defer fh.close(zyt.io);
         var out_buffer: [4096]u8 = undefined;
-        var f_writer = fh.writer(&out_buffer);
+        var f_writer = fh.writer(zyt.io, &out_buffer);
         const out = &f_writer.interface;
         try reportTableImpl(zyt, in, out);
         try out.flush();
@@ -2066,9 +2060,9 @@ fn ReportTable(
     if (zyt.opt.sql_flag) {
         const m_sql_fh = try file_open(zyt, ".sql", false, .{});
         if (m_sql_fh) |fh| {
-            defer fh.close();
+            defer fh.close(zyt.io);
             var out_buffer: [4096]u8 = undefined;
-            var f_writer = fh.writer(&out_buffer);
+            var f_writer = fh.writer(zyt.io, &out_buffer);
             const out = &f_writer.interface;
             try ReportSql(zyt, out);
             try out.flush();
@@ -2999,9 +2993,9 @@ fn ReportHeader(zyt: *Zitron) !void {
     defer zyt.allocator.free(tok_filename);
     const m_fh = try open_file(zyt, tok_filename, .{});
     if (m_fh) |fh| {
-        defer fh.close();
+        defer fh.close(zyt.io);
         var out_buffer: [4096]u8 = undefined;
-        var f_writer = fh.writer(&out_buffer);
+        var f_writer = fh.writer(zyt.io, &out_buffer);
         const out = &f_writer.interface;
         var line_dummy: usize = 0;
         try print_token_enum(zyt, out, &line_dummy);
@@ -3099,6 +3093,8 @@ const Zitron = struct {
     token_enum_integer: []u8,
     /// Variable containing an Io.Writer for tracing
     trace_writer: []u8,
+    /// Process IO handle for file and stdio operations
+    io: std.Io,
     /// Number of parse conflicts
     nconflict: u32,
     /// Number of entries in the yy_action[] table
@@ -3114,7 +3110,7 @@ const Zitron = struct {
     /// True if #line statements should be printed
     linenosflag: bool,
     /// Command-line arguments
-    argv: [][:0]u8,
+    argv: []const [:0]const u8,
 
     // TODO: we leave several things undefined here which are not
     // guaranteed to be defined in the presence of bad inputs.
@@ -3157,6 +3153,7 @@ const Zitron = struct {
         .token_enum = &.{},
         .token_enum_integer = &.{},
         .trace_writer = &.{},
+        .io = undefined,
         .vartype = &.{},
         .start = &.{},
         .stacksize = &.{},
@@ -3187,7 +3184,7 @@ const Zitron = struct {
         errdefer allocator.destroy(gp);
         gp.* = .empty;
         gp.allocator = allocator;
-        gp.sorted = try allocator.alloc(*Symbol, 0);
+        gp.sorted = try allocator.alloc(*State, 0);
         errdefer allocator.free(gp.sorted);
         gp.name = try allocator.alloc(u8, 0);
         errdefer allocator.free(gp.name);
@@ -4479,18 +4476,18 @@ fn Parse(psp: *ParserState) !void {
     // TODO: the original creates PState (and Lemon) on the stack,
     // and does the former here, passing in the latter.  Cleanup should
     // do likewise.
-    const file = if (std.fs.cwd().openFile(psp.filename, .{})) |f| file: {
+    const file = if (std.Io.Dir.cwd().openFile(psp.gp.io, psp.filename, .{})) |f| file: {
         break :file f;
     } else |err| {
         // TODO: nicer message here
         std.debug.print("File open error {s}", .{@errorName(err)});
         exit(@max(1, @as(u8, @truncate(@intFromError(err)))));
     };
-    defer file.close();
-    const end_pos = try file.getEndPos();
+    defer file.close(psp.gp.io);
+    const end_pos = (try file.stat(psp.gp.io)).size;
     const filebuf = try psp.allocator.allocSentinel(u8, end_pos, 0);
     defer psp.allocator.free(filebuf);
-    const read_bytes = try file.readAll(filebuf);
+    const read_bytes = try file.readPositionalAll(psp.gp.io, filebuf, 0);
     if (read_bytes < end_pos) {
         std.debug.print("didnt read to end of file {s}\n", .{psp.filename});
         std.process.exit(1);
@@ -4500,7 +4497,7 @@ fn Parse(psp: *ParserState) !void {
     if (psp.gp.errorcnt > 0) return;
     if (psp.gp.printPreprocessed) {
         var stdout_buffer: [1024]u8 = undefined;
-        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        var stdout_writer = std.Io.File.stdout().writer(psp.gp.io, &stdout_buffer);
         const stdout = &stdout_writer.interface;
         try stdout.print("{s}\n", .{filebuf});
         try stdout.flush();
@@ -6190,7 +6187,7 @@ const max_opt: usize = maxopt: {
 
 /// Return the argument of an option which takes one, or a
 /// useful error otherwise.
-fn optionArgument(args: [][:0]u8, n: *usize, i: *usize) ![:0]const u8 {
+fn optionArgument(args: []const [:0]const u8, n: *usize, i: *usize) ![:0]const u8 {
     if (i.* < args[n.*].len - 1) {
         if (args[n.*][i.* + 1] == '=') {
             if (i.* + 2 < args[n.*].len) {
@@ -6215,7 +6212,7 @@ fn optionArgument(args: [][:0]u8, n: *usize, i: *usize) ![:0]const u8 {
 
 /// Print the command line with a caret pointing to the k-th character
 /// of the n-th field.
-fn errline(args: [][:0]u8, n: usize, k: usize) void {
+fn errline(args: []const [:0]const u8, n: usize, k: usize) void {
     var spcnt: usize = 0;
     var i: usize = 0;
 
@@ -6306,7 +6303,7 @@ fn assignFlag(opt: *Options, opt_kind: OptionKind) void {
     }
 }
 
-fn readShortArgs(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !void {
+fn readShortArgs(opt: *Options, args: []const [:0]const u8, n: *usize, i: *usize) !void {
     dbgassert(n.* < args.len);
     dbgassert(i.* == 1);
     const arg = args[n.*];
@@ -6324,7 +6321,7 @@ fn readShortArgs(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !void {
     }
 }
 
-fn readLongArg(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !void {
+fn readLongArg(opt: *Options, args: []const [:0]const u8, n: *usize, i: *usize) !void {
     dbgassert(n.* < args.len);
     dbgassert(i.* == 2);
     const arg = args[n.*];
@@ -6345,7 +6342,7 @@ fn readLongArg(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !void {
     }
 }
 
-fn readOneArg(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !bool {
+fn readOneArg(opt: *Options, args: []const [:0]const u8, n: *usize, i: *usize) !bool {
     dbgassert(n.* < args.len);
     const arg = args[n.*];
     if (arg[0] != '-') return false; // Presumably the file name.
@@ -6367,7 +6364,7 @@ fn readOneArg(opt: *Options, args: [][:0]u8, n: *usize, i: *usize) !bool {
 
 /// Initialize the Options struct.  Return the index at which the filename should be
 /// found
-fn optionsInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !usize {
+fn optionsInit(opt: *Options, args: []const [:0]const u8, allocator: Allocator) !usize {
     opt.allocator = allocator;
     if (config.define) |defines| {
         const n = opt.azDefine.len;
@@ -6443,7 +6440,7 @@ fn optionsInit(opt: *Options, args: [][:0]u8, allocator: Allocator) !usize {
     return n;
 }
 
-fn shortProgramName(args: [][:0]u8) []const u8 {
+fn shortProgramName(args: []const [:0]const u8) []const u8 {
     const idx = if (mem.lastIndexOfScalar(u8, args[0], '/')) |slash| slash + 1 else 0;
     return args[0][idx..];
 }
@@ -6487,7 +6484,7 @@ const help_string =
     \\   -x, --clean-exit          Always exit with code 0, despite errors.
 ;
 
-fn OptPrint(out: anytype, args: [][:0]u8) !void {
+fn OptPrint(out: anytype, args: []const [:0]const u8) !void {
     try out.print(help_string, .{shortProgramName(args)});
 }
 
@@ -6555,7 +6552,7 @@ fn warmup(allocator: Allocator) !void {
     cf_ls.allocator = allocator;
     plink_freelist = .init(allocator);
     is_plink_freelist = true;
-    try plink_freelist.preheat(100);
+    try plink_freelist.addCapacity(100);
     errdefer Plink_deinit();
     Strsafe_init(allocator);
     Symbol_init(allocator);
@@ -6584,7 +6581,7 @@ fn teardown(allocator: Allocator) void {
     action_allocator.deinit();
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var gpa = gpa: {
         if (is_debug) {
             const dbgpa: std.heap.DebugAllocator(.{ .stack_trace_frames = 10 }) = .init;
@@ -6600,8 +6597,8 @@ pub fn main() !void {
     try warmup(allocator);
     defer teardown(allocator);
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(allocator);
+    defer allocator.free(args);
     var opt: Options = .{};
     defer opt.deinit(allocator);
     const file_index = init_opts: {
@@ -6610,14 +6607,14 @@ pub fn main() !void {
     // A few more syscalls, but I'd rather not fatten the stack
     var stdout_buffer: [128]u8 = undefined;
     if (opt.help) {
-        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
         const stdout = &stdout_writer.interface;
         try OptPrint(stdout, args);
         stdout.flush() catch {};
         exit(0);
     }
     if (opt.version) {
-        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
         const stdout = &stdout_writer.interface;
         stdout.print("{s} version 0.1\n", .{shortProgramName(args)}) catch {};
         stdout.flush() catch {};
@@ -6635,6 +6632,7 @@ pub fn main() !void {
         break :lemon try Zitron.create(allocator);
     };
     defer zyt.destroy(allocator);
+    zyt.io = init.io;
     zyt.opt = opt;
     zyt.argv = args;
     zyt.filename = filename;
@@ -6828,7 +6826,7 @@ pub fn main() !void {
         if (opt.enum_file) try ReportHeader(zyt);
     }
     if (opt.statistics) {
-        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        var stdout_writer = std.Io.File.stdout().writer(zyt.io, &stdout_buffer);
         const out = &stdout_writer.interface;
         try out.writeAll("Parser statistics:\n");
         try stats_line(out, "terminal symbols", zyt.nterminal);
@@ -6849,7 +6847,7 @@ pub fn main() !void {
     if (zyt.errorcnt > 0 or zyt.nconflict > 0) {
         if (opt.clean_exit) exit(0) else exit(1);
     }
-    std.process.cleanExit();
+    std.process.cleanExit(init.io);
 }
 
 //| [1809] MergeSort
