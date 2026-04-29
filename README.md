@@ -8,8 +8,8 @@ So closely is Zitron based on Lemon, in fact, that it includes a
 full port of Lemon, which has been tested and produces byte-for-byte
 identical output for numerous Lemon grammars, including that of SQLite
 itself.  While I can think of no actual advantage to using `lemon.zig`
-rather than `lemon.c`, translating the former was an essential step in
-writing the latter, and I saw no reason to leave it stranded in the
+rather than `lemon.c`, translating the former was an essential step
+in writing the latter, and I saw no reason to leave it stranded in the
 commit history.  Let it serve as an artifact showing the fidelity with
 which this translation was prepared.  Any bugs in Zitron are almost sure
 to be of my own doing, and, with decent confidence, transpired after the
@@ -17,22 +17,22 @@ translation of `lemon.zig`.
 
 ## Using Zitron
 
-As [Yet Another Yet Another Compiler-Compiler][yacc][^‡], Zitron is a complete
-DSL for declaring a parser, and actions to go along with recognition.  A
-[detailed manual](/doc/zitron.md) is included, itself adopted from [the
-original][og].
+As [Yet Another Yet Another Compiler-Compiler][yacc][^‡], Zitron is
+a complete DSL for declaring a parser, and actions to go along with
+recognition.  A [detailed manual](/doc/zitron.md) is included, itself
+adopted from [the original][og].
 
-A tokenizer will be necessary.  If you're reading this[^※], a companion lexer
-generator does not exist.  It's certainly tractable to roll your own by
-hand.  It may also interest you to know that [re2c][re2c] is able to generate
-Zig code, although not, at the time of writing, using labeled switch
-continue format.
+A tokenizer will be necessary.  If you're reading this[^※], a companion
+lexer generator does not exist.  It's certainly tractable to roll
+your own by hand.  It may also interest you to know that [re2c][re2c]
+is able to generate Zig code, although not, at the time of writing,
+using labeled switch continue format.
 
 ### Licensing
 
-Lemon is in the public domain.  Whether a close technical translation is
-even entitled to a separate copyright is somewhat unclear; for the avoidance
-of doubt, `lemon.zig` is also dedicated to the public domain.
+Lemon is in the public domain.  Whether a close technical translation
+is even entitled to a separate copyright is somewhat unclear; for the
+avoidance of doubt, `lemon.zig` is also dedicated to the public domain.
 
 Zitron itself is licensed `BSD 0`, which is morally equivalent, and
 compatible with more international licensing régimes.
@@ -42,10 +42,12 @@ licenses, which you will find in `samples/licenses/`.
 
 ### Editing
 
-The Zitron format has a [Tree-sitter grammar](https://github.com/mnemnion/tree-sitter-zitron),
-for your editing convenience.  It's still a bit rough around the edges, so you'll
-need to manually integrate it with your editor of choice. Smoother user experiences
-may be forthcoming.
+The Zitron format has a [Tree-sitter grammar][ts], for your editing
+convenience.  It's still a bit rough around the edges, so you'll need
+to manually integrate it with your editor of choice.  Smoother user
+experiences may be forthcoming.
+
+[ts]: https://github.com/mnemnion/tree-sitter-zitron
 
 ## Future Work
 
