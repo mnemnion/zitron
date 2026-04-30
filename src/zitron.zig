@@ -1115,8 +1115,10 @@ fn reportOutputImpl(zyt: *Zitron, writer: anytype) !void {
                 }
             }
         }
-        // TODO: Zitron should indicate associativity here also
-        if (sp.prec) |prec| try writer.print(" (precedence={d})", .{prec});
+        if (sp.prec) |prec| {
+            try writer.print(" (precedence={d})", .{prec});
+            if (sp.assoc != .unk) try writer.print(" (assoc={t})", .{sp.assoc});
+        }
         try writer.writeByte('\n');
     }
     try writer.writeAll("----------------------------------------------------\n");
@@ -1940,38 +1942,363 @@ fn writeRuleText(out: anytype, rp: *Rule) !void {
     }
 }
 
-fn ReportSql(zyt: *Zitron, sql: anytype) !void {
+fn writeSqlStringContent(out: anytype, str: []const u8) !void {
+    for (str) |ch| {
+        try out.writeByte(ch);
+        if (ch == '\'') try out.writeByte('\'');
+    }
+}
+
+fn writeSqlString(out: anytype, str: []const u8) !void {
+    try out.writeByte('\'');
+    try writeSqlStringContent(out, str);
+    try out.writeByte('\'');
+}
+
+fn writeSqlNullableString(out: anytype, str: []const u8) !void {
+    if (str.len == 0) {
+        try out.writeAll("NULL");
+    } else {
+        try writeSqlString(out, str);
+    }
+}
+
+fn writeSqlBool(out: anytype, value: bool) !void {
+    try out.writeAll(if (value) "TRUE" else "FALSE");
+}
+
+fn writeRuleTextSqlString(out: anytype, rp: *Rule) !void {
+    try out.writeByte('\'');
+    try writeSqlStringContent(out, rp.lhs.name);
+    try out.writeAll(" ::=");
+    for (rp.rhs) |sp| {
+        try out.writeByte(' ');
+        if (sp.type != .multiterminal) {
+            try writeSqlStringContent(out, sp.name);
+        } else {
+            try writeSqlStringContent(out, sp.subsym[0].name);
+            for (sp.subsym[1..]) |ssp| {
+                try out.writeByte('|');
+                try writeSqlStringContent(out, ssp.name);
+            }
+        }
+    }
+    try out.writeByte('\'');
+}
+
+fn writeImplSignatureWith(out: anytype, impl: *const Impl, comptime sql_escape: bool) !void {
+    const write = struct {
+        fn text(writer: anytype, bytes: []const u8) !void {
+            if (sql_escape) {
+                try writeSqlStringContent(writer, bytes);
+            } else {
+                try writer.writeAll(bytes);
+            }
+        }
+    }.text;
+
+    try write(out, impl.name);
+    try out.writeByte('(');
+    if (impl.lhsalias.len > 0) try write(out, impl.lhsalias);
+    if (impl.rhsalias.len > 0) {
+        try out.writeAll("; ");
+        for (impl.rhsalias, 0..) |alias, i| {
+            if (i > 0) try out.writeAll(", ");
+            try write(out, alias);
+        }
+    }
+    try out.writeByte(')');
+}
+
+fn writeImplSignature(out: anytype, impl: *const Impl) !void {
+    try writeImplSignatureWith(out, impl, false);
+}
+
+fn writeSqlImplSignature(out: anytype, impl: *const Impl) !void {
+    try out.writeByte('\'');
+    try writeImplSignatureWith(out, impl, true);
+    try out.writeByte('\'');
+}
+
+fn findImplForRule(rp: *Rule) ?*Impl {
+    for (impl_safe.impls.values()) |impl| {
+        if (impl.rule == rp) return impl;
+    }
+    return null;
+}
+
+fn configIsBasis(stp: *State, cfp: *Config) bool {
+    var maybe_bp = stp.bp;
+    while (maybe_bp) |bp| : (maybe_bp = bp.bp) {
+        if (bp == cfp) return true;
+    }
+    return false;
+}
+
+fn actionTargetState(ap: *Action) ?u32 {
+    return switch (ap.type) {
+        .shift, .ssconflict, .sh_resolved => ap.x.stp.statenum,
+        else => null,
+    };
+}
+
+fn actionTargetRule(ap: *Action) ?u32 {
+    return switch (ap.type) {
+        .reduce, .shiftreduce, .srconflict, .rrconflict, .rd_resolved => ap.x.rp.?.iRule,
+        else => null,
+    };
+}
+
+fn stateDefaultAction(zyt: *Zitron, stp: *State) u32 {
+    if (stp.iDfltReduce < 0) return zyt.errAction;
+    return uint(stp.iDfltReduce) + zyt.minReduce;
+}
+
+fn writeJsonInt(out: anytype, first: *bool, value: anytype) !void {
+    if (!first.*) try out.writeByte(',');
+    first.* = false;
+    try out.print("{d}", .{value});
+}
+
+fn beginParserTable(sql: anytype, name: []const u8, len: usize) !bool {
+    try sql.writeAll("INSERT INTO parser_table(name,len,json)VALUES(");
+    try writeSqlString(sql, name);
+    try sql.print(",{d},'[", .{len});
+    return true;
+}
+
+fn endParserTable(sql: anytype) !void {
+    try sql.writeAll("]');\n");
+}
+
+fn emitParserConstants(zyt: *Zitron, pActtab: *const ActTable, sql: anytype) !void {
+    try sql.writeAll("CREATE TABLE parser_constant(\n" ++
+        "  name TEXT PRIMARY KEY,\n" ++
+        "  value INTEGER NOT NULL\n" ++
+        ");\n");
+
+    const constants = .{
+        .{ "YYNSTATE", zyt.nxstate },
+        .{ "YYNRULE", zyt.nrule },
+        .{ "YYNRULE_WITH_ACTION", zyt.nruleWithAction },
+        .{ "YYNTOKEN", zyt.nterminal },
+        .{ "YY_MAX_SHIFT", zyt.nxstate - 1 },
+        .{ "YY_MIN_SHIFTREDUCE", zyt.minShiftReduce },
+        .{ "YY_MAX_SHIFTREDUCE", zyt.minShiftReduce + zyt.nrule - 1 },
+        .{ "YY_ERROR_ACTION", zyt.errAction },
+        .{ "YY_ACCEPT_ACTION", zyt.accAction },
+        .{ "YY_NO_ACTION", zyt.noAction },
+        .{ "YY_MIN_REDUCE", zyt.minReduce },
+        .{ "YY_MAX_REDUCE", zyt.minReduce + zyt.nrule - 1 },
+        .{ "YY_ACTTAB_COUNT", pActtab.actionSize() },
+        .{ "YY_SHIFT_MIN", pActtab.mnTknOfst },
+        .{ "YY_SHIFT_MAX", pActtab.mxTknOfst },
+        .{ "YY_REDUCE_MIN", pActtab.mnNtOfst },
+        .{ "YY_REDUCE_MAX", pActtab.mxNtOfst },
+    };
+
+    inline for (constants) |constant| {
+        try sql.writeAll("INSERT INTO parser_constant(name,value)VALUES(");
+        try writeSqlString(sql, constant[0]);
+        try sql.print(",{d});\n", .{constant[1]});
+    }
+
+    {
+        var n = zyt.nxstate;
+        while (n > 0 and zyt.sorted[n - 1].iTknOfst == NO_OFFSET) : (n -= 1) {}
+        try sql.print("INSERT INTO parser_constant(name,value)VALUES('YY_SHIFT_COUNT',{d});\n", .{n - 1});
+    }
+    {
+        var n = zyt.nxstate;
+        while (n > 0 and zyt.sorted[n - 1].iNtOfst == NO_OFFSET) : (n -= 1) {}
+        try sql.print("INSERT INTO parser_constant(name,value)VALUES('YY_REDUCE_COUNT',{d});\n", .{n - 1});
+    }
+}
+
+fn emitParserTables(zyt: *Zitron, pActtab: *const ActTable, sql: anytype) !void {
+    try sql.writeAll("CREATE TABLE parser_table(\n" ++
+        "  name TEXT PRIMARY KEY,\n" ++
+        "  len INTEGER NOT NULL,\n" ++
+        "  json TEXT NOT NULL\n" ++
+        ");\n");
+
+    {
+        const n = pActtab.actionSize();
+        var first = try beginParserTable(sql, "yy_action", n);
+        for (0..n) |i| {
+            var action = pActtab.yyaction(i);
+            if (action < 0) action = @intCast(zyt.noAction);
+            try writeJsonInt(sql, &first, action);
+        }
+        try endParserTable(sql);
+    }
+    {
+        const n = pActtab.lookaheadSize();
+        const nLookAhead = zyt.nterminal + pActtab.actionSize();
+        var first = try beginParserTable(sql, "yy_lookahead", nLookAhead);
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            var lookahead = pActtab.yylookahead(i);
+            if (lookahead < 0) lookahead = @intCast(zyt.nsymbol);
+            try writeJsonInt(sql, &first, lookahead);
+        }
+        while (i < nLookAhead) : (i += 1) {
+            try writeJsonInt(sql, &first, zyt.nterminal);
+        }
+        try endParserTable(sql);
+    }
+    {
+        var n = zyt.nxstate;
+        while (n > 0 and zyt.sorted[n - 1].iTknOfst == NO_OFFSET) : (n -= 1) {}
+        var first = try beginParserTable(sql, "yy_shift_ofst", n);
+        for (0..n) |i| {
+            var ofst = zyt.sorted[i].iTknOfst;
+            if (ofst == NO_OFFSET) ofst = @intCast(pActtab.actionSize());
+            try writeJsonInt(sql, &first, ofst);
+        }
+        try endParserTable(sql);
+    }
+    {
+        var n = zyt.nxstate;
+        while (n > 0 and zyt.sorted[n - 1].iNtOfst == NO_OFFSET) : (n -= 1) {}
+        var first = try beginParserTable(sql, "yy_reduce_ofst", n);
+        for (0..n) |i| {
+            var ofst = zyt.sorted[i].iNtOfst;
+            if (ofst == NO_OFFSET) ofst = pActtab.mnNtOfst - 1;
+            try writeJsonInt(sql, &first, ofst);
+        }
+        try endParserTable(sql);
+    }
+    {
+        var first = try beginParserTable(sql, "yy_default", zyt.nxstate);
+        for (0..zyt.nxstate) |i| {
+            try writeJsonInt(sql, &first, stateDefaultAction(zyt, zyt.sorted[i]));
+        }
+        try endParserTable(sql);
+    }
+    if (zyt.has_fallback) {
+        var first = try beginParserTable(sql, "yyFallback", zyt.nterminal);
+        for (0..zyt.nterminal) |i| {
+            const sp = zyt.symbols[i];
+            try writeJsonInt(sql, &first, if (sp.fallback) |fallback| fallback.index else 0);
+        }
+        try endParserTable(sql);
+    }
+    {
+        var first = try beginParserTable(sql, "yyRuleInfoLhs", zyt.nrule);
+        var m_rp: ?*Rule = zyt.rule;
+        while (m_rp) |rp| : (m_rp = rp.next) {
+            try writeJsonInt(sql, &first, rp.lhs.index);
+        }
+        try endParserTable(sql);
+    }
+    {
+        var first = try beginParserTable(sql, "yyRuleInfoNRhs", zyt.nrule);
+        var m_rp: ?*Rule = zyt.rule;
+        while (m_rp) |rp| : (m_rp = rp.next) {
+            const nrhs: int = if (rp.rhs.len == 0) 0 else -cast(int, rp.rhs.len);
+            try writeJsonInt(sql, &first, nrhs);
+        }
+        try endParserTable(sql);
+    }
+}
+
+fn ReportSql(zyt: *Zitron, pActtab: *const ActTable, sql: anytype) !void {
     try sql.writeAll("BEGIN;\n" ++
         "CREATE TABLE symbol(\n" ++
         "  id INTEGER PRIMARY KEY,\n" ++
         "  name TEXT NOT NULL,\n" ++
         "  isTerminal BOOLEAN NOT NULL,\n" ++
-        "  fallback INTEGER REFERENCES symbol" ++
-        " DEFERRABLE INITIALLY DEFERRED\n" ++
+        "  fallback INTEGER REFERENCES symbol DEFERRABLE INITIALLY DEFERRED,\n" ++
+        "  type TEXT NOT NULL,\n" ++
+        "  precedence INTEGER,\n" ++
+        "  associativity TEXT,\n" ++
+        "  lambda BOOLEAN NOT NULL,\n" ++
+        "  hasContent BOOLEAN NOT NULL\n" ++
         ");\n");
     for (0..zyt.nsymbol) |i| {
         const sp = zyt.symbols[i];
-        try sql.print(
-            "" ++
-                "INSERT INTO symbol(id,name,isTerminal,fallback)" ++
-                "VALUES({d},'{s}',{s}",
-            .{ i, sp.name, if (i < zyt.nterminal) "TRUE" else "FALSE" },
-        );
+        try sql.print("INSERT INTO symbol(id,name,isTerminal,fallback,type,precedence,associativity,lambda,hasContent)VALUES({d},", .{i});
+        try writeSqlString(sql, sp.name);
+        try sql.writeByte(',');
+        try writeSqlBool(sql, i < zyt.nterminal);
+        try sql.writeByte(',');
         if (sp.fallback) |fp| {
-            try sql.print(",{d});\n", .{fp.index});
+            try sql.print("{d}", .{fp.index});
         } else {
-            try sql.writeAll(",NULL);\n");
+            try sql.writeAll("NULL");
+        }
+        try sql.writeByte(',');
+        try writeSqlString(sql, if (i < zyt.nterminal) "terminal" else @tagName(sp.type));
+        try sql.writeByte(',');
+        if (sp.prec) |prec| {
+            try sql.print("{d}", .{prec});
+        } else {
+            try sql.writeAll("NULL");
+        }
+        try sql.writeByte(',');
+        if (sp.prec != null and sp.assoc != .unk) {
+            try writeSqlString(sql, @tagName(sp.assoc));
+        } else {
+            try sql.writeAll("NULL");
+        }
+        try sql.writeByte(',');
+        try writeSqlBool(sql, sp.lambda);
+        try sql.writeByte(',');
+        try writeSqlBool(sql, sp.bContent);
+        try sql.writeAll(");\n");
+    }
+    try sql.writeAll("CREATE TABLE symbol_firstset(\n" ++
+        "  nonterminal INTEGER REFERENCES symbol(id),\n" ++
+        "  terminal INTEGER REFERENCES symbol(id),\n" ++
+        "  PRIMARY KEY(nonterminal, terminal)\n" ++
+        ");\n");
+    for (zyt.nterminal..zyt.nsymbol) |i| {
+        const sp = zyt.symbols[i];
+        for (0..zyt.nterminal) |j| {
+            if (sp.firstset.len > 0 and sp.firstset[j]) {
+                try sql.print("INSERT INTO symbol_firstset(nonterminal,terminal)VALUES({d},{d});\n", .{ i, j });
+            }
         }
     }
+
     try sql.writeAll("CREATE TABLE rule(\n" ++
         "  ruleid INTEGER PRIMARY KEY,\n" ++
         "  lhs INTEGER REFERENCES symbol(id),\n" ++
-        "  txt TEXT\n" ++
+        "  txt TEXT,\n" ++
+        "  nrhs INTEGER NOT NULL,\n" ++
+        "  lhsAlias TEXT,\n" ++
+        "  ruleLine INTEGER NOT NULL,\n" ++
+        "  codeLine INTEGER NOT NULL,\n" ++
+        "  precedenceSymbol INTEGER REFERENCES symbol(id),\n" ++
+        "  lhsStart BOOLEAN NOT NULL,\n" ++
+        "  noCode BOOLEAN NOT NULL,\n" ++
+        "  canReduce BOOLEAN NOT NULL,\n" ++
+        "  doesReduce BOOLEAN NOT NULL,\n" ++
+        "  neverReduce BOOLEAN NOT NULL,\n" ++
+        "  originalIndex INTEGER NOT NULL,\n" ++
+        "  implName TEXT,\n" ++
+        "  implSignature TEXT\n" ++
         ");\n" ++
         "CREATE TABLE rulerhs(\n" ++
         "  ruleid INTEGER REFERENCES rule(ruleid),\n" ++
         "  pos INTEGER,\n" ++
-        "  sym INTEGER REFERENCES symbol(id)\n" ++
+        "  sym INTEGER REFERENCES symbol(id),\n" ++
+        "  alt INTEGER NOT NULL DEFAULT 0,\n" ++
+        "  alias TEXT\n" ++
+        ");\n" ++
+        "CREATE TABLE rule_impl(\n" ++
+        "  ruleid INTEGER PRIMARY KEY REFERENCES rule(ruleid),\n" ++
+        "  name TEXT NOT NULL,\n" ++
+        "  signature TEXT NOT NULL,\n" ++
+        "  line INTEGER NOT NULL,\n" ++
+        "  lhsAlias TEXT\n" ++
+        ");\n" ++
+        "CREATE TABLE rule_impl_rhs(\n" ++
+        "  ruleid INTEGER REFERENCES rule(ruleid),\n" ++
+        "  pos INTEGER,\n" ++
+        "  alias TEXT,\n" ++
+        "  PRIMARY KEY(ruleid, pos)\n" ++
         ");\n");
     var i: usize = 0;
     var m_rp: ?*Rule = zyt.rule;
@@ -1979,28 +2306,199 @@ fn ReportSql(zyt: *Zitron, sql: anytype) !void {
     while (m_rp) |rp| : ({i += 1; m_rp = rp.next;}) {
         // zig fmt: on
         dbgassert(i == rp.iRule);
-        try sql.print(
-            "INSERT INTO rule(ruleid,lhs,txt)VALUES({d},{d},'",
-            .{ rp.iRule, rp.lhs.index },
-        );
-        try writeRuleText(sql, rp);
-        try sql.writeAll("');\n");
+        const maybe_impl = findImplForRule(rp);
+        try sql.print("INSERT INTO rule(ruleid,lhs,txt,nrhs,lhsAlias,ruleLine,codeLine,precedenceSymbol,lhsStart,noCode,canReduce,doesReduce,neverReduce,originalIndex,implName,implSignature)VALUES({d},{d},", .{ rp.iRule, rp.lhs.index });
+        try writeRuleTextSqlString(sql, rp);
+        try sql.print(",{d},", .{rp.rhs.len});
+        try writeSqlNullableString(sql, rp.lhsalias);
+        try sql.print(",{d},{d},", .{ rp.ruleline, rp.line });
+        if (rp.precsym) |precsym| {
+            try sql.print("{d}", .{precsym.index});
+        } else {
+            try sql.writeAll("NULL");
+        }
+        try sql.writeByte(',');
+        try writeSqlBool(sql, rp.lhsStart);
+        try sql.writeByte(',');
+        try writeSqlBool(sql, rp.noCode);
+        try sql.writeByte(',');
+        try writeSqlBool(sql, rp.canReduce);
+        try sql.writeByte(',');
+        try writeSqlBool(sql, rp.doesReduce);
+        try sql.writeByte(',');
+        try writeSqlBool(sql, rp.neverReduce);
+        try sql.print(",{d},", .{rp.index});
+        if (maybe_impl) |impl| {
+            try writeSqlString(sql, impl.name);
+            try sql.writeByte(',');
+            try writeSqlImplSignature(sql, impl);
+        } else {
+            try sql.writeAll("NULL,NULL");
+        }
+        try sql.writeAll(");\n");
+        if (maybe_impl) |impl| {
+            try sql.print("INSERT INTO rule_impl(ruleid,name,signature,line,lhsAlias)VALUES({d},", .{rp.iRule});
+            try writeSqlString(sql, impl.name);
+            try sql.writeByte(',');
+            try writeSqlImplSignature(sql, impl);
+            try sql.print(",{d},", .{impl.line});
+            try writeSqlNullableString(sql, impl.lhsalias);
+            try sql.writeAll(");\n");
+            for (impl.rhsalias, 0..) |alias, j| {
+                try sql.print("INSERT INTO rule_impl_rhs(ruleid,pos,alias)VALUES({d},{d},", .{ rp.iRule, j });
+                try writeSqlNullableString(sql, alias);
+                try sql.writeAll(");\n");
+            }
+        }
         for (rp.rhs, 0..) |sp, j| {
             if (sp.type != .multiterminal) {
-                try sql.print(
-                    "INSERT INTO rulerhs(ruleid,pos,sym)VALUES({d},{d},{d});\n",
-                    .{ i, j, sp.index },
-                );
+                try sql.print("INSERT INTO rulerhs(ruleid,pos,sym,alt,alias)VALUES({d},{d},{d},0,", .{ i, j, sp.index });
+                try writeSqlNullableString(sql, rp.rhsalias[j]);
+                try sql.writeAll(");\n");
             } else {
-                for (sp.subsym) |ssp| {
-                    try sql.print(
-                        "INSERT INTO rulerhs(ruleid,pos,sym)VALUES({d},{d},{d});\n",
-                        .{ i, j, ssp.index },
-                    );
+                for (sp.subsym, 0..) |ssp, alt| {
+                    try sql.print("INSERT INTO rulerhs(ruleid,pos,sym,alt,alias)VALUES({d},{d},{d},{d},", .{ i, j, ssp.index, alt });
+                    try writeSqlNullableString(sql, rp.rhsalias[j]);
+                    try sql.writeAll(");\n");
                 }
             }
         }
     }
+
+    try sql.writeAll("CREATE TABLE state(\n" ++
+        "  id INTEGER PRIMARY KEY,\n" ++
+        "  is_emitted BOOLEAN NOT NULL,\n" ++
+        "  n_token_actions INTEGER NOT NULL,\n" ++
+        "  n_nonterminal_actions INTEGER NOT NULL,\n" ++
+        "  token_offset INTEGER NOT NULL,\n" ++
+        "  nonterminal_offset INTEGER NOT NULL,\n" ++
+        "  default_reduce_rule INTEGER REFERENCES rule(ruleid),\n" ++
+        "  default_action INTEGER NOT NULL,\n" ++
+        "  autoreduce BOOLEAN NOT NULL\n" ++
+        ");\n");
+    for (zyt.sorted, 0..) |stp, order| {
+        try sql.print("INSERT INTO state(id,is_emitted,n_token_actions,n_nonterminal_actions,token_offset,nonterminal_offset,default_reduce_rule,default_action,autoreduce)VALUES({d},", .{stp.statenum});
+        try writeSqlBool(sql, order < zyt.nxstate);
+        try sql.print(",{d},{d},{d},{d},", .{ stp.nTknAct, stp.nNtAct, stp.iTknOfst, stp.iNtOfst });
+        if (stp.pDefltReduce) |rp| {
+            try sql.print("{d}", .{rp.iRule});
+        } else {
+            try sql.writeAll("NULL");
+        }
+        try sql.print(",{d},", .{stateDefaultAction(zyt, stp)});
+        try writeSqlBool(sql, stp.autoreduce);
+        try sql.writeAll(");\n");
+    }
+
+    try sql.writeAll("CREATE TABLE configuration(\n" ++
+        "  state_id INTEGER REFERENCES state(id),\n" ++
+        "  ordinal INTEGER,\n" ++
+        "  ruleid INTEGER REFERENCES rule(ruleid),\n" ++
+        "  dot INTEGER NOT NULL,\n" ++
+        "  is_basis BOOLEAN NOT NULL,\n" ++
+        "  PRIMARY KEY(state_id, ordinal)\n" ++
+        ");\n" ++
+        "CREATE TABLE configuration_follow(\n" ++
+        "  state_id INTEGER,\n" ++
+        "  config_ordinal INTEGER,\n" ++
+        "  terminal INTEGER REFERENCES symbol(id),\n" ++
+        "  PRIMARY KEY(state_id, config_ordinal, terminal),\n" ++
+        "  FOREIGN KEY(state_id, config_ordinal) REFERENCES configuration(state_id, ordinal)\n" ++
+        ");\n");
+    for (zyt.sorted) |stp| {
+        var ordinal: usize = 0;
+        var m_cfp: ?*Config = stp.cfp;
+        while (m_cfp) |cfp| : ({
+            ordinal += 1;
+            m_cfp = cfp.next;
+        }) {
+            try sql.print("INSERT INTO configuration(state_id,ordinal,ruleid,dot,is_basis)VALUES({d},{d},{d},{d},", .{ stp.statenum, ordinal, cfp.rp.iRule, cfp.dot });
+            try writeSqlBool(sql, configIsBasis(stp, cfp));
+            try sql.writeAll(");\n");
+            for (0..zyt.nterminal) |j| {
+                if (cfp.fws.len > 0 and cfp.fws[j]) {
+                    try sql.print("INSERT INTO configuration_follow(state_id,config_ordinal,terminal)VALUES({d},{d},{d});\n", .{ stp.statenum, ordinal, j });
+                }
+            }
+        }
+    }
+
+    try sql.writeAll("CREATE TABLE action_kind(\n" ++
+        "  kind TEXT PRIMARY KEY\n" ++
+        ");\n");
+    inline for (std.meta.tags(E_Action)) |kind| {
+        if (kind != ._not_initialized) {
+            try sql.writeAll("INSERT INTO action_kind(kind)VALUES(");
+            try writeSqlString(sql, @tagName(kind));
+            try sql.writeAll(");\n");
+        }
+    }
+
+    try sql.writeAll("CREATE TABLE action(\n" ++
+        "  state_id INTEGER REFERENCES state(id),\n" ++
+        "  ordinal INTEGER,\n" ++
+        "  lookahead INTEGER REFERENCES symbol(id),\n" ++
+        "  lookahead_name TEXT NOT NULL,\n" ++
+        "  kind TEXT NOT NULL REFERENCES action_kind(kind),\n" ++
+        "  target_state INTEGER REFERENCES state(id),\n" ++
+        "  target_rule INTEGER REFERENCES rule(ruleid),\n" ++
+        "  computed_action INTEGER,\n" ++
+        "  is_conflict BOOLEAN NOT NULL,\n" ++
+        "  is_resolved BOOLEAN NOT NULL,\n" ++
+        "  optimized_from_symbol INTEGER REFERENCES symbol(id),\n" ++
+        "  PRIMARY KEY(state_id, ordinal)\n" ++
+        ");\n");
+    for (zyt.sorted) |stp| {
+        var ordinal: usize = 0;
+        var m_ap = stp.ap;
+        while (m_ap) |ap| : ({
+            ordinal += 1;
+            m_ap = ap.next;
+        }) {
+            try sql.print("INSERT INTO action(state_id,ordinal,lookahead,lookahead_name,kind,target_state,target_rule,computed_action,is_conflict,is_resolved,optimized_from_symbol)VALUES({d},{d},", .{ stp.statenum, ordinal });
+            if (ap.sp.index < zyt.nsymbol) {
+                try sql.print("{d}", .{ap.sp.index});
+            } else {
+                try sql.writeAll("NULL");
+            }
+            try sql.writeByte(',');
+            try writeSqlString(sql, ap.sp.name);
+            try sql.writeByte(',');
+            try writeSqlString(sql, @tagName(ap.type));
+            try sql.writeByte(',');
+            if (actionTargetState(ap)) |target_state| {
+                try sql.print("{d}", .{target_state});
+            } else {
+                try sql.writeAll("NULL");
+            }
+            try sql.writeByte(',');
+            if (actionTargetRule(ap)) |target_rule| {
+                try sql.print("{d}", .{target_rule});
+            } else {
+                try sql.writeAll("NULL");
+            }
+            try sql.writeByte(',');
+            if (compute_action(zyt, ap)) |computed| {
+                try sql.print("{d}", .{computed});
+            } else {
+                try sql.writeAll("NULL");
+            }
+            try sql.writeByte(',');
+            try writeSqlBool(sql, ap.type == .ssconflict or ap.type == .srconflict or ap.type == .rrconflict);
+            try sql.writeByte(',');
+            try writeSqlBool(sql, ap.type == .sh_resolved or ap.type == .rd_resolved);
+            try sql.writeByte(',');
+            if (ap.spOpt) |spOpt| {
+                try sql.print("{d}", .{spOpt.index});
+            } else {
+                try sql.writeAll("NULL");
+            }
+            try sql.writeAll(");\n");
+        }
+    }
+
+    try emitParserConstants(zyt, pActtab, sql);
+    try emitParserTables(zyt, pActtab, sql);
     try sql.writeAll("COMMIT;\n");
 }
 
@@ -2057,17 +2555,6 @@ fn ReportTable(
         try reportTableImpl(zyt, in, out);
         try out.flush();
     } else {} // No file handle
-    if (zyt.opt.sql_flag) {
-        const m_sql_fh = try file_open(zyt, ".sql", false, .{});
-        if (m_sql_fh) |fh| {
-            defer fh.close(zyt.io);
-            var out_buffer: [4096]u8 = undefined;
-            var f_writer = fh.writer(zyt.io, &out_buffer);
-            const out = &f_writer.interface;
-            try ReportSql(zyt, out);
-            try out.flush();
-        } else {} // No file handle
-    }
 }
 
 fn reportTableImpl(
@@ -2971,6 +3458,18 @@ fn reportTableImpl(
 
     // Append any addition code the user desires.
     try tplt_print(out, zyt, zyt.extracode, &lineno);
+
+    if (zyt.opt.sql_flag) {
+        const m_sql_fh = try file_open(zyt, ".sql", false, .{});
+        if (m_sql_fh) |fh| {
+            defer fh.close(zyt.io);
+            var out_buffer: [4096]u8 = undefined;
+            var f_writer = fh.writer(zyt.io, &out_buffer);
+            const sql = &f_writer.interface;
+            try ReportSql(zyt, pActtab, sql);
+            try sql.flush();
+        } else {} // No file handle
+    }
 }
 
 /// Generate a header file for the parser
@@ -3529,7 +4028,7 @@ const ActTable = struct {
 
     // [792]
     /// Return the size of the action table without the trailing syntax error entries.
-    pub fn actionSize(acttab: *ActTable) u32 {
+    pub fn actionSize(acttab: *const ActTable) u32 {
         var n = acttab.nAction;
         while (n > 0 and acttab.aAction[n - 1].lookahead < 0) : (n -= 1) {}
         return n;
@@ -7434,5 +7933,33 @@ fn Configlist_freesets(cfp: ?*Config, allocator: Allocator) void {
 }
 
 test "exe mentioned" {
-    std.debug.print("hello from lemon main\n", .{});
+    try std.testing.expect(true);
+}
+
+test "sql string literals escape quotes" {
+    var buf: AllocatingWriter = .init(std.testing.allocator);
+    defer buf.deinit();
+
+    try writeSqlString(&buf.writer, "can't stop");
+
+    const got = try buf.toOwnedSlice();
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("'can''t stop'", got);
+}
+
+test "impl signatures include aliases without code" {
+    var rhs = [_][]const u8{ "left", "", "right" };
+    var impl = Impl.empty;
+    impl.name = "@expr_mix";
+    impl.lhsalias = "out";
+    impl.rhsalias = &rhs;
+
+    var buf: AllocatingWriter = .init(std.testing.allocator);
+    defer buf.deinit();
+
+    try writeImplSignature(&buf.writer, &impl);
+
+    const got = try buf.toOwnedSlice();
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("@expr_mix(out; left, , right)", got);
 }
