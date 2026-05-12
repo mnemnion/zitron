@@ -185,7 +185,7 @@ with a brief explanation of what each does by typing
 - **-U, --undefine _name_** Undefine C-like preprocessor macro _name_.  It is legal to
     undefine a nonexistent name, but warned against.
 - **-v, --version** Print the Zitron version number.
--   **-x, --clean-exit**  Always exit with code 0, despite errors.
+- **-x, --clean-exit**  Always exit with code 0, despite errors.
 
 
 ### 3.2 The Parser Interface <a id="interface">

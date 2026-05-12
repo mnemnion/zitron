@@ -6608,10 +6608,10 @@ const OptionKind = enum {
             'd' => .output_directory,
             'D' => .define,
             'e' => .enum_file,
+            'f' => .output_file,
             'g' => .grammar,
             'h' => .help,
             'l' => .linenos,
-            'o' => .output_file,
             'P' => .print_pp,
             'q' => .quiet,
             'r' => .no_resort,
@@ -6957,7 +6957,6 @@ const help_string =
     \\   -d, --directory directory Write all output files into "directory". Normally,
     \\                             output files are written into the directory that contains the input
     \\                             grammar file.
-    \\   -o  --file                Write the output (.zig) file to this name instead, e.g. "foo.zig".
     \\   -D, --define name         Define C-like preprocessor macro "name".  This macro is usable
     \\                             by %ifdef, %ifndef, and %if lines in the grammar file.
     \\                             It is legal to define a name more than once.
