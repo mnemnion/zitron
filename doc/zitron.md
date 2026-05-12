@@ -132,7 +132,7 @@ generate code for a parser.
 To achieve this hybrid approach, anything which can be done with a
 command-line argument (excepting the input file name) can also be
 done using a build-time option.  There are a few minor exceptions,
-like `--version` and `--help`, which are CLI only.
+like `--version`, `--help`, and `-F`, which are CLI only.
 
 The command line switches are all booleans, every one of which is
 logically `false`, and the description in this documentation tells the
@@ -167,6 +167,9 @@ with a brief explanation of what each does by typing
     by [`%ifdef`](#pifdef), [`%ifndef`](#pifdef), and [`%if`](#pifdef) lines in
     the grammar file.  It is legal to define a name more than once.
 - **-e --enum-file**  Emit the token enum as its own file.
+- **-F --fifo** Read the grammar from standard input and write the generated Zig
+    parser to standard output.  The filename argument is still required
+    and is used in diagnostics and line-number comments.
 - **-f --file _file_**  Write the file using this name instead.
 - **-g --grammar**  Do not generate a parser. Instead write the input grammar to
     standard output with all comments, actions, and other extraneous text

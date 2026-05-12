@@ -2546,7 +2546,16 @@ fn ReportTable(
 
     const free_buffer, const in = try tplt_open(zyt);
     defer if (free_buffer) zyt.allocator.free(in);
-    const m_out_fh = try file_open(zyt, ".zig", true, .{});
+    try assign_outname(zyt, ".zig", true);
+    if (zyt.opt.fifo) {
+        var out_buffer: [4096]u8 = undefined;
+        var stdout_writer = std.Io.File.stdout().writer(zyt.io, &out_buffer);
+        const out = &stdout_writer.interface;
+        try reportTableImpl(zyt, in, out);
+        try out.flush();
+        return;
+    }
+    const m_out_fh = try open_file(zyt, zyt.outname, .{});
     if (m_out_fh) |fh| {
         defer fh.close(zyt.io);
         var out_buffer: [4096]u8 = undefined;
@@ -4975,22 +4984,37 @@ fn Parse(psp: *ParserState) !void {
     // TODO: the original creates PState (and Lemon) on the stack,
     // and does the former here, passing in the latter.  Cleanup should
     // do likewise.
-    const file = if (std.Io.Dir.cwd().openFile(psp.gp.io, psp.filename, .{})) |f| file: {
-        break :file f;
-    } else |err| {
-        // TODO: nicer message here
-        std.debug.print("File open error {s}", .{@errorName(err)});
-        exit(@max(1, @as(u8, @truncate(@intFromError(err)))));
+    const filebuf = if (psp.gp.opt.fifo) filebuf: {
+        var stdin_buffer: [4096]u8 = undefined;
+        var stdin_reader = std.Io.File.stdin().readerStreaming(psp.gp.io, &stdin_buffer);
+        break :filebuf stdin_reader.interface.allocRemainingAlignedSentinel(
+            psp.allocator,
+            .unlimited,
+            .of(u8),
+            0,
+        ) catch |err| switch (err) {
+            error.ReadFailed => return stdin_reader.err.?,
+            else => |e| return e,
+        };
+    } else filebuf: {
+        const file = if (std.Io.Dir.cwd().openFile(psp.gp.io, psp.filename, .{})) |f| file: {
+            break :file f;
+        } else |err| {
+            // TODO: nicer message here
+            std.debug.print("File open error {s}", .{@errorName(err)});
+            exit(@max(1, @as(u8, @truncate(@intFromError(err)))));
+        };
+        defer file.close(psp.gp.io);
+        const end_pos = (try file.stat(psp.gp.io)).size;
+        const filebuf = try psp.allocator.allocSentinel(u8, end_pos, 0);
+        const read_bytes = try file.readPositionalAll(psp.gp.io, filebuf, 0);
+        if (read_bytes < end_pos) {
+            std.debug.print("didnt read to end of file {s}\n", .{psp.filename});
+            std.process.exit(1);
+        }
+        break :filebuf filebuf;
     };
-    defer file.close(psp.gp.io);
-    const end_pos = (try file.stat(psp.gp.io)).size;
-    const filebuf = try psp.allocator.allocSentinel(u8, end_pos, 0);
     defer psp.allocator.free(filebuf);
-    const read_bytes = try file.readPositionalAll(psp.gp.io, filebuf, 0);
-    if (read_bytes < end_pos) {
-        std.debug.print("didnt read to end of file {s}\n", .{psp.filename});
-        std.process.exit(1);
-    }
     // /* Make an initial pass through the file to handle %ifdef and %ifndef */
     preprocess_input(&psp.gp.opt, &psp.gp.errorcnt, filebuf);
     if (psp.gp.errorcnt > 0) return;
@@ -6557,6 +6581,7 @@ const Options = struct {
     grammar: bool = config.grammar,
     enum_file: bool = config.enum_file,
     no_compress: bool = config.no_compress,
+    fifo: bool = false,
     print_pp: bool = false,
     linenos: bool = config.line_numbers,
     show_conflicts: bool = config.show_conflicts,
@@ -6585,6 +6610,7 @@ const OptionKind = enum {
     grammar,
     enum_file,
     no_compress,
+    fifo,
     print_pp,
     linenos,
     show_conflicts,
@@ -6608,6 +6634,7 @@ const OptionKind = enum {
             'd' => .output_directory,
             'D' => .define,
             'e' => .enum_file,
+            'F' => .fifo,
             'f' => .output_file,
             'g' => .grammar,
             'h' => .help,
@@ -6632,6 +6659,7 @@ const OptionKind = enum {
             .grammar,
             .enum_file,
             .no_compress,
+            .fifo,
             .print_pp,
             .linenos,
             .show_conflicts,
@@ -6658,6 +6686,7 @@ const option_list = [_]struct { []const u8, OptionKind }{
     .{ "grammar", .grammar },
     .{ "enum-file", .enum_file },
     .{ "no-compress", .no_compress },
+    .{ "fifo", .fifo },
     .{ "pp-only", .print_pp },
     .{ "line-numbers", .linenos },
     .{ "show-conflicts", .show_conflicts },
@@ -6789,6 +6818,7 @@ fn assignFlag(opt: *Options, opt_kind: OptionKind) void {
         .grammar => opt.grammar = !opt.grammar,
         .enum_file => opt.enum_file = !opt.enum_file,
         .no_compress => opt.no_compress = !opt.no_compress,
+        .fifo => opt.fifo = true,
         .print_pp => opt.print_pp = !opt.print_pp,
         .linenos => opt.linenos = !opt.linenos,
         .show_conflicts => opt.show_conflicts = !opt.show_conflicts,
@@ -6859,6 +6889,15 @@ fn readOneArg(opt: *Options, args: []const [:0]const u8, n: *usize, i: *usize) !
         try readShortArgs(opt, args, n, i);
     }
     return true;
+}
+
+/// Quiet other file outputs in fifo mode.
+fn fixupDependentOptions(opt: *Options) void {
+    if (opt.fifo) {
+        opt.sql_flag = false;
+        opt.enum_file = false;
+        opt.quiet = true;
+    }
 }
 
 /// Initialize the Options struct.  Return the index at which the filename should be
@@ -6936,6 +6975,7 @@ fn optionsInit(opt: *Options, args: []const [:0]const u8, allocator: Allocator) 
         dprint("Try `{s} --help` to print valid options.\n", .{shortProgramName(args)});
         exit(1);
     }
+    fixupDependentOptions(opt);
     return n;
 }
 
@@ -6961,6 +7001,7 @@ const help_string =
     \\                             by %ifdef, %ifndef, and %if lines in the grammar file.
     \\                             It is legal to define a name more than once.
     \\   -e --enum-file            Emit the token enum as its own file.
+    \\   -F --fifo                 Read grammar from standard input and write Zig to standard output.
     \\   -f --file file            Write the file(s) using this name instead.
     \\   -g --grammar              Do not generate a parser.  Instead write the input grammar to
     \\                             standard output with all comments, actions, and other extraneous
@@ -7933,6 +7974,20 @@ fn Configlist_freesets(cfp: ?*Config, allocator: Allocator) void {
 
 test "exe mentioned" {
     try std.testing.expect(true);
+}
+
+test "fifo option fixes dependent file outputs" {
+    var args = [_][:0]const u8{ "zitron", "--fifo", "-Se", "grammar.zy" };
+    var opt: Options = .{};
+    defer opt.deinit(std.testing.allocator);
+
+    const file_index = try optionsInit(&opt, &args, std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 3), file_index);
+    try std.testing.expect(opt.fifo);
+    try std.testing.expect(!opt.sql_flag);
+    try std.testing.expect(!opt.enum_file);
+    try std.testing.expect(opt.quiet);
 }
 
 test "sql string literals escape quotes" {
