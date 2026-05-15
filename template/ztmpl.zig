@@ -13,7 +13,7 @@
 //!
 
 
-// ************ Begin %include sections from the grammar ************************
+//! ************ Begin %include sections from the grammar ************************
 %%
 // **************** End of %include directives **********************************
 // zig fmt: off

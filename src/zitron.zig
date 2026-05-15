@@ -1717,6 +1717,10 @@ fn emit_code_no_indent(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !v
         }
         try out.print("{s}", .{rp.code});
         lineno.* += mem.count(u8, rp.code, "\n");
+        if (rp.code[rp.code.len - 1] != '\n') {
+            try out.writeByte('\n');
+            lineno.* += 1;
+        }
         if (zyt.opt.linenos) {
             lineno.* += 1;
             try tplt_linedir(out, lineno.*, zyt.outname);
@@ -1727,6 +1731,10 @@ fn emit_code_no_indent(out: anytype, rp: *Rule, zyt: *Zitron, lineno: *usize) !v
     if (rp.codeSuffix.len > 0) {
         try out.print("{s}", .{rp.codeSuffix});
         lineno.* += mem.count(u8, rp.codeSuffix, "\n");
+        if (rp.codeSuffix[rp.codeSuffix.len - 1] != '\n') {
+            try out.writeByte('\n');
+            lineno.* += 1;
+        }
     }
     try out.writeAll("},\n");
     lineno.* += 1;
@@ -5763,7 +5771,6 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 // Do we need a line macro?
                 const addLineMacro = psp.gp.linenosflag and
                     psp.insertLineMacro and
-                    psp.tokenlineno > 1 and
                     (psp.decllinenoslot == null or psp.decllinenoslot.?.* != 0);
                 if (addLineMacro) {
                     zLine = std.fmt.bufPrint(&zBuffer, "// #line {d} ", .{psp.tokenlineno}) catch |err| slice: {
