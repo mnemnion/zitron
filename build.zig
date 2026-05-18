@@ -96,6 +96,11 @@ pub fn build(b: *std.Build) void {
         b.option(bool, "no_resort", "Do not sort or renumber states") orelse false,
     );
     z_opt.addOption(
+        bool,
+        "unbundle",
+        b.option(bool, "unbundle", "Do not bundle identical generated code blocks") orelse false,
+    );
+    z_opt.addOption(
         ?[]const []const u8,
         "define",
         b.option([]const []const u8, "define", "Define a preprocessor macro"),

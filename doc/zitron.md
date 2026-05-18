@@ -185,6 +185,7 @@ with a brief explanation of what each does by typing
 - **-S**  Generate the *.sql file describing the parser tables.
 - **-T, --template _file_** Use *file* as the template for the generated Zig-code
     parser implementation.
+- **-u, --unbundle** Do not bundle identical generated code blocks.
 - **-U, --undefine _name_** Undefine C-like preprocessor macro _name_.  It is legal to
     undefine a nonexistent name, but warned against.
 - **-v, --version** Print the Zitron version number.

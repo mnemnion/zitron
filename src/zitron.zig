@@ -3335,6 +3335,10 @@ fn reportTableImpl(
         if (sp.destLineno == null) continue; //  Already emitted
         try out.print("        {d}, // {s} \n", .{ sp.index, sp.name });
         lineno += 1;
+        if (zyt.opt.unbundle) {
+            try emit_destructor_code(out, sp, zyt, &lineno);
+            continue;
+        }
         // Combine duplicate destructors into a single case
         var j = i + 1;
         while (j < zyt.nsymbol) : (j += 1) {
@@ -3409,20 +3413,22 @@ fn reportTableImpl(
             try writeRuleText(out, rp);
             try out.writeByte('\n');
             lineno += 1;
-            var m_rp2: ?*Rule = rp.next; // Other rules with the same action
-            while (m_rp2) |rp2| : (m_rp2 = rp2.next) {
-                if (rp.code.ptr == rp2.code.ptr and
-                    rp.codePrefix.ptr == rp2.codePrefix.ptr and
-                    rp.codeSuffix.ptr == rp2.codeSuffix.ptr)
-                {
-                    if (p_check1) {
-                        dprint("case: merging rp2 {d} with rp {d}\n", .{ rp2.iRule, rp.iRule });
+            if (!zyt.opt.unbundle) {
+                var m_rp2: ?*Rule = rp.next; // Other rules with the same action
+                while (m_rp2) |rp2| : (m_rp2 = rp2.next) {
+                    if (rp.code.ptr == rp2.code.ptr and
+                        rp.codePrefix.ptr == rp2.codePrefix.ptr and
+                        rp.codeSuffix.ptr == rp2.codeSuffix.ptr)
+                    {
+                        if (p_check1) {
+                            dprint("case: merging rp2 {d} with rp {d}\n", .{ rp2.iRule, rp.iRule });
+                        }
+                        try out.print("        {d}, // ", .{rp2.iRule});
+                        try writeRuleText(out, rp2);
+                        try out.writeByte('\n');
+                        lineno += 1;
+                        rp2.codeEmitted = true;
                     }
-                    try out.print("        {d}, // ", .{rp2.iRule});
-                    try writeRuleText(out, rp2);
-                    try out.writeByte('\n');
-                    lineno += 1;
-                    rp2.codeEmitted = true;
                 }
             }
             try emit_code(out, rp, zyt, &lineno);
@@ -6598,6 +6604,7 @@ const Options = struct {
     sql_flag: bool = config.sql,
     only_basis: bool = config.only_basis,
     no_resort: bool = config.no_resort,
+    unbundle: bool = config.unbundle,
     user_templatename: []const u8 = "",
     output_directory: []const u8 = "",
     output_file: []const u8 = "",
@@ -6627,6 +6634,7 @@ const OptionKind = enum {
     sql_flag,
     only_basis,
     no_resort,
+    unbundle,
     user_template,
     output_directory,
     output_file,
@@ -6652,6 +6660,7 @@ const OptionKind = enum {
             's' => .statistics,
             'S' => .sql_flag,
             'T' => .user_template,
+            'u' => .unbundle,
             'U' => .undefine,
             'v' => .version,
             'x' => .clean_exit,
@@ -6676,6 +6685,7 @@ const OptionKind = enum {
             .sql_flag,
             .only_basis,
             .no_resort,
+            .unbundle,
             => false,
             .user_template,
             .output_directory,
@@ -6703,6 +6713,7 @@ const option_list = [_]struct { []const u8, OptionKind }{
     .{ "sql", .sql_flag },
     .{ "only-basis", .only_basis },
     .{ "no-resort", .no_resort },
+    .{ "unbundle", .unbundle },
     .{ "template", .user_template },
     .{ "directory", .output_directory },
     .{ "file", .output_file },
@@ -6835,6 +6846,7 @@ fn assignFlag(opt: *Options, opt_kind: OptionKind) void {
         .sql_flag => opt.sql_flag = !opt.sql_flag,
         .only_basis => opt.only_basis = !opt.only_basis,
         .no_resort => opt.no_resort = !opt.no_resort,
+        .unbundle => opt.unbundle = !opt.unbundle,
         else => |k| std.debug.panic("Option {t} is not a flag (internal error)", .{k}),
     }
 }
@@ -7024,6 +7036,7 @@ const help_string =
     \\   -S --sql                  Generate the *.sql file describing the parser tables.
     \\   -T, --template file       Use "file" as the template for the generated C-code
     \\                             parser implementation.
+    \\   -u, --unbundle            Do not bundle identical generated code blocks.
     \\   -U, --undefine name       Undefine C-like preprocessor macro "name".  It is legal to
     \\                             undefine a nonexistent name.
     \\   -v, --version             Print the Zitron version number.
@@ -7995,6 +8008,29 @@ test "fifo option fixes dependent file outputs" {
     try std.testing.expect(!opt.sql_flag);
     try std.testing.expect(!opt.enum_file);
     try std.testing.expect(opt.quiet);
+}
+
+test "unbundle option parses as short and long flag" {
+    {
+        var args = [_][:0]const u8{ "zitron", "-u", "grammar.zy" };
+        var opt: Options = .{};
+        defer opt.deinit(std.testing.allocator);
+
+        const file_index = try optionsInit(&opt, &args, std.testing.allocator);
+
+        try std.testing.expectEqual(@as(usize, 2), file_index);
+        try std.testing.expectEqual(!config.unbundle, opt.unbundle);
+    }
+    {
+        var args = [_][:0]const u8{ "zitron", "--unbundle", "grammar.zy" };
+        var opt: Options = .{};
+        defer opt.deinit(std.testing.allocator);
+
+        const file_index = try optionsInit(&opt, &args, std.testing.allocator);
+
+        try std.testing.expectEqual(@as(usize, 2), file_index);
+        try std.testing.expectEqual(!config.unbundle, opt.unbundle);
+    }
 }
 
 test "sql string literals escape quotes" {
