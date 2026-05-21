@@ -5031,7 +5031,7 @@ fn Parse(psp: *ParserState) !void {
     defer psp.allocator.free(filebuf);
     // /* Make an initial pass through the file to handle %ifdef and %ifndef */
     preprocess_input(&psp.gp.opt, &psp.gp.errorcnt, filebuf);
-    if (psp.gp.errorcnt > 0) return;
+    if (psp.gp.errorcnt > 0 and !psp.gp.opt.fifo) return;
     if (psp.gp.printPreprocessed) {
         var stdout_buffer: [1024]u8 = undefined;
         var stdout_writer = std.Io.File.stdout().writer(psp.gp.io, &stdout_buffer);
@@ -7241,7 +7241,7 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    if (zyt.errorcnt > 0) {
+    if (zyt.errorcnt > 0 and !zyt.opt.fifo) {
         logger.err("exiting with {d} error{s}", .{ zyt.errorcnt, if (zyt.errorcnt == 1) "" else "s" });
         // Give hint if errors are outrageous
         if (zyt.errorcnt > 23) {
