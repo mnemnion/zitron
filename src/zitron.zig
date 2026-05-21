@@ -1554,7 +1554,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                     if (alias.len > 0 and strcmp(alias, cp[i..id])) {
                         if (j == 0 and dontUseRhs0) {
                             ErrorMsg(zyt.filename, rp.ruleline, "" ++
-                                "Label {s} used after '{s}'.", .{
+                                "Alias {s} used after '{s}'.", .{
                                 rp.rhsalias[0],
                                 cp[special_start..special_end],
                             });
@@ -1629,7 +1629,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                 dupe: for (rp.rhsalias[0..i]) |alien| {
                     if (strcmp(alias, alien)) {
                         ErrorMsg(zyt.filename, rp.ruleline, "" ++
-                            "Label {s} used for multiple symbols on the RHS of a rule.", .{alias});
+                            "Alias {s} used for multiple symbols on the RHS of a rule.", .{alias});
                         zyt.errorcnt += 1;
                     }
                     break :dupe;
@@ -1637,7 +1637,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
             }
             if (!used[i].used) {
                 ErrorMsg(zyt.filename, rp.ruleline, "" ++
-                    "Label {s} for \"{s}({s})\" is never used.", .{ alias, rp.rhs[i].name, alias });
+                    "Alias {s} for \"{s}({s})\" is never used.", .{ alias, rp.rhs[i].name, alias });
                 zyt.errorcnt += 1;
             }
             if (!used[i].captured and has_destructor(rp.rhs[i], zyt)) {
@@ -5361,6 +5361,22 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 }
                 psp.impl_idx += 1;
             } else if (x[0] == ')') {
+                const impl = psp.impl.?;
+                if (impl.rule) |rule| {
+                    // find the next non-empty alias
+                    while (psp.impl_idx < rule.rhsalias.len and
+                        rule.rhsalias[psp.impl_idx].len == 0) : (psp.impl_idx += 1)
+                    {}
+                    if (psp.impl_idx < rule.rhsalias.len) {
+                        ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                            "Impl \"{s}\" missing RHS alias \"{s}\".", .{
+                            impl.name, rule.rhsalias[psp.impl_idx],
+                        });
+                        psp.errorcnt += 1;
+                        psp.state = .resync_after_impl_error;
+                        return;
+                    }
+                }
                 continue :state .impl_rhs2;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
