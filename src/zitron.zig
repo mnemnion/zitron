@@ -4860,18 +4860,20 @@ fn eval_impl(opt: *Options, errcnt: *usize, z: []const u8, lineno: usize, progre
                     var k = i + 1;
                     while (k < z.len and (isAlnum(z[k]) or z[k] == '_')) : (k += 1) {}
                     res = false;
-                    var j: usize = 0;
-                    check_defs: while (j < opt.azDefine.len) : (j += 1) {
-                        if (strcmp(
-                            z[i..k],
-                            opt.azDefine[j],
-                        )) {
-                            if (!opt.bDefineUsed[j]) {
-                                opt.bDefineUsed[j] = true;
-                                opt.nDefineUsed += 1;
+                    {
+                        var j: usize = 0;
+                        check_defs: while (j < opt.azDefine.len) : (j += 1) {
+                            if (strcmp(
+                                z[i..k],
+                                opt.azDefine[j],
+                            )) {
+                                if (!opt.bDefineUsed[j]) {
+                                    opt.bDefineUsed[j] = true;
+                                    opt.nDefineUsed += 1;
+                                }
+                                res = true;
+                                break :check_defs;
                             }
-                            res = true;
-                            break :check_defs;
                         }
                     }
                     i = k - 1;
@@ -4887,7 +4889,7 @@ fn eval_impl(opt: *Options, errcnt: *usize, z: []const u8, lineno: usize, progre
         },
         .pp_syntax_error => {
             if (progress.* == 0) {
-                dprint("%%if syntax error on line {d}.\n", .{lineno});
+                dprint("%if syntax error on line {d}.\n", .{lineno});
                 // We already sliced z down to one line, so this is fine
                 dprint("  {s} <-- syntax error here\n", .{z[i..]});
                 errcnt.* += 1;
