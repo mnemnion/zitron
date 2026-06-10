@@ -7057,7 +7057,7 @@ const help_string =
     \\                             optimization.
     \\   -s --show-stats           Show parser statistics before exiting.
     \\   -S --sql                  Generate the *.sql file describing the parser tables.
-    \\   -T, --template file       Use "file" as the template for the generated C-code
+    \\   -T, --template file       Use "file" as the template for the generated Zig
     \\                             parser implementation.
     \\   -u, --unbundle            Do not bundle identical generated code blocks.
     \\   -U, --undefine name       Undefine C-like preprocessor macro "name".  It is legal to
