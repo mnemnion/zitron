@@ -5100,11 +5100,13 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "There is no prior rule, the ditto is invalid here.", .{});
                         psp.errorcnt += 1;
+                        psp.state = .resync_after_rule_error;
                     }
                 } else {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Unexpected {s} token, did you mean \"``\"?", .{x});
                     psp.errorcnt += 1;
+                    psp.state = .resync_after_rule_error;
                 }
             } else if (x[0] == '{') {
                 if (psp.impl) |_| {
@@ -5117,6 +5119,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                             "Code fragment beginning on this line is not the first " ++
                             "to follow the previous rule.", .{});
                         psp.errorcnt += 1;
+                        psp.state = .resync_after_rule_error;
                     } else if (strcmp(x, "{NEVER-REDUCE")) {
                         // Hidden feature!
                         prev.neverReduce = true;
@@ -5130,6 +5133,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         "There is no prior rule upon which to attach the code " ++
                         "fragment which begins on this line", .{});
                     psp.errorcnt += 1;
+                    psp.state = .resync_after_rule_error;
                 }
             } else if (x[0] == '[') {
                 psp.state = .precedence_mark_1;
@@ -5165,6 +5169,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                             ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                                 "No previous rule to attach an impl name to", .{});
                             psp.errorcnt += 1;
+                            psp.state = .resync_after_impl_error;
                         }
                     }
                 }
