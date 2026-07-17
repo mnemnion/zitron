@@ -1332,10 +1332,6 @@ the token to which all the other tokens fall back to.  The second and
 subsequent arguments are tokens which fall back to the token identified
 by the first argument.
 
-Zitron note: `%fallback` is not, as yet, tested in Zitron.  While it
-_should_ work, that _should_ always does a certain amount of heavy
-lifting.
-
 
 #### 4.4.8 The `%if` directive and its friends <a id="pifdef">
 
