@@ -22,6 +22,12 @@ a complete DSL for declaring a parser, and actions to go along with
 recognition.  A [detailed manual](/doc/zitron.md) is included, itself
 adopted from [the original][og].
 
+The manual includes instructions on
+[integrating with build.zig](/doc/zitron.md#build), which is a good
+place to start if you already know your way around YACC-alikes.
+[The manual](/doc/zitron.md) is quite comprehensive, and you really want
+to read it.
+
 A tokenizer will be necessary.  If you're reading this[^※], a companion
 lexer generator does not exist.  It's certainly tractable to roll
 your own by hand.  It may also interest you to know that [re2c][re2c]
