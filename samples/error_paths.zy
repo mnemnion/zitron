@@ -7,6 +7,8 @@ const Stats = struct {
     accepts: usize = 0,
     stack_overflows: usize = 0,
     last_error: usize = 0,
+    exact_matches: usize = 0,
+    wildcard_matches: usize = 0,
     throw_syntax: bool = false,
     destroyed: [16]usize = .{0} ** 16,
 };
@@ -22,7 +24,8 @@ const zitron_no_error_recovery = {};
 
 %extra_context {stats: *Stats}
 %token_type Token
-%token A B BAD C.
+%token A B BAD C WILD_START EXACT OTHER WILD.
+%wildcard WILD.
 
 %token_destructor {
     stats.destroyed[$$.id] += 1;
@@ -48,8 +51,15 @@ const zitron_no_error_recovery = {};
 
 input ::= A B.
 input ::= chain B.
+input ::= WILD_START wildcard_value B.
 chain ::= .
 chain ::= C chain.
+wildcard_value ::= EXACT. {
+    stats.exact_matches += 1;
+}
+wildcard_value ::= WILD. {
+    stats.wildcard_matches += 1;
+}
 %ifdef ERROR_SYMBOL
 input ::= A error B.
 %endif
@@ -73,6 +83,41 @@ test "valid input accepts and destroys its tokens" {
     try std.testing.expectEqual(@as(usize, 1), stats.accepts);
     try std.testing.expectEqual(@as(usize, 1), stats.destroyed[1]);
     try std.testing.expectEqual(@as(usize, 1), stats.destroyed[2]);
+}
+
+test "wildcard is used only when the concrete token lookup misses" {
+    var stats: Stats = .{};
+
+    {
+        var parser = try Parser.create(std.testing.allocator, &stats);
+        defer parser.destroy();
+
+        try parser.parse(.WILD_START, token(9));
+        try parser.parse(.EXACT, token(10));
+        try parser.parse(.B, token(11));
+        try parser.finalize();
+    }
+
+    try std.testing.expectEqual(@as(usize, 1), stats.exact_matches);
+    try std.testing.expectEqual(@as(usize, 0), stats.wildcard_matches);
+
+    {
+        var parser = try Parser.create(std.testing.allocator, &stats);
+        defer parser.destroy();
+
+        try parser.parse(.WILD_START, token(12));
+        try parser.parse(.OTHER, token(13));
+        try parser.parse(.B, token(14));
+        try parser.finalize();
+    }
+
+    try std.testing.expectEqual(@as(usize, 0), stats.syntax_errors);
+    try std.testing.expectEqual(@as(usize, 2), stats.accepts);
+    try std.testing.expectEqual(@as(usize, 1), stats.exact_matches);
+    try std.testing.expectEqual(@as(usize, 1), stats.wildcard_matches);
+    inline for (9..15) |id| {
+        try std.testing.expectEqual(@as(usize, 1), stats.destroyed[id]);
+    }
 }
 
 test "reset destroys the stack and restores the start state" {
