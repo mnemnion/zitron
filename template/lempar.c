@@ -688,7 +688,10 @@ static void yy_shift(
   yytos = yypParser->yytos;
   if( yytos>yypParser->yystackEnd ){
     if( yyGrowStack(yypParser) ){
+      YYMINORTYPE yyminorunion;
       yypParser->yytos--;
+      yyminorunion.yy0 = yyMinor;
+      yy_destructor(yypParser,yyMajor,&yyminorunion);
       yyStackOverflow(yypParser);
       return;
     }
@@ -938,6 +941,8 @@ void Parse(
 #endif
         if( yypParser->yytos>=yypParser->yystackEnd ){
           if( yyGrowStack(yypParser) ){
+            yyminorunion.yy0 = yyminor;
+            yy_destructor(yypParser,(YYCODETYPE)yymajor,&yyminorunion);
             yyStackOverflow(yypParser);
             break;
           }

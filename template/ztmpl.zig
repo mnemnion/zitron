@@ -375,6 +375,11 @@ fn yy_parse_reset(yypParser: *🍋PARSER_NAME) void {
         }
         yytos -= 1;
     }
+    yypParser.errcnt = -1;
+    yypParser.tos = yypParser.stack;
+    yypParser.stack[0].stateno = 0;
+    yypParser.stack[0].major = 0;
+    yypParser.stack[0].minor = undefined;
 }
 
 // TODO: deal with this stuff
@@ -499,7 +504,7 @@ fn yy_find_reduce_action(
     yy_assert(yy_ilookahead != YYNOCODE);
     yy_i += yy_ilookahead;
     if (comptime YYHAS_ERRORSYMBOL) {
-        if (yy_i < 0 or yy_i >= YY_ACTTAB_COUNT or yy_lookahead[@intCast(yy_i)] != yy_lookahead) {
+        if (yy_i < 0 or yy_i >= YY_ACTTAB_COUNT or yy_lookahead[@intCast(yy_i)] != yy_ilookahead) {
             return yy_default[yy_stateno];
         }
     } else {
@@ -572,6 +577,8 @@ fn yy_shift(
     if (@intFromPtr(yytos) > @intFromPtr(yypParser.stack_end)) {
         yyGrowStack(yypParser) catch  {
             yypParser.tos -= 1;
+            var yy_minor_union: YYMINORTYPE = .{ .🍋TOKEN_FIELD = yyMinor };
+            yy_destructor(yypParser, yyMajor, &yy_minor_union);
             try yyStackOverflow(yypParser);
             return;
         };
@@ -799,7 +806,7 @@ fn yyParse(
     // Enum integer type is user-configurable, but Zitron counts everything
     // and uses that number to determine internal integer widths.  So this
     // cast cannot fail.
-    const yymajor: YYCODETYPE = @intCast(@intFromEnum(yy_token));
+    var yymajor: YYCODETYPE = @intCast(@intFromEnum(yy_token));
     🍋ARG_STORE
     if (comptime (!YYHAS_ERRORSYMBOL and !YYNOERRORRECOVERY)) {
         yyendofinput = (yymajor==0);
@@ -832,6 +839,8 @@ fn yyParse(
                 // }
                 if (@intFromPtr(yypParser.tos) >= @intFromPtr(yypParser.stack_end)) {
                     yyGrowStack(yypParser) catch {
+                        yyminorunion = .{ .🍋TOKEN_FIELD = yyminor };
+                        yy_destructor(yypParser, yymajor, &yyminorunion);
                         try yyStackOverflow(yypParser);
                         break :resolve;
                     };
@@ -875,7 +884,10 @@ fn yyParse(
                 //
                 //
                 if (yypParser.errcnt < 0) {
-                    try yy_syntax_error(yypParser, yymajor, yyminor);
+                    yy_syntax_error(yypParser, yymajor, yyminor) catch |err| {
+                        yy_destructor(yypParser, yymajor, &yyminorunion);
+                        return err;
+                    };
                 }
                 const yymx = yypParser.tos[0].major;
                 if ((yymx == @This().YYERRORSYMBOL) or yyerrorhit) {
@@ -885,16 +897,16 @@ fn yyParse(
                     yy_destructor(yypParser, yymajor, &yyminorunion);
                     yymajor = YYNOCODE;
                 } else {
-                    while (yypParser.tos > yypParser.stack) {
+                    while (@intFromPtr(yypParser.tos) > @intFromPtr(yypParser.stack)) {
                         yyact = yy_find_reduce_action(yypParser.tos[0].stateno, @This().YYERRORSYMBOL);
                         if (yyact <= YY_MAX_SHIFTREDUCE) break;
                         yy_pop_parser_stack(yypParser);
                     }
-                    if (yypParser.tos <= yypParser.stack or yymajor == 0) {
+                    if (@intFromPtr(yypParser.tos) <= @intFromPtr(yypParser.stack) or yymajor == 0) {
                         yy_destructor(yypParser, yymajor, &yyminorunion);
                         try yy_parse_failed(yypParser);
                         if (comptime !YYNOERRORRECOVERY) {
-                            yypParser.yyerrcnt = null;
+                            yypParser.errcnt = -1;
                         }
                         yymajor = YYNOCODE;
                     } else if (yymx != @This().YYERRORSYMBOL) {
@@ -927,7 +939,10 @@ fn yyParse(
                 // three input tokens have been successfully shifted.
                 //
                 if (yypParser.errcnt <= 0) {
-                    try yy_syntax_error(yypParser, yymajor, yyminor);
+                    yy_syntax_error(yypParser, yymajor, yyminor) catch |err| {
+                        yy_destructor(yypParser, yymajor, &yyminorunion);
+                        return err;
+                    };
                 }
                 yypParser.errcnt = 3;
                 yy_destructor(yypParser, yymajor, &yyminorunion);

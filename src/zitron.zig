@@ -1840,7 +1840,9 @@ fn print_stack_union(
     // Decorate all symbols with the appropriate .dttag
     const t_name = if (zyt.tokentype.len > 0) mem.trim(u8, zyt.tokentype, C_SPACE) else "void";
     for (zyt.symbols[0..zyt.nsymbol]) |sp| {
-        if (sp.dtnum == 0) {
+        if (sp == zyt.errsym) {
+            sp.dttag = sp.name;
+        } else if (sp.dtnum == 0) {
             sp.dttag = t_name;
         } else {
             sp.dttag = types[sp.dtnum - 1];
@@ -4937,7 +4939,7 @@ fn preprocess_input(opt: *Options, errcnt: *usize, z: [:0]u8) void {
             j = i;
             while (z[j] != 0 and z[j] != '\n') : (j += 1) z[j] = ' ';
         } else if (i + 5 < zl and strcmp(z[i..][0..5], "%else") and isSpace(z[i + 5])) {
-            if (exclude != 0) {
+            if (exclude == 1) {
                 exclude = 0;
                 j = start;
                 while (j < i) : (j += 1) {
@@ -7715,7 +7717,9 @@ fn Symbol_free() void {
 
 fn Symbol_new(str: []const u8) !*Symbol {
     dbgassert(is_symbol_map);
-    return symbol_map.intern(str);
+    const symbol = try symbol_map.intern(str);
+    symbol.useCnt += 1;
+    return symbol;
 }
 
 fn Symbol_count() usize {
@@ -8054,6 +8058,40 @@ test "unbundle option parses as short and long flag" {
         try std.testing.expectEqual(@as(usize, 2), file_index);
         try std.testing.expectEqual(!config.unbundle, opt.unbundle);
     }
+}
+
+test "preprocessor keeps nested else inside an excluded branch excluded" {
+    var args = [_][:0]const u8{ "zitron", "grammar.zy" };
+    var opt: Options = .{};
+    defer opt.deinit(std.testing.allocator);
+    _ = try optionsInit(&opt, &args, std.testing.allocator);
+
+    const input = try std.testing.allocator.dupeZ(u8,
+        \\%ifdef OUTER
+        \\outer
+        \\%ifdef INNER
+        \\inner
+        \\%else
+        \\inner else
+        \\%endif
+        \\end outer
+        \\%else
+        \\outer else
+        \\%endif
+        \\visible
+        \\
+    );
+    defer std.testing.allocator.free(input);
+
+    var errcnt: usize = 0;
+    preprocess_input(&opt, &errcnt, input);
+
+    try std.testing.expectEqual(@as(usize, 0), errcnt);
+    try std.testing.expect(mem.indexOf(u8, input, "\nouter\n") == null);
+    try std.testing.expect(mem.indexOf(u8, input, "inner else") == null);
+    try std.testing.expect(mem.indexOf(u8, input, "end outer") == null);
+    try std.testing.expect(mem.indexOf(u8, input, "outer else") != null);
+    try std.testing.expect(mem.indexOf(u8, input, "visible") != null);
 }
 
 test "sql string literals escape quotes" {
