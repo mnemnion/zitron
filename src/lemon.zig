@@ -2060,6 +2060,11 @@ fn reportTableImpl(
         }
         if (lemp.tokendest.len > 0) min = 0;
         if (lemp.vardest.len > 0) max = lemp.nsymbol - 1;
+        try out.print(
+            "#define YY_HAS_TOKEN_DESTRUCTOR {d}\n",
+            .{@intFromBool(lemp.tokendest.len > 0)},
+        );
+        lineno += 1;
         try out.print("#define YY_MIN_DSTRCTR       {d}\n", .{min});
         lineno += 1;
         try out.print("#define YY_MAX_DSTRCTR       {d}\n", .{max});

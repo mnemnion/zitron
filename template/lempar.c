@@ -83,6 +83,7 @@
 **    YY_NO_ACTION       The yy_action[] code for no-op
 **    YY_MIN_REDUCE      Minimum value for reduce actions
 **    YY_MAX_REDUCE      Maximum value for reduce actions
+**    YY_HAS_TOKEN_DESTRUCTOR  True if tokens have a destructor
 **    YY_MIN_DSTRCTR     Minimum symbol value that has a destructor
 **    YY_MAX_DSTRCTR     Maximum symbol value that has a destructor
 */
@@ -688,10 +689,16 @@ static void yy_shift(
   yytos = yypParser->yytos;
   if( yytos>yypParser->yystackEnd ){
     if( yyGrowStack(yypParser) ){
-      YYMINORTYPE yyminorunion;
+#if YY_HAS_TOKEN_DESTRUCTOR
+      /* yy_shift() is a high-runner.  So even though this branch is rarely
+      ** invoked, we want to omit the call to yy_destructor() if there is no
+      ** token destructor since its presence within the function increases
+      ** the start-up and break-down overhead of invoking yy_shift(). */
+      YYMINORTYPE t;
+      t.yy0 = yyMinor;
+      yy_destructor(yypParser, yyMajor, &t);
+#endif
       yypParser->yytos--;
-      yyminorunion.yy0 = yyMinor;
-      yy_destructor(yypParser,yyMajor,&yyminorunion);
       yyStackOverflow(yypParser);
       return;
     }
@@ -941,8 +948,10 @@ void Parse(
 #endif
         if( yypParser->yytos>=yypParser->yystackEnd ){
           if( yyGrowStack(yypParser) ){
+#if YY_HAS_TOKEN_DESTRUCTOR
             yyminorunion.yy0 = yyminor;
             yy_destructor(yypParser,(YYCODETYPE)yymajor,&yyminorunion);
+#endif
             yyStackOverflow(yypParser);
             break;
           }

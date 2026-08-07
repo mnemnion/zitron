@@ -82,6 +82,7 @@ const NDEBUG = builtin.mode != .Debug;
 //    YY_NO_ACTION       The yy_action[] code for no-op
 //    YY_MIN_REDUCE      Minimum value for reduce actions
 //    YY_MAX_REDUCE      Maximum value for reduce actions
+//    YY_HAS_TOKEN_DESTRUCTOR  True if tokens have a destructor
 //    YY_MIN_DSTRCTR     Minimum symbol value that has a destructor
 //    YY_MAX_DSTRCTR     Maximum symbol value that has a destructor
 //
@@ -576,9 +577,11 @@ fn yy_shift(
     var yy_new = yyNewState;
     if (@intFromPtr(yytos) > @intFromPtr(yypParser.stack_end)) {
         yyGrowStack(yypParser) catch  {
+            if (comptime YY_HAS_TOKEN_DESTRUCTOR) {
+                var yy_minor_union: YYMINORTYPE = .{ .🍋TOKEN_FIELD = yyMinor };
+                yy_destructor(yypParser, yyMajor, &yy_minor_union);
+            }
             yypParser.tos -= 1;
-            var yy_minor_union: YYMINORTYPE = .{ .🍋TOKEN_FIELD = yyMinor };
-            yy_destructor(yypParser, yyMajor, &yy_minor_union);
             try yyStackOverflow(yypParser);
             return;
         };
@@ -839,8 +842,10 @@ fn yyParse(
                 // }
                 if (@intFromPtr(yypParser.tos) >= @intFromPtr(yypParser.stack_end)) {
                     yyGrowStack(yypParser) catch {
-                        yyminorunion = .{ .🍋TOKEN_FIELD = yyminor };
-                        yy_destructor(yypParser, yymajor, &yyminorunion);
+                        if (comptime YY_HAS_TOKEN_DESTRUCTOR) {
+                            yyminorunion = .{ .🍋TOKEN_FIELD = yyminor };
+                            yy_destructor(yypParser, yymajor, &yyminorunion);
+                        }
                         try yyStackOverflow(yypParser);
                         break :resolve;
                     };

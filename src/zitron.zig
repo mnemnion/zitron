@@ -3014,6 +3014,11 @@ fn reportTableImpl(
         }
         if (zyt.tokendest.len > 0) min = 0;
         if (zyt.vardest.len > 0) max = zyt.nsymbol - 1;
+        try out.print(
+            "const YY_HAS_TOKEN_DESTRUCTOR = {};\n",
+            .{zyt.tokendest.len > 0},
+        );
+        lineno += 1;
         try out.print("const YY_MIN_DSTRCTR =       {d};\n", .{min});
         lineno += 1;
         try out.print("const YY_MAX_DSTRCTR =       {d};\n", .{max});
