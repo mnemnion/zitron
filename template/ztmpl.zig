@@ -211,9 +211,8 @@ pub const 🍋PARSER_NAME = struct {
     allocator: std.mem.Allocator,
     /// Pointer to top element of the stack
     tos: [*]YyStackEntry,
-    //
-    // TODO: reckon with `yyhwm`
-    //
+    /// High-water mark of the stack, when enabled.
+    hwm: if (YYTRACKMAXSTACKDEPTH) usize else void,
     /// Shifts left before out of the error
     errcnt: isize,
     🍋ARG_SDECL
@@ -246,6 +245,7 @@ pub const 🍋PARSER_NAME = struct {
         yypParser.stk0 = try yypParser.allocator.alloc(YyStackEntry, 100);
         yypParser.stack = yypParser.stk0.ptr;
         yypParser.stack_end = yypParser.stack + (yypParser.stk0.len - 1);
+        yypParser.hwm = if (YYTRACKMAXSTACKDEPTH) 0 else {};
         yypParser.errcnt = -1; // TODO: Deal with NOERRORRECOVERY
         yypParser.tos = yypParser.stack;
         yypParser.stack[0].stateno = 0;
@@ -279,6 +279,14 @@ pub const 🍋PARSER_NAME = struct {
 
     /// Parse a token.
     pub const parse = yyParse;
+
+    /// Return the greatest parser stack depth observed since initialization.
+    pub fn stackPeak(yypParser: *const 🍋PARSER_NAME) usize {
+        if (comptime !YYTRACKMAXSTACKDEPTH) {
+            @compileError("define `zitron_track_max_stack_depth` in %include/%code to track stack depth.");
+        }
+        return yypParser.hwm;
+    }
 };
 
 // For tracing shifts, the names of all terminals and nonterminals
@@ -297,7 +305,7 @@ pub const yyRuleName = [_][:0]const u8{
 /// fails.
 fn yyGrowStack(yy_p: *🍋PARSER_NAME) !void {
     const yy_new_size = yy_p.stk0.len * 2 + 100;
-    const yy_idx = (@intFromPtr(yy_p.tos) - @intFromPtr(yy_p.stack));
+    const yy_idx = yy_p.tos - yy_p.stack;
     const yyp_new = try yy_p.allocator.realloc(yy_p.stk0, yy_new_size);
     yy_p.stack = yyp_new.ptr;
     yy_p.stk0 = yyp_new;
@@ -382,18 +390,6 @@ fn yy_parse_reset(yypParser: *🍋PARSER_NAME) void {
     yypParser.stack[0].major = 0;
     yypParser.stack[0].minor = undefined;
 }
-
-// TODO: deal with this stuff
-//
-// /*
-// ** Return the peak depth of the stack for a parser.
-// */
-// #ifdef YYTRACKMAXSTACKDEPTH
-// int ParseStackPeak(void *p){
-//   🍋PARSER_NAME *pParser = (🍋PARSER_NAME*)p;
-//   return pParser->yyhwm;
-// }
-// #endif
 
 /// This array of booleans keeps track of the parser statement
 /// coverage.  The element yycoverage[X][Y] is set when the parser
@@ -555,6 +551,18 @@ inline fn yy_sint(i: anytype) @Int(.signed,
     return @intCast(i);
 }
 
+inline fn yyTrackMaxStackDepth(
+    yypParser: *🍋PARSER_NAME,
+    additional_entries: usize,
+) void {
+    if (comptime YYTRACKMAXSTACKDEPTH) {
+        const depth = yypParser.tos - yypParser.stack + additional_entries;
+        yypParser.hwm = @max(yypParser.hwm, depth);
+    } else {
+        _ = .{ yypParser, additional_entries };
+    }
+}
+
 /// Perform a shift action.
 fn yy_shift(
     /// The parser to be shifted
@@ -567,12 +575,7 @@ fn yy_shift(
     yyMinor: YY_TOKEN_TYPE,
 ) 🍋PARSER_ERROR!void {
     yypParser.tos += 1;
-    // #ifdef YYTRACKMAXSTACKDEPTH
-    //     if( (int)(yypParser->yytos - yypParser->yystack)>yypParser->yyhwm ){
-    //     yypParser->yyhwm++;
-    //     yy_assert( yypParser->yyhwm == (int)(yypParser->yytos - yypParser->yystack) );
-    //     }
-    // #endif
+    yyTrackMaxStackDepth(yypParser, 0);
     var yytos = yypParser.tos;
     var yy_new = yyNewState;
     if (@intFromPtr(yytos) > @intFromPtr(yypParser.stack_end)) {
@@ -834,12 +837,7 @@ fn yyParse(
             // if the RHS of the rule is empty.  This ensures that there is room
             // enough on the stack to push the LHS value.
             if (yyRuleInfoNRhs[yyruleno] == 0) {
-                // if ((comptime YYTRACKMAXSTACKDEPTH))
-                // and (yypParser.tos - yypParser.stack) > yypParser.yyhwm)
-                // {
-                //     yypParser.yyhwm += 1;
-                //     yy_assert(yypParser.yyhwm == yypParser.yytos - yypParser.yystack);
-                // }
+                yyTrackMaxStackDepth(yypParser, 1);
                 if (@intFromPtr(yypParser.tos) >= @intFromPtr(yypParser.stack_end)) {
                     yyGrowStack(yypParser) catch {
                         if (comptime YY_HAS_TOKEN_DESTRUCTOR) {

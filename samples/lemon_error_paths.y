@@ -91,6 +91,22 @@ static void test_valid_input(void) {
   ParserFree(parser, free);
 }
 
+static void test_destructor_only_reduction(void) {
+  Stats stats = {0};
+  void *parser = ParserAlloc(malloc, &stats);
+  assert(parser != NULL);
+
+  Parser(parser, C, token(5));
+  Parser(parser, B, token(8));
+  Parser(parser, 0, token(0));
+
+  assert(stats.accepts == 1);
+  assert(stats.destroyed[5] == 1);
+  assert(stats.destroyed[8] == 1);
+
+  ParserFree(parser, free);
+}
+
 static void test_wildcard_lookup(void) {
   Stats stats = {0};
   void *parser = ParserAlloc(malloc, &stats);
@@ -255,6 +271,7 @@ static void test_discard_recovery(void) {
 
 int main(void) {
   test_valid_input();
+  test_destructor_only_reduction();
   test_wildcard_lookup();
   test_incomplete_input();
   test_stack_overflow_ownership();

@@ -1913,6 +1913,9 @@ The trace prompt needs to be a string: for the others, the type of the
 declaration is of no consequence.  These are reasonably self-documenting,
 at least in concert with examining the generated code.
 
+When `zitron_track_max_stack_depth` is declared, `Parser.stackPeak()`
+returns the greatest parser stack depth observed since initialization.
+
 ## 5.0 Error Processing <a id="errors">
 
 After extensive experimentation over several years, it has been

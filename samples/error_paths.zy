@@ -20,6 +20,9 @@ pub const Token = struct {
 %ifdef NO_RECOVERY
 const zitron_no_error_recovery = {};
 %endif
+%ifdef TRACK_MAX_STACK_DEPTH
+const zitron_track_max_stack_depth = {};
+%endif
 }
 
 %extra_context {stats: *Stats}
@@ -84,6 +87,44 @@ test "valid input accepts and destroys its tokens" {
     try std.testing.expectEqual(@as(usize, 1), stats.destroyed[1]);
     try std.testing.expectEqual(@as(usize, 1), stats.destroyed[2]);
 }
+
+test "destructor-only reductions are emitted" {
+    var stats: Stats = .{};
+    var parser = try Parser.create(std.testing.allocator, &stats);
+    defer parser.destroy();
+
+    try parser.parse(.C, token(5));
+    try parser.parse(.B, token(8));
+    try parser.finalize();
+
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[5]);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[8]);
+}
+
+%ifdef TRACK_MAX_STACK_DEPTH
+test "maximum stack depth includes growth and empty reductions" {
+    var stats: Stats = .{};
+    var parser = try Parser.create(std.testing.allocator, &stats);
+    defer parser.destroy();
+
+    try std.testing.expectEqual(@as(usize, 0), parser.stackPeak());
+    const initial_capacity = parser.stk0.len;
+    for (0..initial_capacity) |_| try parser.parse(.C, token(5));
+
+    try std.testing.expect(parser.stk0.len > initial_capacity);
+    try std.testing.expectEqual(initial_capacity, parser.stackPeak());
+
+    try parser.parse(.B, token(8));
+    try std.testing.expectEqual(initial_capacity + 1, parser.stackPeak());
+    try parser.finalize();
+
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+    try std.testing.expectEqual(initial_capacity, stats.destroyed[5]);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[8]);
+    try std.testing.expectEqual(initial_capacity + 1, parser.stackPeak());
+}
+%endif
 
 test "wildcard is used only when the concrete token lookup misses" {
     var stats: Stats = .{};
@@ -204,6 +245,9 @@ test "stack growth failure destroys every owned token and parser is reusable" {
     try std.testing.expectEqual(@as(usize, 1), stats.stack_overflows);
     try std.testing.expectEqual(@as(usize, 100), stats.destroyed[5]);
     try std.testing.expect(parser.tos == parser.stack);
+%ifdef TRACK_MAX_STACK_DEPTH
+    try std.testing.expectEqual(@as(usize, 100), parser.stackPeak());
+%endif
 
     try parser.parse(.A, token(6));
     try parser.parse(.B, token(7));
@@ -233,6 +277,9 @@ test "empty reduction growth failure destroys the lookahead and parser is reusab
     try std.testing.expectEqual(@as(usize, 99), stats.destroyed[5]);
     try std.testing.expectEqual(@as(usize, 1), stats.destroyed[8]);
     try std.testing.expect(parser.tos == parser.stack);
+%ifdef TRACK_MAX_STACK_DEPTH
+    try std.testing.expectEqual(@as(usize, 100), parser.stackPeak());
+%endif
 
     try parser.parse(.A, token(6));
     try parser.parse(.B, token(7));

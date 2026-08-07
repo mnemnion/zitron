@@ -1667,6 +1667,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     }
     // Suffix code generation complete
     rp.codeSuffix = try Strsafe(string_builder.writer.buffer[0..string_builder.writer.end]);
+    if (rp.codePrefix.len > 0 or rp.codeSuffix.len > 0) rp.noCode = false;
     return rc;
 }
 

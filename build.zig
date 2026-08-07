@@ -218,6 +218,16 @@ pub fn build(b: *std.Build) void {
         "no-recovery",
         &.{"NO_RECOVERY"},
     );
+    addErrorPathTest(
+        b,
+        zitron_exe,
+        target,
+        optimize,
+        test_step,
+        test_filters,
+        "track-max-stack-depth",
+        &.{"TRACK_MAX_STACK_DEPTH"},
+    );
 
     const zitron_run_step = b.step("run", "Run zitron");
     zitron_run_step.dependOn(&zitron_run_cmd.step);
