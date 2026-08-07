@@ -1,0 +1,309 @@
+%include {
+//! Error-path regression grammar.
+
+const Stats = struct {
+    syntax_errors: usize = 0,
+    parse_failures: usize = 0,
+    accepts: usize = 0,
+    stack_overflows: usize = 0,
+    last_error: usize = 0,
+    exact_matches: usize = 0,
+    wildcard_matches: usize = 0,
+    throw_syntax: bool = false,
+    destroyed: [16]usize = .{0} ** 16,
+};
+
+pub const Token = struct {
+    id: usize,
+};
+
+%ifdef NO_RECOVERY
+const zitron_no_error_recovery = {};
+%endif
+}
+
+%extra_context {stats: *Stats}
+%token_type Token
+%token A B BAD C WILD_START EXACT OTHER WILD.
+%wildcard WILD.
+
+%token_destructor {
+    stats.destroyed[$$.id] += 1;
+}
+
+%syntax_error {
+    stats.syntax_errors += 1;
+    if (yymajor != 0) stats.last_error = err_token.id;
+    if (stats.throw_syntax) return error.SyntaxCallback;
+}
+
+%parse_failure {
+    stats.parse_failures += 1;
+}
+
+%parse_accept {
+    stats.accepts += 1;
+}
+
+%stack_overflow {
+    stats.stack_overflows += 1;
+}
+
+input ::= A B.
+input ::= chain B.
+input ::= WILD_START wildcard_value B.
+chain ::= .
+chain ::= C chain.
+wildcard_value ::= EXACT. {
+    stats.exact_matches += 1;
+}
+wildcard_value ::= WILD. {
+    stats.wildcard_matches += 1;
+}
+%ifdef ERROR_SYMBOL
+input ::= A error B.
+%endif
+
+%code {
+fn token(id: usize) Token {
+    return .{ .id = id };
+}
+
+test "valid input accepts and destroys its tokens" {
+    var stats: Stats = .{};
+    var parser = try Parser.create(std.testing.allocator, &stats);
+    defer parser.destroy();
+
+    try parser.parse(.A, token(1));
+    try parser.parse(.B, token(2));
+    try parser.finalize();
+
+    try std.testing.expectEqual(@as(usize, 0), stats.syntax_errors);
+    try std.testing.expectEqual(@as(usize, 0), stats.parse_failures);
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[1]);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[2]);
+}
+
+test "wildcard is used only when the concrete token lookup misses" {
+    var stats: Stats = .{};
+
+    {
+        var parser = try Parser.create(std.testing.allocator, &stats);
+        defer parser.destroy();
+
+        try parser.parse(.WILD_START, token(9));
+        try parser.parse(.EXACT, token(10));
+        try parser.parse(.B, token(11));
+        try parser.finalize();
+    }
+
+    try std.testing.expectEqual(@as(usize, 1), stats.exact_matches);
+    try std.testing.expectEqual(@as(usize, 0), stats.wildcard_matches);
+
+    {
+        var parser = try Parser.create(std.testing.allocator, &stats);
+        defer parser.destroy();
+
+        try parser.parse(.WILD_START, token(12));
+        try parser.parse(.OTHER, token(13));
+        try parser.parse(.B, token(14));
+        try parser.finalize();
+    }
+
+    try std.testing.expectEqual(@as(usize, 0), stats.syntax_errors);
+    try std.testing.expectEqual(@as(usize, 2), stats.accepts);
+    try std.testing.expectEqual(@as(usize, 1), stats.exact_matches);
+    try std.testing.expectEqual(@as(usize, 1), stats.wildcard_matches);
+    inline for (9..15) |id| {
+        try std.testing.expectEqual(@as(usize, 1), stats.destroyed[id]);
+    }
+}
+
+test "reset destroys the stack and restores the start state" {
+    var stats: Stats = .{};
+    var parser = try Parser.create(std.testing.allocator, &stats);
+    defer parser.destroy();
+
+    try parser.parse(.A, token(1));
+    parser.reset();
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[1]);
+    try std.testing.expect(parser.tos == parser.stack);
+    try std.testing.expectEqual(@as(YYACTIONTYPE, 0), parser.tos[0].stateno);
+    try std.testing.expectEqual(@as(isize, -1), parser.errcnt);
+
+    try parser.parse(.A, token(2));
+    try parser.parse(.B, token(3));
+    try parser.finalize();
+
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[2]);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[3]);
+}
+
+test "throwing syntax callback destroys the input token" {
+    var stats: Stats = .{ .throw_syntax = true };
+    var parser = try Parser.create(std.testing.allocator, &stats);
+    defer parser.destroy();
+
+    try parser.parse(.A, token(1));
+    try std.testing.expectError(
+        error.SyntaxCallback,
+        parser.parse(.BAD, token(2)),
+    );
+
+    try std.testing.expectEqual(@as(usize, 1), stats.syntax_errors);
+    try std.testing.expectEqual(@as(usize, 2), stats.last_error);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[2]);
+
+    parser.reset();
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[1]);
+}
+
+test "end of input reports an incomplete parse and parser is reusable" {
+    var stats: Stats = .{};
+    var parser = try Parser.create(std.testing.allocator, &stats);
+    defer parser.destroy();
+
+    try parser.parse(.A, token(1));
+    try parser.finalize();
+
+    try std.testing.expectEqual(@as(usize, 1), stats.syntax_errors);
+%ifdef NO_RECOVERY
+    try std.testing.expectEqual(@as(usize, 0), stats.parse_failures);
+%else
+    try std.testing.expectEqual(@as(usize, 1), stats.parse_failures);
+%endif
+
+    parser.reset();
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[1]);
+
+    try parser.parse(.A, token(2));
+    try parser.parse(.B, token(3));
+    try parser.finalize();
+
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[2]);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[3]);
+}
+
+test "stack growth failure destroys every owned token and parser is reusable" {
+    var stats: Stats = .{};
+    var failing_allocator = std.testing.FailingAllocator.init(
+        std.testing.allocator,
+        .{
+            .fail_index = 2,
+            .resize_fail_index = 0,
+        },
+    );
+    var parser = try Parser.create(failing_allocator.allocator(), &stats);
+    defer parser.destroy();
+
+    for (0..100) |_| try parser.parse(.C, token(5));
+
+    try std.testing.expectEqual(@as(usize, 1), stats.stack_overflows);
+    try std.testing.expectEqual(@as(usize, 100), stats.destroyed[5]);
+    try std.testing.expect(parser.tos == parser.stack);
+
+    try parser.parse(.A, token(6));
+    try parser.parse(.B, token(7));
+    try parser.finalize();
+
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[6]);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[7]);
+}
+
+test "empty reduction growth failure destroys the lookahead and parser is reusable" {
+    var stats: Stats = .{};
+    var failing_allocator = std.testing.FailingAllocator.init(
+        std.testing.allocator,
+        .{
+            .fail_index = 2,
+            .resize_fail_index = 0,
+        },
+    );
+    var parser = try Parser.create(failing_allocator.allocator(), &stats);
+    defer parser.destroy();
+
+    for (0..99) |_| try parser.parse(.C, token(5));
+    try parser.parse(.B, token(8));
+
+    try std.testing.expectEqual(@as(usize, 1), stats.stack_overflows);
+    try std.testing.expectEqual(@as(usize, 99), stats.destroyed[5]);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[8]);
+    try std.testing.expect(parser.tos == parser.stack);
+
+    try parser.parse(.A, token(6));
+    try parser.parse(.B, token(7));
+    try parser.finalize();
+
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[6]);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[7]);
+}
+
+%ifdef ERROR_SYMBOL
+test "error symbol recovers, suppresses cascades, and accepts" {
+    var stats: Stats = .{};
+    var parser = try Parser.create(std.testing.allocator, &stats);
+    defer parser.destroy();
+
+    try parser.parse(.A, token(1));
+    try parser.parse(.BAD, token(2));
+    try parser.parse(.BAD, token(3));
+    try parser.parse(.B, token(4));
+    try parser.finalize();
+
+    try std.testing.expectEqual(@as(usize, 1), stats.syntax_errors);
+    try std.testing.expectEqual(@as(usize, 2), stats.last_error);
+    try std.testing.expectEqual(@as(usize, 0), stats.parse_failures);
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+    inline for (1..5) |id| {
+        try std.testing.expectEqual(@as(usize, 1), stats.destroyed[id]);
+    }
+}
+
+test "unrecoverable error invokes parse failure and parser is reusable" {
+    var stats: Stats = .{};
+    var parser = try Parser.create(std.testing.allocator, &stats);
+    defer parser.destroy();
+
+    try parser.parse(.BAD, token(1));
+
+    try std.testing.expectEqual(@as(usize, 1), stats.syntax_errors);
+    try std.testing.expectEqual(@as(usize, 1), stats.parse_failures);
+    try std.testing.expectEqual(@as(usize, 1), stats.destroyed[1]);
+
+    try parser.parse(.A, token(2));
+    try parser.parse(.B, token(3));
+    try parser.finalize();
+
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+}
+%else
+test "invalid tokens are discarded and error reporting follows recovery mode" {
+    var stats: Stats = .{};
+    var parser = try Parser.create(std.testing.allocator, &stats);
+    defer parser.destroy();
+
+    try parser.parse(.A, token(1));
+    try parser.parse(.BAD, token(2));
+    try parser.parse(.BAD, token(3));
+    try parser.parse(.B, token(4));
+    try parser.finalize();
+
+%ifdef NO_RECOVERY
+    try std.testing.expectEqual(@as(usize, 2), stats.syntax_errors);
+%else
+    try std.testing.expectEqual(@as(usize, 1), stats.syntax_errors);
+%endif
+    try std.testing.expectEqual(@as(usize, 0), stats.parse_failures);
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+    inline for (1..5) |id| {
+        try std.testing.expectEqual(@as(usize, 1), stats.destroyed[id]);
+    }
+}
+%endif
+
+}

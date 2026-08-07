@@ -15,15 +15,17 @@ pub fn build(b: *std.Build) void {
         "A build-relative file path to a lemon template",
     ) orelse "template/lempar.c";
 
+    const lemon_mod = b.createModule(.{
+        .root_source_file = b.path("src/lemon.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    lemon_mod.addAnonymousImport("lempar", .{ .root_source_file = b.path(lemon_template) });
+
     const lemon_exe = b.addExecutable(.{
         .name = "lemon",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/lemon.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = lemon_mod,
     });
-    lemon_exe.root_module.addAnonymousImport("lempar", .{ .root_source_file = b.path(lemon_template) });
 
     b.installArtifact(lemon_exe);
 
@@ -149,10 +151,73 @@ pub fn build(b: *std.Build) void {
     });
 
     const run_zitron_unit_tests = b.addRunArtifact(zitron_unit_tests);
+    const lemon_unit_tests = b.addTest(.{
+        .root_module = lemon_mod,
+        .filters = test_filters,
+    });
+    const run_lemon_unit_tests = b.addRunArtifact(lemon_unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
 
     test_step.dependOn(&run_zitron_unit_tests.step);
+    test_step.dependOn(&run_lemon_unit_tests.step);
+    addLemonErrorPathTest(
+        b,
+        lemon_exe,
+        target,
+        optimize,
+        test_step,
+        "error-symbol",
+        &.{"ERROR_SYMBOL"},
+    );
+    addLemonErrorPathTest(
+        b,
+        lemon_exe,
+        target,
+        optimize,
+        test_step,
+        "discard-recovery",
+        &.{},
+    );
+    addLemonErrorPathTest(
+        b,
+        lemon_exe,
+        target,
+        optimize,
+        test_step,
+        "no-recovery",
+        &.{"NO_RECOVERY"},
+    );
+    addErrorPathTest(
+        b,
+        zitron_exe,
+        target,
+        optimize,
+        test_step,
+        test_filters,
+        "error-symbol",
+        &.{"ERROR_SYMBOL"},
+    );
+    addErrorPathTest(
+        b,
+        zitron_exe,
+        target,
+        optimize,
+        test_step,
+        test_filters,
+        "discard-recovery",
+        &.{},
+    );
+    addErrorPathTest(
+        b,
+        zitron_exe,
+        target,
+        optimize,
+        test_step,
+        test_filters,
+        "no-recovery",
+        &.{"NO_RECOVERY"},
+    );
 
     const zitron_run_step = b.step("run", "Run zitron");
     zitron_run_step.dependOn(&zitron_run_cmd.step);
@@ -179,4 +244,68 @@ pub fn build(b: *std.Build) void {
 
     const coverage_step = b.step("coverage", "Generate coverage (kcov must be installed)");
     coverage_step.dependOn(&install_coverage.step);
+}
+
+fn addErrorPathTest(
+    b: *std.Build,
+    zitron_exe: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    test_step: *std.Build.Step,
+    test_filters: []const []const u8,
+    name: []const u8,
+    defines: []const []const u8,
+) void {
+    const generate = b.addRunArtifact(zitron_exe);
+    generate.addArgs(&.{ "--fifo", "--quiet" });
+    for (defines) |define| generate.addArgs(&.{ "-D", define });
+    generate.addArg("samples/error_paths.zy");
+    generate.setStdIn(.{ .lazy_path = b.path("samples/error_paths.zy") });
+
+    const generated = generate.captureStdOut(.{
+        .basename = b.fmt("error-paths-{s}.zig", .{name}),
+    });
+    const generated_tests = b.addTest(.{
+        .name = b.fmt("error-paths-{s}", .{name}),
+        .root_module = b.createModule(.{
+            .root_source_file = generated,
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = test_filters,
+    });
+    const run_generated_tests = b.addRunArtifact(generated_tests);
+    test_step.dependOn(&run_generated_tests.step);
+}
+
+fn addLemonErrorPathTest(
+    b: *std.Build,
+    lemon_exe: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    test_step: *std.Build.Step,
+    name: []const u8,
+    defines: []const []const u8,
+) void {
+    const generate = b.addRunArtifact(lemon_exe);
+    generate.addArg("-q");
+    for (defines) |define| generate.addArg(b.fmt("-D{s}", .{define}));
+    const output_dir = generate.addPrefixedOutputDirectoryArg("-d", b.fmt("lemon-error-paths-{s}", .{name}));
+    generate.addFileArg(b.path("samples/lemon_error_paths.y"));
+
+    const generated_tests = b.addExecutable(.{
+        .name = b.fmt("lemon-error-paths-{s}", .{name}),
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    generated_tests.root_module.addCSourceFile(.{
+        .file = output_dir.path(b, "lemon_error_paths.c"),
+        .flags = &.{"-std=c11"},
+    });
+    generated_tests.root_module.link_libc = true;
+
+    const run_generated_tests = b.addRunArtifact(generated_tests);
+    test_step.dependOn(&run_generated_tests.step);
 }

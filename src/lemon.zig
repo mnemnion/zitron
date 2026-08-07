@@ -76,7 +76,7 @@ const C_SPACE = " \t\n\r\x0b\x0c"; // C locale definition of isspace(3)
 // Various print control variables
 
 /// Prints which are already passing
-const p_check1 = true;
+const p_check1 = false;
 /// Failing prints which I don't want to see
 const p_check2 = false;
 /// Prints I'm trying to get to pass
@@ -1828,7 +1828,7 @@ fn ReportTable(
             try out.flush();
         } else return; // No file handle
     }
-    const m_out_fh = try file_open(lemp, ".zig", true, .{});
+    const m_out_fh = try file_open(lemp, ".c", true, .{});
     if (m_out_fh) |fh| {
         defer fh.close(lemp.io);
         var out_buffer: [4096]u8 = undefined;
@@ -2060,6 +2060,11 @@ fn reportTableImpl(
         }
         if (lemp.tokendest.len > 0) min = 0;
         if (lemp.vardest.len > 0) max = lemp.nsymbol - 1;
+        try out.print(
+            "#define YY_HAS_TOKEN_DESTRUCTOR {d}\n",
+            .{@intFromBool(lemp.tokendest.len > 0)},
+        );
+        lineno += 1;
         try out.print("#define YY_MIN_DSTRCTR       {d}\n", .{min});
         lineno += 1;
         try out.print("#define YY_MAX_DSTRCTR       {d}\n", .{max});
@@ -3912,7 +3917,7 @@ fn preprocess_input(opt: *Options, errcnt: *usize, z: [:0]u8) void {
             j = i;
             while (z[j] != 0 and z[j] != '\n') : (j += 1) z[j] = ' ';
         } else if (i + 5 < zl and strcmp(z[i..][0..5], "%else") and isSpace(z[i + 5])) {
-            if (exclude != 0) {
+            if (exclude == 1) {
                 exclude = 0;
                 j = start;
                 while (j < i) : (j += 1) {
@@ -5882,7 +5887,9 @@ fn Symbol_free() void {
 
 fn Symbol_new(str: []const u8) !*Symbol {
     dbgassert(is_symbol_map);
-    return symbol_map.intern(str);
+    const symbol = try symbol_map.intern(str);
+    symbol.useCnt += 1;
+    return symbol;
 }
 
 fn Symbol_count() usize {
@@ -6186,5 +6193,50 @@ fn Configlist_freesets(cfp: ?*Config, allocator: Allocator) void {
 }
 
 test "exe mentioned" {
-    std.debug.print("hello from lemon main\n", .{});
+    try std.testing.expect(true);
+}
+
+test "Symbol_new counts every use" {
+    Symbol_init(std.testing.allocator);
+    defer Symbol_free();
+
+    const first = try Symbol_new("error");
+    const second = try Symbol_new("error");
+
+    try std.testing.expect(first == second);
+    try std.testing.expectEqual(@as(u32, 2), first.useCnt);
+}
+
+test "preprocessor keeps nested else inside an excluded branch excluded" {
+    var opt: Options = .{};
+    opt.azDefine = try std.testing.allocator.alloc([]const u8, 0);
+    opt.bDefineUsed = try std.testing.allocator.alloc(bool, 0);
+    defer opt.deinit(std.testing.allocator);
+
+    const input = try std.testing.allocator.dupeZ(u8,
+        \\%ifdef OUTER
+        \\outer
+        \\%ifdef INNER
+        \\inner
+        \\%else
+        \\inner else
+        \\%endif
+        \\end outer
+        \\%else
+        \\outer else
+        \\%endif
+        \\visible
+        \\
+    );
+    defer std.testing.allocator.free(input);
+
+    var errcnt: usize = 0;
+    preprocess_input(&opt, &errcnt, input);
+
+    try std.testing.expectEqual(@as(usize, 0), errcnt);
+    try std.testing.expect(mem.indexOf(u8, input, "\nouter\n") == null);
+    try std.testing.expect(mem.indexOf(u8, input, "inner else") == null);
+    try std.testing.expect(mem.indexOf(u8, input, "end outer") == null);
+    try std.testing.expect(mem.indexOf(u8, input, "outer else") != null);
+    try std.testing.expect(mem.indexOf(u8, input, "visible") != null);
 }
