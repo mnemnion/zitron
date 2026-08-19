@@ -755,7 +755,7 @@ fn yy_accept(
     //     fprintf(yyTraceFILE,"%sAccept!\n",yyTracePrompt);
     //   }
     // #endif
-    if (comptime YYNOERRORRECOVERY) {
+    if (comptime !YYNOERRORRECOVERY) {
         yypParser.errcnt = -1;
     }
     yy_assert(yypParser.tos == yypParser.stack);
