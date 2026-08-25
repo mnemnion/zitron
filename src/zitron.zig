@@ -422,6 +422,53 @@ const Rule = struct {
     }
 };
 
+fn nextNamedAliasIndex(aliases: []const []const u8, start: usize) ?usize {
+    if (start >= aliases.len) return null;
+    for (aliases[start..], start..) |alias, i| {
+        if (alias.len > 0) return i;
+    }
+    return null;
+}
+
+fn rhsAliasesHaveNames(aliases: []const []const u8) bool {
+    return nextNamedAliasIndex(aliases, 0) != null;
+}
+
+const RhsAliasComparison = union(enum) {
+    match,
+    extra_impl,
+    differing: struct {
+        impl_alias: []const u8,
+        rule_alias: []const u8,
+    },
+    missing_rule: []const u8,
+};
+
+fn compareRhsAliasNames(impl_aliases: []const []const u8, rule_aliases: []const []const u8) RhsAliasComparison {
+    var rule_idx: usize = 0;
+    for (impl_aliases) |impl_alias| {
+        dbgassert(impl_alias.len > 0);
+        const next_idx = nextNamedAliasIndex(rule_aliases, rule_idx) orelse return .extra_impl;
+        const rule_alias = rule_aliases[next_idx];
+        if (!mem.eql(u8, impl_alias, rule_alias)) {
+            return .{ .differing = .{
+                .impl_alias = impl_alias,
+                .rule_alias = rule_alias,
+            } };
+        }
+        rule_idx = next_idx + 1;
+    }
+    if (nextNamedAliasIndex(rule_aliases, rule_idx)) |idx| {
+        return .{ .missing_rule = rule_aliases[idx] };
+    }
+    return .match;
+}
+
+fn ruleHasAliases(rule: *const Rule) bool {
+    if (rule.lhsalias.len > 0) return true;
+    return rhsAliasesHaveNames(rule.rhsalias);
+}
+
 const ConfigStatus = enum {
     complete,
     incomplete,
@@ -1383,6 +1430,7 @@ const UseType = packed struct(u8) {
 /// Return `true` if the expanded code requires that "yylhsminor" local variable
 /// to be defined.
 fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
+    dbgassert(rp.rhs.len == rp.rhsalias.len);
     var rc = false; // True if yylhsminor is used
     var dontUseRhs0 = false; // If true, use of left-most RHS label is illegal
     var lhsused = false; // True if the LHS element has been used
@@ -1410,7 +1458,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     if (rp.rhs.len == 0) {
         // If there are no RHS symbols, then writing directly to the LHS is ok
         lhsdirect = true;
-    } else if (rp.rhsalias.len > 0 and rp.rhsalias[0].len == 0) {
+    } else if (rp.rhsalias[0].len == 0) {
         // The left-most RHS symbol has no value.  LHS direct is ok.  But
         // we have to call the destructor on the RHS symbol first.
         lhsdirect = true;
@@ -2011,7 +2059,7 @@ fn writeImplSignatureWith(out: anytype, impl: *const Impl, comptime sql_escape: 
     try write(out, impl.name);
     try out.writeByte('(');
     if (impl.lhsalias.len > 0) try write(out, impl.lhsalias);
-    if (impl.rhsalias.len > 0) {
+    if (rhsAliasesHaveNames(impl.rhsalias)) {
         try out.writeAll("; ");
         for (impl.rhsalias, 0..) |alias, i| {
             if (i > 0) try out.writeAll(", ");
@@ -5165,7 +5213,8 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                             impl.rule = prev;
 
                             if (try validateAndRepairImpl(psp, impl, prev)) {
-                                if (impl.rhsalias.len == 0) {
+                                if (impl.line == 0) {
+                                    dbgassert(impl.rhsalias.len == 0);
                                     impl.rhsalias = try psp.allocator.realloc(impl.rhsalias, prev.rhsalias.len);
                                     @memset(impl.rhsalias, "");
                                 }
@@ -5296,7 +5345,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             } else if (x[0] == ')') {
                 // no aliases at all
                 if (psp.impl.?.rule) |rule| {
-                    if (rule.lhsalias.len > 0 or rule.rhsalias.len > 0) {
+                    if (ruleHasAliases(rule)) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "Rule has aliases, rule impl name must as well", .{});
                         psp.errorcnt += 1;
@@ -5343,28 +5392,25 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     impl.rhsalias[psp.impl_idx] = "";
                 }
                 if (impl.rule) |rule| {
-                    // find the next non-empty alias
-                    while (psp.impl_idx < rule.rhsalias.len and
-                        rule.rhsalias[psp.impl_idx].len == 0) : (psp.impl_idx += 1)
-                    {}
-                    if (psp.impl_idx >= rule.rhsalias.len) {
+                    const rule_idx = nextNamedAliasIndex(rule.rhsalias, psp.impl_idx);
+                    if (rule_idx == null) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "The rule impl name has more RHS aliases than the rule itself", .{});
                         psp.errorcnt += 1;
                         psp.state = .resync_after_impl_error;
-                    } else if (!strcmp(rule.rhsalias[psp.impl_idx], x)) {
+                    } else if (!strcmp(rule.rhsalias[rule_idx.?], x)) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "Rule RHS alias \"{s}\" does not match rule impl's \"{s}\".", .{
-                            rule.rhsalias[psp.impl_idx], x,
+                            rule.rhsalias[rule_idx.?], x,
                         });
                         psp.errorcnt += 1;
                         psp.state = .resync_after_impl_error;
                     } else {
+                        psp.impl_idx = @intCast(rule_idx.?);
                         // Looking for the next rule can get us past what we've allocated
                         if (psp.impl_idx >= impl.rhsalias.len) {
-                            const more = psp.impl_idx - (impl.rhsalias.len - 1);
                             const old_len = impl.rhsalias.len;
-                            impl.rhsalias = try psp.allocator.realloc(impl.rhsalias, impl.rhsalias.len + more);
+                            impl.rhsalias = try psp.allocator.realloc(impl.rhsalias, psp.impl_idx + 1);
                             @memset(impl.rhsalias[old_len..], "");
                         }
                         impl.rhsalias[psp.impl_idx] = x;
@@ -5378,14 +5424,10 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             } else if (x[0] == ')') {
                 const impl = psp.impl.?;
                 if (impl.rule) |rule| {
-                    // find the next non-empty alias
-                    while (psp.impl_idx < rule.rhsalias.len and
-                        rule.rhsalias[psp.impl_idx].len == 0) : (psp.impl_idx += 1)
-                    {}
-                    if (psp.impl_idx < rule.rhsalias.len) {
+                    if (nextNamedAliasIndex(rule.rhsalias, psp.impl_idx)) |idx| {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "Impl \"{s}\" missing RHS alias \"{s}\".", .{
-                            impl.name, rule.rhsalias[psp.impl_idx],
+                            impl.name, rule.rhsalias[idx],
                         });
                         psp.errorcnt += 1;
                         psp.state = .resync_after_impl_error;
@@ -5406,13 +5448,10 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             } else if (x[0] == ')') {
                 const impl = psp.impl.?;
                 if (impl.rule) |rule| {
-                    if (impl.rhsalias.len < rule.rhsalias.len) {
-                        const many = if (rule.rhsalias.len == 1) "alias" else "aliases";
+                    if (nextNamedAliasIndex(rule.rhsalias, psp.impl_idx)) |idx| {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "Rule has {d} RHS {s}, the rule impl has {d}.  They must match", .{
-                            rule.rhsalias.len,
-                            many,
-                            impl.rhsalias.len,
+                            "Impl \"{s}\" missing RHS alias \"{s}\".", .{
+                            impl.name, rule.rhsalias[idx],
                         });
                         psp.errorcnt += 1;
                         // No resync state since we saw the )
@@ -5985,61 +6024,48 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
 /// Validates a pre-existing impl name, and 'repairs' the rhsalias list, which
 /// may be missing un-named aliases represented as "".
 fn validateAndRepairImpl(psp: *ParserState, impl: *Impl, rule: *Rule) !bool {
+    if (impl.line == 0) return true;
+
     var good: bool = true;
     // if already defined, we need to validate the names:
-    if (impl.lhsalias.len > 0 and !strcmp(rule.lhsalias, impl.lhsalias)) {
+    if (!mem.eql(u8, rule.lhsalias, impl.lhsalias)) {
         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
             "Rule impl name is already defined, and has the LHS alias \"{s}\", " ++
-            "but the rule's LHS alias is \"{s}\".  They must match", .{ rule.lhsalias, impl.lhsalias });
+            "but the rule's LHS alias is \"{s}\".  They must match", .{ impl.lhsalias, rule.lhsalias });
         psp.errorcnt += 1;
         good = false;
     }
-    if (impl.rhsalias.len > 0) {
-        if (impl.rhsalias.len > rule.rhsalias.len) {
+    switch (compareRhsAliasNames(impl.rhsalias, rule.rhsalias)) {
+        .match => {},
+        .extra_impl => {
             ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                "The rule has {d} RHS parts, the impl is defined before the rule to have {d} aliases", .{
-                rule.rhsalias.len,
-                impl.rhsalias.len,
+                "The impl as previously defined has more aliases than the rule", .{});
+            psp.errorcnt += 1;
+            good = false;
+        },
+        .differing => |aliases| {
+            ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                "Previous impl alias \"{s}\" does not match rule alias \"{s}\" ", .{
+                aliases.impl_alias,
+                aliases.rule_alias,
             });
             psp.errorcnt += 1;
             good = false;
-        } else {
-            // This is the tricky part, because the rule might have un-aliased parts
-            // which the impl doesn't know about.
-            var idx: usize = 0;
-            for (impl.rhsalias) |alias| {
-                while (idx < rule.rhsalias.len and rule.rhsalias[idx].len == 0) : (idx += 1) {}
-                if (idx == rule.rhsalias.len) {
-                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "The impl as previously defined has more aliases than the rule", .{});
-                    psp.errorcnt += 1;
-                } else if (!strcmp(alias, rule.rhsalias[idx])) {
-                    ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Previous impl alias \"{s}\" does not match rule alias \"{s}\" ", .{
-                        alias,
-                        rule.rhsalias[idx],
-                    });
-                    psp.errorcnt += 1;
-                    psp.state = .resync_after_rule_error;
-                }
-                idx += 1;
-            }
-            // So much for the ones we have, did we miss any?
-
-            while (idx < rule.rhsalias.len and rule.rhsalias[idx].len == 0) : (idx += 1) {}
-            if (idx < rule.rhsalias.len) {
-                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Rule has more aliases than impl as previously defined", .{});
-                psp.errorcnt += 1;
-                psp.state = .resync_after_rule_error;
-            }
-            // Any old way, we copy the correct aliases, to get better errors later
-            const new_rhs = try psp.allocator.alloc([]const u8, rule.rhsalias.len);
-            @memcpy(new_rhs, rule.rhsalias);
-            psp.allocator.free(impl.rhsalias);
-            impl.rhsalias = new_rhs;
-        }
+            psp.state = .resync_after_rule_error;
+        },
+        .missing_rule => {
+            ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                "Rule has more aliases than impl as previously defined", .{});
+            psp.errorcnt += 1;
+            good = false;
+            psp.state = .resync_after_rule_error;
+        },
     }
+    // Any old way, we copy the correct aliases, to get better errors later.
+    const new_rhs = try psp.allocator.alloc([]const u8, rule.rhsalias.len);
+    @memcpy(new_rhs, rule.rhsalias);
+    psp.allocator.free(impl.rhsalias);
+    impl.rhsalias = new_rhs;
     return good;
 }
 
@@ -7083,7 +7109,7 @@ fn strLessThan(_: void, a: []const u8, b: []const u8) bool {
     if (b.len < a.len) return false;
     for (a, b) |ac, bc| {
         if (ac < bc) return true;
-        if (bc > ac) return false;
+        if (ac > bc) return false;
     }
     return false; // Equal is not less than
 }
@@ -8126,4 +8152,86 @@ test "impl signatures include aliases without code" {
     const got = try buf.toOwnedSlice();
     defer std.testing.allocator.free(got);
     try std.testing.expectEqualStrings("@expr_mix(out; left, , right)", got);
+}
+
+test "impl signatures ignore an aligned but entirely blank RHS alias slice" {
+    var rhs = [_][]const u8{ "", "", "" };
+    var impl = Impl.empty;
+    impl.name = "@uncaptured";
+    impl.rhsalias = &rhs;
+
+    var buf: AllocatingWriter = .init(std.testing.allocator);
+    defer buf.deinit();
+
+    try writeImplSignature(&buf.writer, &impl);
+
+    const got = try buf.toOwnedSlice();
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("@uncaptured()", got);
+}
+
+test "rule alias detection ignores uncaptured RHS slots" {
+    var uncaptured = [_][]const u8{ "", "" };
+    var rule = Rule.empty;
+    rule.lhsalias = "";
+    rule.rhsalias = &uncaptured;
+    try std.testing.expect(!ruleHasAliases(&rule));
+
+    rule.rhsalias[1] = "value";
+    try std.testing.expect(ruleHasAliases(&rule));
+}
+
+test "destructor emission treats blank RHS aliases as aligned slots" {
+    Strsafe_init(std.testing.allocator);
+    defer Strsafe_free();
+
+    var token = Symbol.empty;
+    token.type = .terminal;
+    token.index = 7;
+    var lhs = Symbol.empty;
+    var rhs = [_]*Symbol{ &token, &token };
+    var aliases = [_][]const u8{ "", "" };
+    var rule = Rule.empty;
+    rule.lhs = &lhs;
+    rule.rhs = &rhs;
+    rule.rhsalias = &aliases;
+    rule.codePrefix = try std.testing.allocator.alloc(u8, 0);
+
+    var token_destructor = "_ = $$;".*;
+    var zyt = Zitron.empty;
+    zyt.allocator = std.testing.allocator;
+    zyt.tokendest = &token_destructor;
+
+    try std.testing.expect(!try translate_code(&zyt, &rule));
+    try std.testing.expectEqual(@as(usize, 2), mem.count(u8, rule.codePrefix, "yy_destructor"));
+}
+
+test "named RHS alias search finds captures after blank slots" {
+    const aliases = [_][]const u8{ "first", "", "last", "" };
+    try std.testing.expectEqual(@as(?usize, 2), nextNamedAliasIndex(&aliases, 1));
+    try std.testing.expectEqual(@as(?usize, null), nextNamedAliasIndex(&aliases, 3));
+}
+
+test "compact impl aliases compare by name against aligned rule slots" {
+    const rule_aliases = [_][]const u8{ "first", "", "last" };
+    const matching = [_][]const u8{ "first", "last" };
+    try std.testing.expect(compareRhsAliasNames(&matching, &rule_aliases) == .match);
+
+    const missing = compareRhsAliasNames(&.{"first"}, &rule_aliases);
+    try std.testing.expect(missing == .missing_rule);
+    try std.testing.expectEqualStrings("last", missing.missing_rule);
+
+    const extra = [_][]const u8{ "first", "last", "extra" };
+    try std.testing.expect(compareRhsAliasNames(&extra, &rule_aliases) == .extra_impl);
+
+    const differing = compareRhsAliasNames(&.{ "first", "other" }, &rule_aliases);
+    try std.testing.expect(differing == .differing);
+    try std.testing.expectEqualStrings("other", differing.differing.impl_alias);
+    try std.testing.expectEqualStrings("last", differing.differing.rule_alias);
+}
+
+test "define sorting comparator is lexicographic for equal-length names" {
+    try std.testing.expect(strLessThan({}, "ab", "ba"));
+    try std.testing.expect(!strLessThan({}, "ba", "ab"));
+    try std.testing.expect(!strLessThan({}, "ab", "ab"));
 }
