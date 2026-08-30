@@ -228,6 +228,44 @@ pub fn build(b: *std.Build) void {
         "track-max-stack-depth",
         &.{"TRACK_MAX_STACK_DEPTH"},
     );
+    addZitronCompressionTests(
+        b,
+        zitron_exe,
+        target,
+        optimize,
+        test_step,
+        test_filters,
+        "fallback",
+        "samples/compression_fallback.zy",
+    );
+    addZitronCompressionTests(
+        b,
+        zitron_exe,
+        target,
+        optimize,
+        test_step,
+        test_filters,
+        "wildcard-reduce",
+        "samples/compression_wildcard_reduce.zy",
+    );
+    addLemonCompressionTests(
+        b,
+        lemon_exe,
+        target,
+        optimize,
+        test_step,
+        "fallback",
+        "samples/lemon_compression_fallback.y",
+    );
+    addLemonCompressionTests(
+        b,
+        lemon_exe,
+        target,
+        optimize,
+        test_step,
+        "wildcard-reduce",
+        "samples/lemon_compression_wildcard_reduce.y",
+    );
 
     const zitron_run_step = b.step("run", "Run zitron");
     zitron_run_step.dependOn(&zitron_run_cmd.step);
@@ -288,6 +326,44 @@ fn addErrorPathTest(
     test_step.dependOn(&run_generated_tests.step);
 }
 
+fn addZitronCompressionTests(
+    b: *std.Build,
+    zitron_exe: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    test_step: *std.Build.Step,
+    test_filters: []const []const u8,
+    case_name: []const u8,
+    grammar_path: []const u8,
+) void {
+    for ([_]struct { name: []const u8, option: ?[]const u8 }{
+        .{ .name = "compressed", .option = null },
+        .{ .name = "uncompressed", .option = "--no-compress" },
+    }) |mode| {
+        const name = b.fmt("compression-{s}-{s}", .{ case_name, mode.name });
+        const generate = b.addRunArtifact(zitron_exe);
+        generate.addArgs(&.{ "--fifo", "--quiet" });
+        if (mode.option) |option| generate.addArg(option);
+        generate.addArg(grammar_path);
+        generate.setStdIn(.{ .lazy_path = b.path(grammar_path) });
+
+        const generated = generate.captureStdOut(.{
+            .basename = b.fmt("{s}.zig", .{name}),
+        });
+        const generated_tests = b.addTest(.{
+            .name = name,
+            .root_module = b.createModule(.{
+                .root_source_file = generated,
+                .target = target,
+                .optimize = optimize,
+            }),
+            .filters = test_filters,
+        });
+        const run_generated_tests = b.addRunArtifact(generated_tests);
+        test_step.dependOn(&run_generated_tests.step);
+    }
+}
+
 fn addLemonErrorPathTest(
     b: *std.Build,
     lemon_exe: *std.Build.Step.Compile,
@@ -318,4 +394,42 @@ fn addLemonErrorPathTest(
 
     const run_generated_tests = b.addRunArtifact(generated_tests);
     test_step.dependOn(&run_generated_tests.step);
+}
+
+fn addLemonCompressionTests(
+    b: *std.Build,
+    lemon_exe: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    test_step: *std.Build.Step,
+    case_name: []const u8,
+    grammar_path: []const u8,
+) void {
+    for ([_]struct { name: []const u8, option: ?[]const u8 }{
+        .{ .name = "compressed", .option = null },
+        .{ .name = "uncompressed", .option = "-c" },
+    }) |mode| {
+        const name = b.fmt("lemon-compression-{s}-{s}", .{ case_name, mode.name });
+        const generate = b.addRunArtifact(lemon_exe);
+        generate.addArg("-q");
+        if (mode.option) |option| generate.addArg(option);
+        const output_dir = generate.addPrefixedOutputDirectoryArg("-d", name);
+        generate.addFileArg(b.path(grammar_path));
+
+        const generated_tests = b.addExecutable(.{
+            .name = name,
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+        generated_tests.root_module.addCSourceFile(.{
+            .file = output_dir.path(b, b.fmt("{s}.c", .{std.fs.path.stem(grammar_path)})),
+            .flags = &.{"-std=c11"},
+        });
+        generated_tests.root_module.link_libc = true;
+
+        const run_generated_tests = b.addRunArtifact(generated_tests);
+        test_step.dependOn(&run_generated_tests.step);
+    }
 }

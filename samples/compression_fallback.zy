@@ -1,0 +1,61 @@
+%include {
+const zitron_no_error_recovery = {};
+
+const Stats = struct {
+    syntax_errors: usize = 0,
+    accepts: usize = 0,
+};
+}
+
+%extra_context {stats: *Stats}
+%token_type void
+
+%fallback ID D.
+
+%syntax_error {
+    stats.syntax_errors += 1;
+    return error.SyntaxError;
+}
+
+%parse_accept {
+    stats.accepts += 1;
+}
+
+start ::= PSTART n D.
+start ::= QSTART n E.
+n ::= a.
+n ::= x.
+a ::= C.
+x ::= C ID.
+
+%code {
+//| Tests
+
+fn parseTokens(tokens: []const TokenKind) !Stats {
+    var stats: Stats = .{};
+    var parser = try Parser.create(std.testing.allocator, &stats);
+    defer parser.destroy();
+
+    for (tokens) |token| {
+        parser.parse(token, {}) catch |err| switch (err) {
+            error.SyntaxError => return stats,
+        };
+    }
+    parser.finalize() catch |err| switch (err) {
+        error.SyntaxError => return stats,
+    };
+    return stats;
+}
+
+test "compression preserves a fallback-bearing exact reduction" {
+    const stats = try parseTokens(&.{ .PSTART, .C, .D });
+    try std.testing.expectEqual(@as(usize, 0), stats.syntax_errors);
+    try std.testing.expectEqual(@as(usize, 1), stats.accepts);
+}
+
+test "compression preserves fallback selection after an exact miss" {
+    const stats = try parseTokens(&.{ .QSTART, .C, .D });
+    try std.testing.expectEqual(@as(usize, 1), stats.syntax_errors);
+    try std.testing.expectEqual(@as(usize, 0), stats.accepts);
+}
+}

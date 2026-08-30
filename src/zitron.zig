@@ -6333,16 +6333,23 @@ fn levenshtein(a_in: []const u8, b_in: []const u8) !usize {
 /// of defaults.
 ///
 /// In this version, we take the most frequent REDUCE action and make
-/// it the default.  Except, there is no default if the wildcard token
-/// is a possible look-ahead.
+/// it the default.  Except, there is no default if fallback or wildcard
+/// selection could observe a removed action.
 fn CompressTables(zyt: *Zitron) !void {
     states: for (zyt.sorted) |stp| {
         var nbest: usize = 0;
         var rbest: ?*Rule = null;
+        var usesFallback = false;
         var usesWildcard = false;
         var m_ap: ?*Action = stp.ap;
         actions: while (m_ap) |ap| : (m_ap = ap.next) {
-            if (ap.type == .shift and ap.sp == zyt.wildcard) {
+            if (ap.type == .reduce and ap.sp.fallback != null) {
+                usesFallback = true;
+            }
+            if (ap.sp == zyt.wildcard and
+                (ap.type == .shift or ap.type == .reduce or
+                    ap.type == .@"error" or ap.type == .accept))
+            {
                 usesWildcard = true;
             }
             if (ap.type != .reduce) continue :actions;
@@ -6362,11 +6369,10 @@ fn CompressTables(zyt: *Zitron) !void {
                 rbest = rp;
             }
             // Do not make a default if the number of rules to default
-            // is not at least 1 or if the wildcard token is a possible
-            // lookahead.
+            // is not at least 1 or if a selector could observe it.
             //
         }
-        if (nbest < 1 or usesWildcard) continue :states;
+        if (nbest < 1 or usesFallback or usesWildcard) continue :states;
 
         if (p_check1) dprint("can optimize State {d}\n", .{stp.statenum});
 
