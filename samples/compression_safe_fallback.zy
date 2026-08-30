@@ -1,0 +1,39 @@
+%include {
+const zitron_no_error_recovery = {};
+}
+
+%token_type void
+%fallback ID D.
+
+%syntax_error {
+    return error.SyntaxError;
+}
+
+start ::= P leaf D.
+start ::= Q leaf ID.
+leaf ::= C.
+
+%code {
+//| Tests
+
+fn parseTokens(tokens: []const TokenKind) !void {
+    var parser = try Parser.create(std.testing.allocator);
+    defer parser.destroy();
+
+    for (tokens) |token| try parser.parse(token, {});
+    try parser.finalize();
+}
+
+test "safe fallback reductions are compressed" {
+    try parseTokens(&.{ .P, .C, .D });
+    try parseTokens(&.{ .Q, .C, .D });
+
+%ifdef COMPRESSION_EXPECTED
+    try std.testing.expectEqual(@as(usize, 7), YYNSTATE);
+    try std.testing.expectEqual(@as(usize, 11), YY_ACTTAB_COUNT);
+%else
+    try std.testing.expectEqual(@as(usize, 8), YYNSTATE);
+    try std.testing.expectEqual(@as(usize, 13), YY_ACTTAB_COUNT);
+%endif
+}
+}

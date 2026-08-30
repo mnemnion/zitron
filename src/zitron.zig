@@ -6329,29 +6329,49 @@ fn levenshtein(a_in: []const u8, b_in: []const u8) !usize {
     return prev[cols - 1];
 }
 
+fn liveActionForSymbol(stp: *State, sp: *Symbol) ?*Action {
+    var m_ap = stp.ap;
+    while (m_ap) |ap| : (m_ap = ap.next) {
+        if (ap.sp.index > sp.index) return null;
+        if (ap.sp != sp) continue;
+        switch (ap.type) {
+            .shift, .accept, .reduce, .@"error" => return ap,
+            else => {},
+        }
+    }
+    return null;
+}
+
+fn selectorChangesDefault(stp: *State, sp: *Symbol, rbest: *Rule, wildcard: ?*Symbol) bool {
+    var lookahead = sp;
+    if (lookahead.fallback) |fallback| {
+        if (liveActionForSymbol(stp, fallback)) |ap| {
+            return ap.type != .reduce or ap.x.rp != rbest;
+        }
+        if (fallback.fallback != null) return true;
+        lookahead = fallback;
+    }
+    if (lookahead.index == 0) return false;
+    if (wildcard) |wild| {
+        if (liveActionForSymbol(stp, wild)) |ap| {
+            return ap.type != .reduce or ap.x.rp != rbest;
+        }
+    }
+    return false;
+}
+
 /// Reduce the size of the action tables, if possible, by making use
 /// of defaults.
 ///
 /// In this version, we take the most frequent REDUCE action and make
-/// it the default.  Except, there is no default if fallback or wildcard
-/// selection could observe a removed action.
+/// it the default.  Exact actions remain when fallback or wildcard
+/// selection would otherwise choose a different action.
 fn CompressTables(zyt: *Zitron) !void {
     states: for (zyt.sorted) |stp| {
         var nbest: usize = 0;
         var rbest: ?*Rule = null;
-        var usesFallback = false;
-        var usesWildcard = false;
         var m_ap: ?*Action = stp.ap;
         actions: while (m_ap) |ap| : (m_ap = ap.next) {
-            if (ap.type == .reduce and ap.sp.fallback != null) {
-                usesFallback = true;
-            }
-            if (ap.sp == zyt.wildcard and
-                (ap.type == .shift or ap.type == .reduce or
-                    ap.type == .@"error" or ap.type == .accept))
-            {
-                usesWildcard = true;
-            }
             if (ap.type != .reduce) continue :actions;
             const rp = ap.x.rp.?; // Always rule on .reduce
             if (rp.lhsStart) continue :actions;
@@ -6368,11 +6388,8 @@ fn CompressTables(zyt: *Zitron) !void {
                 nbest = n;
                 rbest = rp;
             }
-            // Do not make a default if the number of rules to default
-            // is not at least 1 or if a selector could observe it.
-            //
         }
-        if (nbest < 1 or usesFallback or usesWildcard) continue :states;
+        if (nbest < 1) continue :states;
 
         if (p_check1) dprint("can optimize State {d}\n", .{stp.statenum});
 
@@ -6384,28 +6401,30 @@ fn CompressTables(zyt: *Zitron) !void {
             }
             m_ap = stp.ap;
         }
-        // Combine matching REDUCE actions into a single default.
+        // Combine matching REDUCE actions into a default, retaining exact
+        // actions which prevent fallback or wildcard from changing it.
+        var default_ap: ?*Action = null;
         m_ap = stp.ap;
         while (m_ap) |ap| : (m_ap = ap.next) {
-            if (ap.type == .reduce and ap.x.rp == rbest) break;
-        }
-        dbgassert(m_ap != null);
-        if (p_check1) dprint("old symbol name {s}\n", .{m_ap.?.sp.name});
-        m_ap.?.sp = zyt.symbols[zyt.nsymbol];
-        dbgassert(strcmp(m_ap.?.sp.name, "{default}"));
-        if (p_check1) dprint("new symbol name {s}\n", .{m_ap.?.sp.name});
-        m_ap = m_ap.?.next;
-        while (m_ap) |ap| : (m_ap = ap.next) {
-            if (ap.type == .reduce and ap.x.rp == rbest) {
+            if (ap.type != .reduce or ap.x.rp != rbest) continue;
+            if (selectorChangesDefault(stp, ap.sp, rbest.?, zyt.wildcard)) continue;
+            if (default_ap == null) {
+                default_ap = ap;
+            } else {
                 ap.type = .not_used;
             }
         }
+        const default_action = default_ap orelse continue :states;
+        if (p_check1) dprint("old symbol name {s}\n", .{default_action.sp.name});
+        default_action.sp = zyt.symbols[zyt.nsymbol];
+        dbgassert(strcmp(default_action.sp.name, "{default}"));
+        if (p_check1) dprint("new symbol name {s}\n", .{default_action.sp.name});
         stp.ap = if (stp.ap) |ap| Action.sort(ap) else null;
         m_ap = stp.ap;
 
         while (m_ap) |ap| : (m_ap = ap.next) {
             if (ap.type == .shift) break;
-            if (ap.type == .reduce and ap.x.rp != rbest) break;
+            if (ap.type == .reduce and ap.sp != default_action.sp) break;
         } else {
             stp.autoreduce = true;
             stp.pDefltReduce = rbest;

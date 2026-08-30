@@ -248,6 +248,26 @@ pub fn build(b: *std.Build) void {
         "wildcard-reduce",
         "samples/compression_wildcard_reduce.zy",
     );
+    addZitronCompressionTests(
+        b,
+        zitron_exe,
+        target,
+        optimize,
+        test_step,
+        test_filters,
+        "safe-fallback",
+        "samples/compression_safe_fallback.zy",
+    );
+    addZitronCompressionTests(
+        b,
+        zitron_exe,
+        target,
+        optimize,
+        test_step,
+        test_filters,
+        "safe-wildcard",
+        "samples/compression_safe_wildcard.zy",
+    );
     addLemonCompressionTests(
         b,
         lemon_exe,
@@ -265,6 +285,24 @@ pub fn build(b: *std.Build) void {
         test_step,
         "wildcard-reduce",
         "samples/lemon_compression_wildcard_reduce.y",
+    );
+    addLemonCompressionTests(
+        b,
+        lemon_exe,
+        target,
+        optimize,
+        test_step,
+        "safe-fallback",
+        "samples/lemon_compression_safe_fallback.y",
+    );
+    addLemonCompressionTests(
+        b,
+        lemon_exe,
+        target,
+        optimize,
+        test_step,
+        "safe-wildcard",
+        "samples/lemon_compression_safe_wildcard.y",
     );
 
     const zitron_run_step = b.step("run", "Run zitron");
@@ -343,7 +381,11 @@ fn addZitronCompressionTests(
         const name = b.fmt("compression-{s}-{s}", .{ case_name, mode.name });
         const generate = b.addRunArtifact(zitron_exe);
         generate.addArgs(&.{ "--fifo", "--quiet" });
-        if (mode.option) |option| generate.addArg(option);
+        if (mode.option) |option| {
+            generate.addArg(option);
+        } else {
+            generate.addArgs(&.{ "-D", "COMPRESSION_EXPECTED" });
+        }
         generate.addArg(grammar_path);
         generate.setStdIn(.{ .lazy_path = b.path(grammar_path) });
 
@@ -412,7 +454,11 @@ fn addLemonCompressionTests(
         const name = b.fmt("lemon-compression-{s}-{s}", .{ case_name, mode.name });
         const generate = b.addRunArtifact(lemon_exe);
         generate.addArg("-q");
-        if (mode.option) |option| generate.addArg(option);
+        if (mode.option) |option| {
+            generate.addArg(option);
+        } else {
+            generate.addArg("-DCOMPRESSION_EXPECTED");
+        }
         const output_dir = generate.addPrefixedOutputDirectoryArg("-d", name);
         generate.addFileArg(b.path(grammar_path));
 
