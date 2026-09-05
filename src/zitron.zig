@@ -280,7 +280,7 @@ const Symbol = struct {
         //| [5446]
         sp.name = name;
         dbgassert(sp.name.len > 0);
-        if (isUpper(name[0])) {
+        if (isUpper(name[0]) or name[0] == '"') {
             sp.type = .terminal;
         }
         // These do return a pointer, conceivably that can fail?
@@ -1814,7 +1814,11 @@ fn print_token_enum(zyt: *Zitron, out: anytype, plineno: *usize) !void {
     plineno.* += 1;
     try out.writeAll("    end_of_input = 0,\n");
     for (zyt.symbols[1..zyt.nterminal]) |t_sym| {
-        try out.print("    {s},\n", .{t_sym.name});
+        if (t_sym.name[0] == '"') {
+            try out.print("    @{s}\",\n", .{t_sym.name});
+        } else {
+            try out.print("    {s},\n", .{t_sym.name});
+        }
         plineno.* += 1;
     }
     try out.writeAll("};\n");
@@ -1987,15 +1991,28 @@ fn axset_compare(_: void, p1: AxSet, p2: AxSet) bool {
 // /*
 // ** Write text on "out" that describes the rule "rp".
 // */
-fn writeRuleText(out: anytype, rp: *Rule) !void {
+fn writeRuleText(out: anytype, rp: *Rule, escaped: bool) !void {
+    const quote = if (escaped) "\\\"" else "\"";
     try out.print("{s} ::=", .{rp.lhs.name});
     for (rp.rhs) |sp| {
         if (sp.type != .multiterminal) {
-            try out.print(" {s}", .{sp.name});
+            if (sp.name[0] == '"') {
+                try out.print(" {s}{s}{s}", .{ quote, sp.name[1..], quote });
+            } else {
+                try out.print(" {s}", .{sp.name});
+            }
         } else {
-            try out.print(" {s}", .{sp.subsym[0].name});
+            if (sp.subsym[0].name[0] == '"') {
+                try out.print(" {s}{s}{s}", .{ quote, sp.subsym[0].name[1..], quote });
+            } else {
+                try out.print(" {s}", .{sp.subsym[0].name});
+            }
             for (sp.subsym[1..]) |ssp| {
-                try out.print("|{s}", .{ssp.name});
+                if (ssp.name[0] == '"') {
+                    try out.print("|{s}{s}{s}", .{ quote, ssp.name[1..], quote });
+                } else {
+                    try out.print("|{s}", .{ssp.name});
+                }
             }
         }
     }
@@ -3312,7 +3329,12 @@ fn reportTableImpl(
             maxsym = @max(maxsym, zyt.symbols[i].name.len);
         }
         for (0..zyt.nsymbol) |i| {
-            try out.print("   \"{s}\",  ", .{zyt.symbols[i].name});
+            const name = zyt.symbols[i].name;
+            if (name[0] == '"') {
+                try out.print("   \"\\\"{s}\\\"\",  ", .{name[1..]});
+            } else {
+                try out.print("   \"{s}\",  ", .{name});
+            }
             try out.splatByteAll(' ', maxsym - zyt.symbols[i].name.len);
             try out.print("// {d: >4}\n", .{i});
             lineno += 1;
@@ -3329,7 +3351,7 @@ fn reportTableImpl(
         while (m_rp) |rp| : (m_rp = rp.next) {
             dbgassert(rp.iRule == i);
             try out.writeAll("    \"");
-            try writeRuleText(out, rp);
+            try writeRuleText(out, rp, true);
             try out.print("\", // {d: >3} \n", .{i});
             lineno += 1;
             i += 1;
@@ -3466,7 +3488,7 @@ fn reportTableImpl(
                 continue :rules;
             }
             try out.print("        {d}, // ", .{rp.iRule});
-            try writeRuleText(out, rp);
+            try writeRuleText(out, rp, false);
             try out.writeByte('\n');
             lineno += 1;
             if (!zyt.opt.unbundle) {
@@ -3480,7 +3502,7 @@ fn reportTableImpl(
                             dprint("case: merging rp2 {d} with rp {d}\n", .{ rp2.iRule, rp.iRule });
                         }
                         try out.print("        {d}, // ", .{rp2.iRule});
-                        try writeRuleText(out, rp2);
+                        try writeRuleText(out, rp2, false);
                         try out.writeByte('\n');
                         lineno += 1;
                         rp2.codeEmitted = true;
@@ -3503,17 +3525,17 @@ fn reportTableImpl(
             dbgassert(rp.noCode);
             if (rp.neverReduce) {
                 try out.print("            yy_assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
-                try writeRuleText(out, rp);
+                try writeRuleText(out, rp, false);
                 try out.writeAll(" (NEVER REDUCES)\n");
                 lineno += 1;
             } else if (rp.doesReduce) {
                 try out.writeAll("            // ");
-                try writeRuleText(out, rp);
+                try writeRuleText(out, rp, false);
                 try out.writeByte('\n');
                 lineno += 1;
             } else {
                 try out.print("            yy_assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
-                try writeRuleText(out, rp);
+                try writeRuleText(out, rp, false);
                 try out.writeAll(" (OPTIMIZED OUT) \n");
                 lineno += 1;
             }
@@ -5239,7 +5261,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             }
         },
         .precedence_mark_1 => {
-            if (!isUpper(x[0])) {
+            if (!(isUpper(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "The precedence symbol must be a terminal, not '{s}'.", .{x});
                 psp.errorcnt += 1;
@@ -5541,7 +5563,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 }
                 psp.prevrule = rp;
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (isAlpha(x[0])) {
+            } else if (isAlpha(x[0]) or x[0] == '"') {
                 if (psp.nrhs >= MAXRHS) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Too many symbols on RHS of rule (maximum is {d}) beginning at \"{s}\".", //
@@ -5771,7 +5793,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             }
         },
         .waiting_for_destructor_symbol => {
-            if (!isAlpha(x[0])) {
+            if (!(isAlpha(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Symbol name missing after %destructor directive", .{});
                 psp.errorcnt += 1;
@@ -5785,7 +5807,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             psp.state = .waiting_for_decl_arg;
         },
         .waiting_for_datatype_symbol => {
-            if (!isAlpha(x[0])) {
+            if (!(isAlpha(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Symbol name missing after %type directive", .{});
                 psp.errorcnt += 1;
@@ -5808,7 +5830,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .waiting_for_precedence_symbol => {
             if (x[0] == '.') {
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (isUpper(x[0])) {
+            } else if (isUpper(x[0]) or x[0] == '"') {
                 const sp = try Symbol_new(x);
                 if (sp.prec) |_| {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
@@ -5911,7 +5933,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .waiting_for_fallback_id => {
             if (x[0] == '.') {
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (!isUpper(x[0])) {
+            } else if (!(isUpper(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "%fallback argument \"{s}\" should be a token", .{x});
                 psp.errorcnt += 1;
@@ -5944,7 +5966,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             //
             if (x[0] == '.') {
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (!isUpper(x[0])) {
+            } else if (!(isUpper(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "%token argument \"{s}\" should be a token", .{x});
                 psp.errorcnt += 1;
@@ -5955,7 +5977,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .waiting_for_wildcard_id => {
             if (x[0] == '.') {
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (!isUpper(x[0])) {
+            } else if (!(isUpper(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "%wildcard argument \"{s}\" should be a token", .{x});
                 psp.errorcnt += 1;
@@ -5990,7 +6012,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .waiting_for_class_token => {
             if (x[0] == '.') {
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (isUpper(x[0]) or ((x[0] == '|' or x[0] == '/') and isUpper(x[1]))) {
+            } else if (isUpper(x[0]) or x[0] == '"' or ((x[0] == '|' or x[0] == '/') and isUpper(x[1]))) {
                 const msp = psp.tkclass;
                 msp.subsym = subsym: {
                     if (msp.subsym.len == 0)
@@ -5998,7 +6020,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     else
                         break :subsym try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
                 };
-                msp.subsym[msp.subsym.len - 1] = try Symbol_new(if (isUpper(x[0])) x else x[1..]);
+                msp.subsym[msp.subsym.len - 1] = try Symbol_new(if (isUpper(x[0]) or x[0] == '"') x else x[1..]);
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "%token_class argument \"{s}\" should be a token", .{x});
@@ -7354,7 +7376,7 @@ pub fn main(init: std.process.Init) !void {
         dbgassert(strcmp(zyt.symbols[i - 1].name, "{default}"));
         zyt.nsymbol = i - 1;
         i = 1;
-        while (isUpper(zyt.symbols[i].name[0])) : (i += 1) {}
+        while (zyt.symbols[i].type == .terminal) : (i += 1) {}
         zyt.nterminal = i;
     }
     sequenceRules(zyt);
@@ -7800,11 +7822,11 @@ fn Symbol_arrayof() []*Symbol {
 /// zero, or positive if a is less then, equal to, or greater
 /// than b.
 ///
-/// Symbols that begin with upper case letters (terminals or tokens)
-/// must sort before symbols that begin with lower case letters
-/// (non-terminals).  And MULTITERMINAL symbols (created using the
-/// %token_class directive) must sort at the very end. Other than
-/// that, the order does not matter.
+/// Symbols that begin with upper case letters or double quotes
+/// (terminals or tokens) must sort before symbols that begin with
+/// lower case letters (non-terminals).  And MULTITERMINAL symbols
+/// (created using the %token_class directive) must sort at the very end.
+/// Other than that, the order does not matter.
 ///
 /// We find experimentally that leaving the symbols in their original
 /// order (the order they appeared in the grammar file) gives the
