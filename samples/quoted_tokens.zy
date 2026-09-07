@@ -5,7 +5,7 @@
 %left "*".
 %fallback "name" "keyword".
 %wildcard "any".
-%token_class quote "\x22" "\\" "\t".
+%token_class quote "\x22" | "\\" | "\t".
 %type expr i32
 %type "+" i32
 %destructor "+" {}

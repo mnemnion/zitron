@@ -4723,6 +4723,7 @@ const E_State = enum {
     waiting_for_arrow,
     waiting_for_arrow_or_rhs,
     in_rhs,
+    in_multiterminal,
     impl_1,
     impl_lhs1,
     impl_lhs2,
@@ -4745,6 +4746,7 @@ const E_State = enum {
     waiting_for_wildcard_id,
     waiting_for_class_id,
     waiting_for_class_token,
+    waiting_for_class_separator,
     waiting_for_token_name,
 };
 
@@ -5575,7 +5577,12 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     psp.alias[psp.nrhs] = "";
                     psp.nrhs += 1;
                 }
-            } else if ((x[0] == '|' or x[0] == '/') and psp.nrhs > 0 and x.len > 0 and isUpper(x[1])) {
+            } else if (x[0] == '/') {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "The token `/` for multiterminals is not supported, use |", .{});
+                psp.errorcnt += 1;
+                psp.state = .in_rhs;
+            } else if (x[0] == '|' and psp.nrhs > 0) {
                 var msp = psp.rhs[psp.nrhs - 1];
                 if (msp.type != .multiterminal) {
                     const origmsp = msp;
@@ -5597,20 +5604,32 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     }
                     sym_freelist = fl;
                 }
-                msp.subsym = try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
-                // We know x[1] exists and is terminal-shaped, so this is valid:
-                msp.subsym[msp.subsym.len - 1] = try Symbol_new(x[1..]);
-                if (isLower(x[1]) or isLower(msp.subsym[0].name[0])) {
+                if (msp.subsym[0].type != .terminal) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Cannot form a compound containing a non-terminal", .{});
                     psp.errorcnt += 1;
                     psp.state = .resync_after_rule_error;
+                } else {
+                    psp.state = .in_multiterminal;
                 }
             } else if (x[0] == '(' and psp.nrhs > 0) {
                 psp.state = .rhs_alias_1;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Illegal character on RHS of rule: \"{s}\".", .{x});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
+        },
+        .in_multiterminal => {
+            if (isUpper(x[0]) or x[0] == '"') {
+                const msp = psp.rhs[psp.nrhs - 1];
+                msp.subsym = try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
+                msp.subsym[msp.subsym.len - 1] = try Symbol_new(x);
+                psp.state = .in_rhs;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Expected a terminal after |, saw \"{s}\".", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -5995,7 +6014,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .waiting_for_class_id => {
             if (!isLower(x[0])) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "%token_class must be followed by an identifier: {s}", .{x});
+                    "%token_class must be followed by a nonterminal: {s}", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
             } else if (Symbol_find(x)) |_| {
@@ -6010,9 +6029,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             }
         },
         .waiting_for_class_token => {
-            if (x[0] == '.') {
-                psp.state = .waiting_for_decl_or_rule;
-            } else if (isUpper(x[0]) or x[0] == '"' or ((x[0] == '|' or x[0] == '/') and isUpper(x[1]))) {
+            if (isUpper(x[0]) or x[0] == '"') {
                 const msp = psp.tkclass;
                 msp.subsym = subsym: {
                     if (msp.subsym.len == 0)
@@ -6020,10 +6037,23 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     else
                         break :subsym try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
                 };
-                msp.subsym[msp.subsym.len - 1] = try Symbol_new(if (isUpper(x[0]) or x[0] == '"') x else x[1..]);
+                msp.subsym[msp.subsym.len - 1] = try Symbol_new(x);
+                psp.state = .waiting_for_class_separator;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "%token_class argument \"{s}\" should be a token", .{x});
+                    "%token_class argument \"{s}\" should be a terminal", .{x});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+            }
+        },
+        .waiting_for_class_separator => {
+            if (x[0] == '.') {
+                psp.state = .waiting_for_decl_or_rule;
+            } else if (x[0] == '|') {
+                psp.state = .waiting_for_class_token;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Expected | or . after a %token_class token, saw \"{s}\".", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
             }
@@ -6285,9 +6315,6 @@ fn scan(ps: *ParserState, fb: [:0]const u8) !void {
             while (fb[i] != 0 and (isAlnum(fb[i]) or fb[i] == '_')) : (i += 1) {}
         } else if (i + 2 < fb.len and fb[i] == ':' and fb[i + 1] == ':' and fb[i + 2] == '=') {
             i += 3;
-        } else if (fb[i] == '/' or fb[i] == '|' and isAlpha(fb[i + 1])) {
-            i += 2;
-            while (fb[i] != 0 and (isAlnum(fb[i]) or fb[i] == '_')) : (i += 1) {}
         } else if (fb[i] == '`' and fb[i + 1] == '`') { // 'Ditto' operator
             i += 2;
         } else { //  All other (one character) operators
@@ -8095,6 +8122,96 @@ fn Configlist_freesets(cfp: ?*Config, allocator: Allocator) void {
         nextcfp = this_cfp.next;
         if (this_cfp.fws.len > 0) allocator.free(this_cfp.fws);
         this_cfp.fws.len = 0;
+    }
+}
+
+test "multiterminal scanning, terminal members, and slash recovery" {
+    try warmup(std.testing.allocator);
+    defer teardown(std.testing.allocator);
+    for ([_][:0]const u8{
+        "FOO|BAR|BAZ(value) NEXT",
+        "FOO |BAR |BAZ(value) NEXT",
+        "FOO| BAR| BAZ(value) NEXT",
+        "FOO | BAR | BAZ(value) NEXT",
+        "FOO\n| /* member */ BAR | // member\nBAZ(value) NEXT",
+        "\"FOO\" | \"BAR\" | \"BAZ\"(value) NEXT",
+    }) |input| {
+        var gp: Zitron = .empty;
+        gp.allocator = std.testing.allocator;
+        var ps: ParserState = .empty;
+        try ps.setup(&gp);
+        defer ps.deinit();
+        ps.state = .in_rhs;
+
+        try scan(&ps, input);
+
+        try std.testing.expectEqual(@as(usize, 0), ps.errorcnt);
+        try std.testing.expectEqual(E_State.in_rhs, ps.state);
+        try std.testing.expectEqual(@as(usize, 2), ps.nrhs);
+        try std.testing.expectEqual(SymbolType.multiterminal, ps.rhs[0].type);
+        try std.testing.expectEqual(@as(usize, 3), ps.rhs[0].subsym.len);
+        const names: []const []const u8 = if (input[0] == '"')
+            &.{ "\"FOO", "\"BAR", "\"BAZ" }
+        else
+            &.{ "FOO", "BAR", "BAZ" };
+        for (ps.rhs[0].subsym, names) |symbol, name| {
+            try std.testing.expectEqualStrings(name, symbol.name);
+        }
+        try std.testing.expectEqualStrings("value", ps.alias[0]);
+        try std.testing.expectEqualStrings("NEXT", ps.rhs[1].name);
+    }
+    for ([_]struct { input: [:0]const u8, initial: E_State = .in_rhs, state: E_State, nrhs: usize }{
+        .{ .input = "FOO/BAR", .state = .in_rhs, .nrhs = 2 },
+        .{ .input = "FOO / BAR", .state = .in_rhs, .nrhs = 2 },
+        .{ .input = "FOO/", .state = .in_rhs, .nrhs = 1 },
+        .{ .input = "/", .state = .in_rhs, .nrhs = 0 },
+        .{ .input = "| FOO", .state = .resync_after_rule_error, .nrhs = 0 },
+        .{ .input = "FOO | lower", .state = .resync_after_rule_error, .nrhs = 1 },
+        .{ .input = "lower | FOO", .state = .resync_after_rule_error, .nrhs = 1 },
+        .{ .input = "FOO | | BAR", .state = .resync_after_rule_error, .nrhs = 1 },
+        .{ .input = "FOO | / BAR", .state = .resync_after_rule_error, .nrhs = 1 },
+        .{ .input = "%token_class bars FOO/BAR", .initial = .initialize, .state = .resync_after_decl_error, .nrhs = 0 },
+        .{ .input = "%token_class leading | FOO", .initial = .initialize, .state = .resync_after_decl_error, .nrhs = 0 },
+        .{ .input = "%token_class repeated FOO | | BAR", .initial = .initialize, .state = .resync_after_decl_error, .nrhs = 0 },
+        .{ .input = "%token_class trailing FOO | .", .initial = .initialize, .state = .resync_after_decl_error, .nrhs = 0 },
+        .{ .input = "%token_class slash FOO | / BAR", .initial = .initialize, .state = .resync_after_decl_error, .nrhs = 0 },
+        .{ .input = "%token_class plain FOO BAR BAZ .", .initial = .initialize, .state = .waiting_for_decl_or_rule, .nrhs = 0 },
+        .{ .input = "%token_class mixed FOO | BAR BAZ .", .initial = .initialize, .state = .waiting_for_decl_or_rule, .nrhs = 0 },
+    }) |case| {
+        var gp: Zitron = .empty;
+        gp.allocator = std.testing.allocator;
+        var ps: ParserState = .empty;
+        try ps.setup(&gp);
+        defer ps.deinit();
+        ps.state = case.initial;
+
+        try scan(&ps, case.input);
+
+        try std.testing.expectEqual(@as(usize, 1), ps.errorcnt);
+        try std.testing.expectEqual(case.state, ps.state);
+        try std.testing.expectEqual(case.nrhs, ps.nrhs);
+    }
+    for ([_][:0]const u8{
+        "%token_class spaced FOO | BAR | BAZ .",
+        "%token_class compact FOO|BAR|BAZ.",
+        "%token_class before FOO |BAR |BAZ .",
+        "%token_class after FOO| BAR| BAZ .",
+        "%token_class comments FOO | /* member */ BAR | // member\nBAZ .",
+    }) |input| {
+        var gp: Zitron = .empty;
+        gp.allocator = std.testing.allocator;
+        var ps: ParserState = .empty;
+        try ps.setup(&gp);
+        defer ps.deinit();
+
+        try scan(&ps, input);
+
+        try std.testing.expectEqual(@as(usize, 0), ps.errorcnt);
+        try std.testing.expectEqual(E_State.waiting_for_decl_or_rule, ps.state);
+        try std.testing.expectEqual(@as(usize, 3), ps.tkclass.subsym.len);
+        for (ps.tkclass.subsym, [_][]const u8{ "FOO", "BAR", "BAZ" }) |symbol, name| {
+            try std.testing.expectEqualStrings(name, symbol.name);
+        }
     }
 }
 
