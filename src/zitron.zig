@@ -1567,7 +1567,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                     if (cp[i] == '\n') {
                         ErrorMsg(zyt.filename, rp.ruleline, "" ++
                             "Zig code on this line contains an un-terminated string, or " ++
-                            "botched character literal.", .{});
+                            "botched character literal", .{});
                         zyt.errorcnt += 1;
                         continue;
                     }
@@ -1602,7 +1602,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                     if (alias.len > 0 and strcmp(alias, cp[i..id])) {
                         if (j == 0 and dontUseRhs0) {
                             ErrorMsg(zyt.filename, rp.ruleline, "" ++
-                                "Alias {s} used after '{s}'.", .{
+                                "Alias {s} used after '{s}'", .{
                                 rp.rhsalias[0],
                                 cp[special_start..special_end],
                             });
@@ -1651,7 +1651,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     // Check to make sure the LHS has been used
     if (rp.lhsalias.len > 0 and !lhsused) {
         ErrorMsg(zyt.filename, rp.ruleline, "" ++
-            "Label \"{s}\" for \"{s}({s})\" is never used.", .{
+            "Label \"{s}\" for \"{s}({s})\" is never used", .{
             rp.lhsalias,
             rp.lhs.name,
             rp.lhsalias,
@@ -1671,13 +1671,13 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                 if (strcmp(rp.lhsalias, alias)) {
                     ErrorMsg(zyt.filename, rp.ruleline, "" ++
                         "{s}({s}) has the same label as the LHS ({s}) but is not the left-most " ++
-                        "symbol on the RHS.", .{ rp.rhs[i].name, alias, rp.lhsalias });
+                        "symbol on the RHS", .{ rp.rhs[i].name, alias, rp.lhsalias });
                     zyt.errorcnt += 1;
                 } // k-k-k-quadratic
                 dupe: for (rp.rhsalias[0..i]) |alien| {
                     if (strcmp(alias, alien)) {
                         ErrorMsg(zyt.filename, rp.ruleline, "" ++
-                            "Alias {s} used for multiple symbols on the RHS of a rule.", .{alias});
+                            "Alias {s} used for multiple symbols on the RHS of a rule", .{alias});
                         zyt.errorcnt += 1;
                     }
                     break :dupe;
@@ -1685,7 +1685,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
             }
             if (!used[i].used) {
                 ErrorMsg(zyt.filename, rp.ruleline, "" ++
-                    "Alias {s} for \"{s}({s})\" is never used.", .{ alias, rp.rhs[i].name, alias });
+                    "Alias {s} for \"{s}({s})\" is never used", .{ alias, rp.rhs[i].name, alias });
                 zyt.errorcnt += 1;
             }
             if (!used[i].captured and has_destructor(rp.rhs[i], zyt)) {
@@ -4250,7 +4250,7 @@ fn FindStates(zyt: *Zitron) !void {
                 ErrorMsg(zyt.filename, 0, "" ++
                     "The specified start symbol \"{s}\" is not " ++
                     "in a nonterminal of the grammar.  \"{s}\" will be used as the start " ++
-                    "symbol instead.", .{ zyt.start, zyt.startRule.lhs.name });
+                    "symbol instead", .{ zyt.start, zyt.startRule.lhs.name });
                 zyt.errorcnt += 1;
                 break :sp zyt.startRule.lhs;
             }
@@ -4270,7 +4270,7 @@ fn FindStates(zyt: *Zitron) !void {
                 ErrorMsg(zyt.filename, rule.line, "" ++
                     "The start symbol \"{s}\" occurs on the " ++
                     "right-hand side of a rule. This will result in a parser which " ++
-                    "does not work properly.", .{sp.name});
+                    "does not work properly", .{sp.name});
                 zyt.errorcnt += 1;
             }
             //| NOTE: the previous comparison says FIX ME:  Deal with
@@ -4281,14 +4281,14 @@ fn FindStates(zyt: *Zitron) !void {
                 if (mem.eql(u8, rhs.name, sp.name)) {
                     ErrorMsg(zyt.filename, 0, "" ++
                         "The start symbol has a synonym declared as a token class. This will " ++
-                        "result in a parser which does not work properly.", .{});
+                        "result in a parser which does not work properly", .{});
                     zyt.errorcnt += 1;
                 }
                 for (rhs.subsym) |subsym| {
                     if (subsym == sp) {
                         ErrorMsg(zyt.filename, 0, "" ++
                             "The start symbol {s} appears as a terminal in a multiterminal. " ++
-                            "This was thought to be impossible.", .{sp.name});
+                            "This was thought to be impossible", .{sp.name});
                         zyt.errorcnt += 1;
                     }
                 }
@@ -4617,7 +4617,7 @@ fn FindActions(zyt: *Zitron) !void {
     while (m_rp) |rp| : (m_rp = rp.next) {
         if (rp.canReduce) continue;
         ErrorMsg(zyt.filename, rp.ruleline, "" ++
-            "This rule can not be reduced.\n", .{});
+            "This rule can not be reduced\n", .{});
         zyt.errorcnt += 1;
     }
 }
@@ -4969,7 +4969,7 @@ fn eval_impl(opt: *Options, errcnt: *usize, z: []const u8, lineno: usize, progre
         },
         .pp_syntax_error => {
             if (progress.* == 0) {
-                dprint("%if syntax error on line {d}.\n", .{lineno});
+                dprint("%if syntax error on line {d}\n", .{lineno});
                 // We already sliced z down to one line, so this is fine
                 dprint("  {s} <-- syntax error here\n", .{z[i..]});
                 errcnt.* += 1;
@@ -5178,7 +5178,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         psp.state = .waiting_for_arrow_or_rhs;
                     } else {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "There is no prior rule, the ditto is invalid here.", .{});
+                            "There is no prior rule, the ditto is invalid here", .{});
                         psp.errorcnt += 1;
                         psp.state = .resync_after_rule_error;
                     }
@@ -5197,7 +5197,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     if (prev.code.len != 0) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "Code fragment beginning on this line is not the first " ++
-                            "to follow the previous rule.", .{});
+                            "to follow the previous rule", .{});
                         psp.errorcnt += 1;
                         psp.state = .resync_after_rule_error;
                     } else if (strcmp(x, "{NEVER-REDUCE")) {
@@ -5256,7 +5256,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 }
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Token {s} should be either \"%\"{s}.", //
+                    "Token {s} should be either \"%\"{s}", //
                     .{ x, if (psp.prevrule) |_| ", a nonterminal name, or a code block" else " or a nonterminal name" });
                 psp.state = .resync_after_impl_error;
                 psp.errorcnt += 1;
@@ -5265,20 +5265,20 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .precedence_mark_1 => {
             if (!(isUpper(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "The precedence symbol must be a terminal, not '{s}'.", .{x});
+                    "The precedence symbol must be a terminal, not '{s}'", .{x});
                 psp.errorcnt += 1;
             } else if (psp.prevrule) |prev| {
                 if (prev.precsym) |_| {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Precedence mark '[{s}]' on this line is not the first " ++
-                        "to follow the previous rule.", .{x});
+                        "to follow the previous rule", .{x});
                     psp.errorcnt += 1;
                 } else {
                     prev.precsym = try Symbol_new(x);
                 }
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "There is no prior rule to assign precedence \"{s}\".", .{x});
+                    "There is no prior rule to assign precedence \"{s}\"", .{x});
                 psp.errorcnt += 1;
             }
             psp.state = .precedence_mark_2;
@@ -5286,7 +5286,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .precedence_mark_2 => {
             if (x[0] != ']') {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Missing \"]\" on precedence mark.", .{});
+                    "Missing \"]\" on precedence mark", .{});
                 psp.errorcnt += 1;
             }
             psp.state = .waiting_for_decl_or_rule;
@@ -5299,10 +5299,10 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             } else {
                 if (psp.dittoed) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Expected to see a \"::=\" following the \"``\".", .{});
+                        "Expected to see a \"::=\" following the \"``\"", .{});
                 } else {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Expected to see a \"::=\" following the LHS symbol \"{s}\".", .{psp.lhs.name});
+                        "Expected to see a \"::=\" following the LHS symbol \"{s}\"", .{psp.lhs.name});
                 }
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
@@ -5340,7 +5340,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     } else if (impl.rule) |rule| {
                         if (!strcmp(rule.lhsalias, x)) {
                             ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                                "Rules LHS alias is \"{s}\", not \"{s}\".", .{ rule.lhsalias, x });
+                                "Rules LHS alias is \"{s}\", not \"{s}\"", .{ rule.lhsalias, x });
                             psp.errorcnt += 1;
                             psp.state = .resync_after_impl_error;
                         } else {
@@ -5357,7 +5357,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 if (psp.impl.?.rule) |rule| {
                     if (rule.lhsalias.len > 0) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "Rule has LHS alias \"{s}\", rule impl name must match.", .{rule.lhsalias});
+                            "Rule has LHS alias \"{s}\", rule impl name must match", .{rule.lhsalias});
                         psp.errorcnt += 1;
                         psp.state = .resync_after_impl_error;
                     } else {
@@ -5424,7 +5424,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         psp.state = .resync_after_impl_error;
                     } else if (!strcmp(rule.rhsalias[rule_idx.?], x)) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "Rule RHS alias \"{s}\" does not match rule impl's \"{s}\".", .{
+                            "Rule RHS alias \"{s}\" does not match rule impl's \"{s}\"", .{
                             rule.rhsalias[rule_idx.?], x,
                         });
                         psp.errorcnt += 1;
@@ -5450,7 +5450,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 if (impl.rule) |rule| {
                     if (nextNamedAliasIndex(rule.rhsalias, psp.impl_idx)) |idx| {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "Impl \"{s}\" missing RHS alias \"{s}\".", .{
+                            "Impl \"{s}\" missing RHS alias \"{s}\"", .{
                             impl.name, rule.rhsalias[idx],
                         });
                         psp.errorcnt += 1;
@@ -5474,7 +5474,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 if (impl.rule) |rule| {
                     if (nextNamedAliasIndex(rule.rhsalias, psp.impl_idx)) |idx| {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "Impl \"{s}\" missing RHS alias \"{s}\".", .{
+                            "Impl \"{s}\" missing RHS alias \"{s}\"", .{
                             impl.name, rule.rhsalias[idx],
                         });
                         psp.errorcnt += 1;
@@ -5509,7 +5509,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 psp.state = .lhs_alias_3;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Missing \")\" following LHS alias name \"{s}\".", .{psp.lhsalias});
+                    "Missing \")\" following LHS alias name \"{s}\"", .{psp.lhsalias});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -5520,11 +5520,11 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             } else {
                 if (isAlpha(x[0])) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Missing \"::=\" following: \"{s}({s})\".", //
+                        "Missing \"::=\" following: \"{s}({s})\"", //
                         .{ psp.lhs.name, psp.lhsalias });
                 } else {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Expected \"::=\" following \"{s}({s})\", saw \"{s}\".", //
+                        "Expected \"::=\" following \"{s}({s})\", saw \"{s}\"", //
                         .{ psp.lhs.name, psp.lhsalias, x[0..][0..@min(x.len, 10)] });
                 }
                 psp.errorcnt += 1;
@@ -5568,7 +5568,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             } else if (isAlpha(x[0]) or x[0] == '"') {
                 if (psp.nrhs >= MAXRHS) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Too many symbols on RHS of rule (maximum is {d}) beginning at \"{s}\".", //
+                        "Too many symbols on RHS of rule (maximum is {d}) beginning at \"{s}\"", //
                         .{ MAXRHS - 1, x });
                     psp.errorcnt += 1;
                     psp.state = .resync_after_rule_error;
@@ -5616,7 +5616,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 psp.state = .rhs_alias_1;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Illegal character on RHS of rule: \"{s}\".", .{x});
+                    "Illegal character on RHS of rule: \"{s}\"", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -5629,7 +5629,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 psp.state = .in_rhs;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Expected a terminal after |, saw \"{s}\".", .{x});
+                    "Expected a terminal after |, saw \"{s}\"", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -5653,7 +5653,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 psp.state = .in_rhs;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Missing \")\" following LHS alias  \"{s}({s}\".", .{ psp.lhs.name, psp.lhsalias });
+                    "Missing \")\" following LHS alias  \"{s}({s}\"", .{ psp.lhs.name, psp.lhsalias });
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -5690,7 +5690,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         "Unknown declaration keyword: \"%{s}\".  Did you mean \"%{s}\"?", .{ x, suggestion });
                 } else {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Illegal declaration keyword: \"%{s}\".", .{x});
+                        "Illegal declaration keyword: \"%{s}\"", .{x});
                 }
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
@@ -5862,7 +5862,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 }
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Can't assign a precedence to \"{s}\".", .{x});
+                    "Can't assign a precedence to \"{s}\"", .{x});
                 psp.errorcnt += 1;
             }
         },
@@ -6051,9 +6051,14 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 psp.state = .waiting_for_decl_or_rule;
             } else if (x[0] == '|') {
                 psp.state = .waiting_for_class_token;
+            } else if ((x[0] == '/')) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "\"/\" is an invalid multiterminal separator, use \"|\"", .{});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Expected | or . after a %token_class token, saw \"{s}\".", .{x});
+                    "Expected | or . after a %token_class token, saw \"{s}\"", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
             }
@@ -6246,7 +6251,7 @@ fn scan(ps: *ParserState, fb: [:0]const u8) !void {
             if (fb[i] == 0) {
                 ErrorMsg(ps.filename, ps.tokenlineno, "" ++
                     "String starting on this line is not terminated before " ++
-                    "the end of the file.", .{});
+                    "the end of the file", .{});
                 ps.errorcnt += 1;
                 break :scanning;
             } else {
@@ -6290,7 +6295,7 @@ fn scan(ps: *ParserState, fb: [:0]const u8) !void {
                         if (fb[i] == '\n') {
                             ErrorMsg(ps.filename, ps.tokenlineno, "" ++
                                 "Zig code on this line contains an un-terminated string, or " ++
-                                "botched character literal.", .{});
+                                "botched character literal", .{});
                             ps.errorcnt += 1;
                             // Line number is incremented here:
                             continue :scanning;
@@ -6305,7 +6310,7 @@ fn scan(ps: *ParserState, fb: [:0]const u8) !void {
             if (i == fb.len and fb[i - 1] != '}') {
                 ErrorMsg(ps.filename, ps.tokenlineno, "" ++
                     "Zig code starting on this line is not terminated before " ++
-                    "the end of the file.", .{});
+                    "the end of the file", .{});
                 ps.errorcnt += 1;
             } else {
                 skip = true; // Clip end of C blocks also
@@ -7122,7 +7127,7 @@ fn optionsInit(opt: *Options, args: []const [:0]const u8, allocator: Allocator) 
         i = 0;
     }
     if (errcnt > 0) {
-        dprint("Try `{s} --help` to print valid options.\n", .{shortProgramName(args)});
+        dprint("Try `{s} --help` to print valid options\n", .{shortProgramName(args)});
         exit(1);
     }
     fixupDependentOptions(opt);
@@ -7311,7 +7316,7 @@ pub fn main(init: std.process.Init) !void {
         exit(0);
     }
     if (file_index != args.len - 1) {
-        dprint("Exactly one filename argument is required.\n", .{});
+        dprint("Exactly one filename argument is required\n", .{});
         errline(args, @min(file_index + 1, args.len), 0);
         if (opt.clean_exit) exit(0) else exit(1);
     }
@@ -7381,7 +7386,7 @@ pub fn main(init: std.process.Init) !void {
         if (opt.clean_exit) exit(0) else exit(@truncate(zyt.errorcnt));
     }
     if (zyt.nrule == 0) {
-        logger.err("Empty grammar.", .{});
+        logger.err("Empty grammar", .{});
         if (opt.clean_exit) exit(0) else exit(1);
     }
 
@@ -7531,7 +7536,7 @@ pub fn main(init: std.process.Init) !void {
         try out.flush();
     }
     if (zyt.nconflict > 0) {
-        dprint("{d} parsing conflicts.\n", .{zyt.nconflict});
+        dprint("{d} parsing conflicts\n", .{zyt.nconflict});
     }
     // return 0 on success, 1 on failure.
     if (zyt.errorcnt > 0 or zyt.nconflict > 0) {
@@ -8030,7 +8035,7 @@ fn Configlist_closure(zyt: *Zitron) !void {
         if (sp.type == .nonterminal) {
             if (sp.rule == null and sp != zyt.errsym) {
                 ErrorMsg(zyt.filename, 0, "" ++
-                    "Nonterminal \"{s}\" has no rules.", .{sp.name});
+                    "Nonterminal \"{s}\" has no rules", .{sp.name});
                 zyt.errorcnt += 1;
             }
             var this_newrp = sp.rule;
