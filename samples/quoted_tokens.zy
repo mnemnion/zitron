@@ -5,7 +5,7 @@
 %left "*".
 %fallback "name" "keyword".
 %wildcard "any".
-%token_class quote "\x22" | "\\" | "\t".
+%token_class quote "\"" | "\\" | "\t" | "\x41" | "\\\"".
 %type expr i32
 %type "+" i32
 %destructor "+" {}
@@ -42,6 +42,8 @@ test "quoted terminals in generated parsers" {
     try std.testing.expectEqual(@as(i32, 9), try parseTokens(&.{.@"\""}));
     try std.testing.expectEqual(@as(i32, 9), try parseTokens(&.{.@"\\"}));
     try std.testing.expectEqual(@as(i32, 9), try parseTokens(&.{.@"\t"}));
+    try std.testing.expectEqual(@as(i32, 9), try parseTokens(&.{.@"A"}));
+    try std.testing.expectEqual(@as(i32, 9), try parseTokens(&.{.@"\\\""}));
     try std.testing.expectEqual(@as(i32, 10), try parseTokens(&.{ .@"(", .@")" }));
     try std.testing.expectEqual(@as(i32, 10), try parseTokens(&.{ .LT, .GT }));
 }

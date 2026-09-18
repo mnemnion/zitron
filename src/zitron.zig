@@ -6245,7 +6245,11 @@ fn scan(ps: *ParserState, fb: [:0]const u8) !void {
         ps.tokenlineno = lineno; // Linenumber on which token begins
         if (fb[i] == '"') { // String literals
             i += 1;
-            while (fb[i] != 0 and fb[i] != '"') : (i += 1) {
+            string: while (fb[i] != 0 and fb[i] != '"') : (i += 1) {
+                if (fb[i] == '\\') {
+                    i += 1;
+                    if (fb[i] == 0) break :string;
+                }
                 if (fb[i] == '\n') lineno += 1;
             }
             if (fb[i] == 0) {
@@ -8130,9 +8134,60 @@ fn Configlist_freesets(cfp: ?*Config, allocator: Allocator) void {
     }
 }
 
-test "multiterminal scanning, terminal members, and slash recovery" {
+test "quoted tokens, multiterminal scanning, terminal members, and slash recovery" {
     try warmup(std.testing.allocator);
     defer teardown(std.testing.allocator);
+    for ([_][]const u8{
+        "plain",
+        "\\\"",
+        "\\\\",
+        "\\\\\\\"",
+        "\\\\\\\\",
+        "a\\\"b",
+        "\\x22",
+        "\\t",
+        "\\u{03bb}",
+        "// /* {} |",
+        "line\nbreak",
+        "line\\\nbreak",
+    }) |body| {
+        const input = try std.fmt.allocPrintSentinel(std.testing.allocator, "\"{s}\"NEXT", .{body}, 0);
+        defer std.testing.allocator.free(input);
+        var gp: Zitron = .empty;
+        gp.allocator = std.testing.allocator;
+        var ps: ParserState = .empty;
+        try ps.setup(&gp);
+        defer ps.deinit();
+        ps.state = .in_rhs;
+
+        try scan(&ps, input);
+
+        try std.testing.expectEqual(@as(usize, 0), ps.errorcnt);
+        try std.testing.expectEqual(@as(usize, 2), ps.nrhs);
+        try std.testing.expectEqualStrings(input[0 .. body.len + 1], ps.rhs[0].name);
+        try std.testing.expectEqualStrings("NEXT", ps.rhs[1].name);
+        try std.testing.expectEqual(@as(usize, 1) + mem.count(u8, body, "\n"), ps.tokenlineno);
+    }
+    for ([_][:0]const u8{
+        "\"",
+        "\"plain",
+        "\"\\",
+        "\"\\\"",
+        "\"\\\\",
+        "\"\\\\\\",
+    }) |input| {
+        var gp: Zitron = .empty;
+        gp.allocator = std.testing.allocator;
+        var ps: ParserState = .empty;
+        try ps.setup(&gp);
+        defer ps.deinit();
+        ps.state = .in_rhs;
+
+        try scan(&ps, input);
+
+        try std.testing.expectEqual(@as(usize, 1), ps.errorcnt);
+        try std.testing.expectEqual(@as(usize, 0), ps.nrhs);
+    }
     for ([_][:0]const u8{
         "FOO|BAR|BAZ(value) NEXT",
         "FOO |BAR |BAZ(value) NEXT",
