@@ -283,7 +283,7 @@ pub const 🍋PARSER_NAME = struct {
     /// Return the greatest parser stack depth observed since initialization.
     pub fn stackPeak(yypParser: *const 🍋PARSER_NAME) usize {
         if (comptime !YYTRACKMAXSTACKDEPTH) {
-            @compileError("define `zitron_track_max_stack_depth` in %include/%code to track stack depth.");
+            @compileError("define `zitron_track_max_stack_depth` in %include/%code to track stack depth");
         }
         return yypParser.hwm;
     }
@@ -409,7 +409,7 @@ threadlocal var yycoverage: (if (YYCOVERAGE)
 ///
 /// Return the number of missed state/lookahead combinations.
 pub fn yyParseCoverage(yy_out: anytype, yy_print: bool) !usize {
-    if (comptime !YYCOVERAGE) @compileError("define `zitron_coverage` in %include/%code to enable coverage.");
+    if (comptime !YYCOVERAGE) @compileError("define `zitron_coverage` in %include/%code to enable coverage");
     var yy_nmissed: usize = 0;
     for (0..YYNSTATE) |yy_stateno| {
         const yy_i = yy_shift_ofst[yy_stateno];

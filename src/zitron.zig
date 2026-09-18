@@ -280,7 +280,7 @@ const Symbol = struct {
         //| [5446]
         sp.name = name;
         dbgassert(sp.name.len > 0);
-        if (isUpper(name[0])) {
+        if (isUpper(name[0]) or name[0] == '"') {
             sp.type = .terminal;
         }
         // These do return a pointer, conceivably that can fail?
@@ -1567,7 +1567,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                     if (cp[i] == '\n') {
                         ErrorMsg(zyt.filename, rp.ruleline, "" ++
                             "Zig code on this line contains an un-terminated string, or " ++
-                            "botched character literal.", .{});
+                            "botched character literal", .{});
                         zyt.errorcnt += 1;
                         continue;
                     }
@@ -1602,7 +1602,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                     if (alias.len > 0 and strcmp(alias, cp[i..id])) {
                         if (j == 0 and dontUseRhs0) {
                             ErrorMsg(zyt.filename, rp.ruleline, "" ++
-                                "Alias {s} used after '{s}'.", .{
+                                "Alias {s} used after '{s}'", .{
                                 rp.rhsalias[0],
                                 cp[special_start..special_end],
                             });
@@ -1651,7 +1651,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
     // Check to make sure the LHS has been used
     if (rp.lhsalias.len > 0 and !lhsused) {
         ErrorMsg(zyt.filename, rp.ruleline, "" ++
-            "Label \"{s}\" for \"{s}({s})\" is never used.", .{
+            "Label \"{s}\" for \"{s}({s})\" is never used", .{
             rp.lhsalias,
             rp.lhs.name,
             rp.lhsalias,
@@ -1671,13 +1671,13 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
                 if (strcmp(rp.lhsalias, alias)) {
                     ErrorMsg(zyt.filename, rp.ruleline, "" ++
                         "{s}({s}) has the same label as the LHS ({s}) but is not the left-most " ++
-                        "symbol on the RHS.", .{ rp.rhs[i].name, alias, rp.lhsalias });
+                        "symbol on the RHS", .{ rp.rhs[i].name, alias, rp.lhsalias });
                     zyt.errorcnt += 1;
                 } // k-k-k-quadratic
                 dupe: for (rp.rhsalias[0..i]) |alien| {
                     if (strcmp(alias, alien)) {
                         ErrorMsg(zyt.filename, rp.ruleline, "" ++
-                            "Alias {s} used for multiple symbols on the RHS of a rule.", .{alias});
+                            "Alias {s} used for multiple symbols on the RHS of a rule", .{alias});
                         zyt.errorcnt += 1;
                     }
                     break :dupe;
@@ -1685,7 +1685,7 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
             }
             if (!used[i].used) {
                 ErrorMsg(zyt.filename, rp.ruleline, "" ++
-                    "Alias {s} for \"{s}({s})\" is never used.", .{ alias, rp.rhs[i].name, alias });
+                    "Alias {s} for \"{s}({s})\" is never used", .{ alias, rp.rhs[i].name, alias });
                 zyt.errorcnt += 1;
             }
             if (!used[i].captured and has_destructor(rp.rhs[i], zyt)) {
@@ -1814,7 +1814,11 @@ fn print_token_enum(zyt: *Zitron, out: anytype, plineno: *usize) !void {
     plineno.* += 1;
     try out.writeAll("    end_of_input = 0,\n");
     for (zyt.symbols[1..zyt.nterminal]) |t_sym| {
-        try out.print("    {s},\n", .{t_sym.name});
+        if (t_sym.name[0] == '"') {
+            try out.print("    @{s}\",\n", .{t_sym.name});
+        } else {
+            try out.print("    {s},\n", .{t_sym.name});
+        }
         plineno.* += 1;
     }
     try out.writeAll("};\n");
@@ -1987,15 +1991,28 @@ fn axset_compare(_: void, p1: AxSet, p2: AxSet) bool {
 // /*
 // ** Write text on "out" that describes the rule "rp".
 // */
-fn writeRuleText(out: anytype, rp: *Rule) !void {
+fn writeRuleText(out: anytype, rp: *Rule, escaped: bool) !void {
+    const quote = if (escaped) "\\\"" else "\"";
     try out.print("{s} ::=", .{rp.lhs.name});
     for (rp.rhs) |sp| {
         if (sp.type != .multiterminal) {
-            try out.print(" {s}", .{sp.name});
+            if (sp.name[0] == '"') {
+                try out.print(" {s}{s}{s}", .{ quote, sp.name[1..], quote });
+            } else {
+                try out.print(" {s}", .{sp.name});
+            }
         } else {
-            try out.print(" {s}", .{sp.subsym[0].name});
+            if (sp.subsym[0].name[0] == '"') {
+                try out.print(" {s}{s}{s}", .{ quote, sp.subsym[0].name[1..], quote });
+            } else {
+                try out.print(" {s}", .{sp.subsym[0].name});
+            }
             for (sp.subsym[1..]) |ssp| {
-                try out.print("|{s}", .{ssp.name});
+                if (ssp.name[0] == '"') {
+                    try out.print("|{s}{s}{s}", .{ quote, ssp.name[1..], quote });
+                } else {
+                    try out.print("|{s}", .{ssp.name});
+                }
             }
         }
     }
@@ -3312,7 +3329,12 @@ fn reportTableImpl(
             maxsym = @max(maxsym, zyt.symbols[i].name.len);
         }
         for (0..zyt.nsymbol) |i| {
-            try out.print("   \"{s}\",  ", .{zyt.symbols[i].name});
+            const name = zyt.symbols[i].name;
+            if (name[0] == '"') {
+                try out.print("   \"\\\"{s}\\\"\",  ", .{name[1..]});
+            } else {
+                try out.print("   \"{s}\",  ", .{name});
+            }
             try out.splatByteAll(' ', maxsym - zyt.symbols[i].name.len);
             try out.print("// {d: >4}\n", .{i});
             lineno += 1;
@@ -3329,7 +3351,7 @@ fn reportTableImpl(
         while (m_rp) |rp| : (m_rp = rp.next) {
             dbgassert(rp.iRule == i);
             try out.writeAll("    \"");
-            try writeRuleText(out, rp);
+            try writeRuleText(out, rp, true);
             try out.print("\", // {d: >3} \n", .{i});
             lineno += 1;
             i += 1;
@@ -3466,7 +3488,7 @@ fn reportTableImpl(
                 continue :rules;
             }
             try out.print("        {d}, // ", .{rp.iRule});
-            try writeRuleText(out, rp);
+            try writeRuleText(out, rp, false);
             try out.writeByte('\n');
             lineno += 1;
             if (!zyt.opt.unbundle) {
@@ -3480,7 +3502,7 @@ fn reportTableImpl(
                             dprint("case: merging rp2 {d} with rp {d}\n", .{ rp2.iRule, rp.iRule });
                         }
                         try out.print("        {d}, // ", .{rp2.iRule});
-                        try writeRuleText(out, rp2);
+                        try writeRuleText(out, rp2, false);
                         try out.writeByte('\n');
                         lineno += 1;
                         rp2.codeEmitted = true;
@@ -3503,17 +3525,17 @@ fn reportTableImpl(
             dbgassert(rp.noCode);
             if (rp.neverReduce) {
                 try out.print("            yy_assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
-                try writeRuleText(out, rp);
+                try writeRuleText(out, rp, false);
                 try out.writeAll(" (NEVER REDUCES)\n");
                 lineno += 1;
             } else if (rp.doesReduce) {
                 try out.writeAll("            // ");
-                try writeRuleText(out, rp);
+                try writeRuleText(out, rp, false);
                 try out.writeByte('\n');
                 lineno += 1;
             } else {
                 try out.print("            yy_assert(yyruleno != {d}); // ({d}) ", .{ rp.iRule, rp.iRule });
-                try writeRuleText(out, rp);
+                try writeRuleText(out, rp, false);
                 try out.writeAll(" (OPTIMIZED OUT) \n");
                 lineno += 1;
             }
@@ -4228,7 +4250,7 @@ fn FindStates(zyt: *Zitron) !void {
                 ErrorMsg(zyt.filename, 0, "" ++
                     "The specified start symbol \"{s}\" is not " ++
                     "in a nonterminal of the grammar.  \"{s}\" will be used as the start " ++
-                    "symbol instead.", .{ zyt.start, zyt.startRule.lhs.name });
+                    "symbol instead", .{ zyt.start, zyt.startRule.lhs.name });
                 zyt.errorcnt += 1;
                 break :sp zyt.startRule.lhs;
             }
@@ -4248,7 +4270,7 @@ fn FindStates(zyt: *Zitron) !void {
                 ErrorMsg(zyt.filename, rule.line, "" ++
                     "The start symbol \"{s}\" occurs on the " ++
                     "right-hand side of a rule. This will result in a parser which " ++
-                    "does not work properly.", .{sp.name});
+                    "does not work properly", .{sp.name});
                 zyt.errorcnt += 1;
             }
             //| NOTE: the previous comparison says FIX ME:  Deal with
@@ -4259,14 +4281,14 @@ fn FindStates(zyt: *Zitron) !void {
                 if (mem.eql(u8, rhs.name, sp.name)) {
                     ErrorMsg(zyt.filename, 0, "" ++
                         "The start symbol has a synonym declared as a token class. This will " ++
-                        "result in a parser which does not work properly.", .{});
+                        "result in a parser which does not work properly", .{});
                     zyt.errorcnt += 1;
                 }
                 for (rhs.subsym) |subsym| {
                     if (subsym == sp) {
                         ErrorMsg(zyt.filename, 0, "" ++
                             "The start symbol {s} appears as a terminal in a multiterminal. " ++
-                            "This was thought to be impossible.", .{sp.name});
+                            "This was thought to be impossible", .{sp.name});
                         zyt.errorcnt += 1;
                     }
                 }
@@ -4595,7 +4617,7 @@ fn FindActions(zyt: *Zitron) !void {
     while (m_rp) |rp| : (m_rp = rp.next) {
         if (rp.canReduce) continue;
         ErrorMsg(zyt.filename, rp.ruleline, "" ++
-            "This rule can not be reduced.\n", .{});
+            "This rule can not be reduced\n", .{});
         zyt.errorcnt += 1;
     }
 }
@@ -4701,6 +4723,7 @@ const E_State = enum {
     waiting_for_arrow,
     waiting_for_arrow_or_rhs,
     in_rhs,
+    in_multiterminal,
     impl_1,
     impl_lhs1,
     impl_lhs2,
@@ -4723,6 +4746,7 @@ const E_State = enum {
     waiting_for_wildcard_id,
     waiting_for_class_id,
     waiting_for_class_token,
+    waiting_for_class_separator,
     waiting_for_token_name,
 };
 
@@ -4945,7 +4969,7 @@ fn eval_impl(opt: *Options, errcnt: *usize, z: []const u8, lineno: usize, progre
         },
         .pp_syntax_error => {
             if (progress.* == 0) {
-                dprint("%if syntax error on line {d}.\n", .{lineno});
+                dprint("%if syntax error on line {d}\n", .{lineno});
                 // We already sliced z down to one line, so this is fine
                 dprint("  {s} <-- syntax error here\n", .{z[i..]});
                 errcnt.* += 1;
@@ -5154,7 +5178,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         psp.state = .waiting_for_arrow_or_rhs;
                     } else {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "There is no prior rule, the ditto is invalid here.", .{});
+                            "There is no prior rule, the ditto is invalid here", .{});
                         psp.errorcnt += 1;
                         psp.state = .resync_after_rule_error;
                     }
@@ -5173,7 +5197,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     if (prev.code.len != 0) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                             "Code fragment beginning on this line is not the first " ++
-                            "to follow the previous rule.", .{});
+                            "to follow the previous rule", .{});
                         psp.errorcnt += 1;
                         psp.state = .resync_after_rule_error;
                     } else if (strcmp(x, "{NEVER-REDUCE")) {
@@ -5232,29 +5256,29 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 }
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Token {s} should be either \"%\"{s}.", //
+                    "Token {s} should be either \"%\"{s}", //
                     .{ x, if (psp.prevrule) |_| ", a nonterminal name, or a code block" else " or a nonterminal name" });
                 psp.state = .resync_after_impl_error;
                 psp.errorcnt += 1;
             }
         },
         .precedence_mark_1 => {
-            if (!isUpper(x[0])) {
+            if (!(isUpper(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "The precedence symbol must be a terminal, not '{s}'.", .{x});
+                    "The precedence symbol must be a terminal, not '{s}'", .{x});
                 psp.errorcnt += 1;
             } else if (psp.prevrule) |prev| {
                 if (prev.precsym) |_| {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Precedence mark '[{s}]' on this line is not the first " ++
-                        "to follow the previous rule.", .{x});
+                        "to follow the previous rule", .{x});
                     psp.errorcnt += 1;
                 } else {
                     prev.precsym = try Symbol_new(x);
                 }
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "There is no prior rule to assign precedence \"{s}\".", .{x});
+                    "There is no prior rule to assign precedence \"{s}\"", .{x});
                 psp.errorcnt += 1;
             }
             psp.state = .precedence_mark_2;
@@ -5262,7 +5286,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .precedence_mark_2 => {
             if (x[0] != ']') {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Missing \"]\" on precedence mark.", .{});
+                    "Missing \"]\" on precedence mark", .{});
                 psp.errorcnt += 1;
             }
             psp.state = .waiting_for_decl_or_rule;
@@ -5275,10 +5299,10 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             } else {
                 if (psp.dittoed) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Expected to see a \"::=\" following the \"``\".", .{});
+                        "Expected to see a \"::=\" following the \"``\"", .{});
                 } else {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Expected to see a \"::=\" following the LHS symbol \"{s}\".", .{psp.lhs.name});
+                        "Expected to see a \"::=\" following the LHS symbol \"{s}\"", .{psp.lhs.name});
                 }
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
@@ -5316,7 +5340,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     } else if (impl.rule) |rule| {
                         if (!strcmp(rule.lhsalias, x)) {
                             ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                                "Rules LHS alias is \"{s}\", not \"{s}\".", .{ rule.lhsalias, x });
+                                "Rules LHS alias is \"{s}\", not \"{s}\"", .{ rule.lhsalias, x });
                             psp.errorcnt += 1;
                             psp.state = .resync_after_impl_error;
                         } else {
@@ -5333,7 +5357,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 if (psp.impl.?.rule) |rule| {
                     if (rule.lhsalias.len > 0) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "Rule has LHS alias \"{s}\", rule impl name must match.", .{rule.lhsalias});
+                            "Rule has LHS alias \"{s}\", rule impl name must match", .{rule.lhsalias});
                         psp.errorcnt += 1;
                         psp.state = .resync_after_impl_error;
                     } else {
@@ -5400,7 +5424,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         psp.state = .resync_after_impl_error;
                     } else if (!strcmp(rule.rhsalias[rule_idx.?], x)) {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "Rule RHS alias \"{s}\" does not match rule impl's \"{s}\".", .{
+                            "Rule RHS alias \"{s}\" does not match rule impl's \"{s}\"", .{
                             rule.rhsalias[rule_idx.?], x,
                         });
                         psp.errorcnt += 1;
@@ -5426,7 +5450,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 if (impl.rule) |rule| {
                     if (nextNamedAliasIndex(rule.rhsalias, psp.impl_idx)) |idx| {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "Impl \"{s}\" missing RHS alias \"{s}\".", .{
+                            "Impl \"{s}\" missing RHS alias \"{s}\"", .{
                             impl.name, rule.rhsalias[idx],
                         });
                         psp.errorcnt += 1;
@@ -5450,7 +5474,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 if (impl.rule) |rule| {
                     if (nextNamedAliasIndex(rule.rhsalias, psp.impl_idx)) |idx| {
                         ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                            "Impl \"{s}\" missing RHS alias \"{s}\".", .{
+                            "Impl \"{s}\" missing RHS alias \"{s}\"", .{
                             impl.name, rule.rhsalias[idx],
                         });
                         psp.errorcnt += 1;
@@ -5485,7 +5509,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 psp.state = .lhs_alias_3;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Missing \")\" following LHS alias name \"{s}\".", .{psp.lhsalias});
+                    "Missing \")\" following LHS alias name \"{s}\"", .{psp.lhsalias});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -5496,11 +5520,11 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             } else {
                 if (isAlpha(x[0])) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Missing \"::=\" following: \"{s}({s})\".", //
+                        "Missing \"::=\" following: \"{s}({s})\"", //
                         .{ psp.lhs.name, psp.lhsalias });
                 } else {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Expected \"::=\" following \"{s}({s})\", saw \"{s}\".", //
+                        "Expected \"::=\" following \"{s}({s})\", saw \"{s}\"", //
                         .{ psp.lhs.name, psp.lhsalias, x[0..][0..@min(x.len, 10)] });
                 }
                 psp.errorcnt += 1;
@@ -5541,10 +5565,10 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 }
                 psp.prevrule = rp;
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (isAlpha(x[0])) {
+            } else if (isAlpha(x[0]) or x[0] == '"') {
                 if (psp.nrhs >= MAXRHS) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Too many symbols on RHS of rule (maximum is {d}) beginning at \"{s}\".", //
+                        "Too many symbols on RHS of rule (maximum is {d}) beginning at \"{s}\"", //
                         .{ MAXRHS - 1, x });
                     psp.errorcnt += 1;
                     psp.state = .resync_after_rule_error;
@@ -5553,7 +5577,12 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     psp.alias[psp.nrhs] = "";
                     psp.nrhs += 1;
                 }
-            } else if ((x[0] == '|' or x[0] == '/') and psp.nrhs > 0 and x.len > 0 and isUpper(x[1])) {
+            } else if (x[0] == '/') {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "The token `/` for multiterminals is not supported, use |", .{});
+                psp.errorcnt += 1;
+                psp.state = .in_rhs;
+            } else if (x[0] == '|' and psp.nrhs > 0) {
                 var msp = psp.rhs[psp.nrhs - 1];
                 if (msp.type != .multiterminal) {
                     const origmsp = msp;
@@ -5575,20 +5604,32 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     }
                     sym_freelist = fl;
                 }
-                msp.subsym = try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
-                // We know x[1] exists and is terminal-shaped, so this is valid:
-                msp.subsym[msp.subsym.len - 1] = try Symbol_new(x[1..]);
-                if (isLower(x[1]) or isLower(msp.subsym[0].name[0])) {
+                if (msp.subsym[0].type != .terminal) {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                         "Cannot form a compound containing a non-terminal", .{});
                     psp.errorcnt += 1;
                     psp.state = .resync_after_rule_error;
+                } else {
+                    psp.state = .in_multiterminal;
                 }
             } else if (x[0] == '(' and psp.nrhs > 0) {
                 psp.state = .rhs_alias_1;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Illegal character on RHS of rule: \"{s}\".", .{x});
+                    "Illegal character on RHS of rule: \"{s}\"", .{x});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_rule_error;
+            }
+        },
+        .in_multiterminal => {
+            if (isUpper(x[0]) or x[0] == '"') {
+                const msp = psp.rhs[psp.nrhs - 1];
+                msp.subsym = try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
+                msp.subsym[msp.subsym.len - 1] = try Symbol_new(x);
+                psp.state = .in_rhs;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Expected a terminal after |, saw \"{s}\"", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -5612,7 +5653,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 psp.state = .in_rhs;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Missing \")\" following LHS alias  \"{s}({s}\".", .{ psp.lhs.name, psp.lhsalias });
+                    "Missing \")\" following LHS alias  \"{s}({s}\"", .{ psp.lhs.name, psp.lhsalias });
                 psp.errorcnt += 1;
                 psp.state = .resync_after_rule_error;
             }
@@ -5649,7 +5690,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                         "Unknown declaration keyword: \"%{s}\".  Did you mean \"%{s}\"?", .{ x, suggestion });
                 } else {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                        "Illegal declaration keyword: \"%{s}\".", .{x});
+                        "Illegal declaration keyword: \"%{s}\"", .{x});
                 }
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
@@ -5771,7 +5812,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             }
         },
         .waiting_for_destructor_symbol => {
-            if (!isAlpha(x[0])) {
+            if (!(isAlpha(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Symbol name missing after %destructor directive", .{});
                 psp.errorcnt += 1;
@@ -5785,7 +5826,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             psp.state = .waiting_for_decl_arg;
         },
         .waiting_for_datatype_symbol => {
-            if (!isAlpha(x[0])) {
+            if (!(isAlpha(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "Symbol name missing after %type directive", .{});
                 psp.errorcnt += 1;
@@ -5808,7 +5849,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .waiting_for_precedence_symbol => {
             if (x[0] == '.') {
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (isUpper(x[0])) {
+            } else if (isUpper(x[0]) or x[0] == '"') {
                 const sp = try Symbol_new(x);
                 if (sp.prec) |_| {
                     ErrorMsg(psp.filename, psp.tokenlineno, "" ++
@@ -5821,7 +5862,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                 }
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "Can't assign a precedence to \"{s}\".", .{x});
+                    "Can't assign a precedence to \"{s}\"", .{x});
                 psp.errorcnt += 1;
             }
         },
@@ -5911,7 +5952,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .waiting_for_fallback_id => {
             if (x[0] == '.') {
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (!isUpper(x[0])) {
+            } else if (!(isUpper(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "%fallback argument \"{s}\" should be a token", .{x});
                 psp.errorcnt += 1;
@@ -5944,7 +5985,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             //
             if (x[0] == '.') {
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (!isUpper(x[0])) {
+            } else if (!(isUpper(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "%token argument \"{s}\" should be a token", .{x});
                 psp.errorcnt += 1;
@@ -5955,7 +5996,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .waiting_for_wildcard_id => {
             if (x[0] == '.') {
                 psp.state = .waiting_for_decl_or_rule;
-            } else if (!isUpper(x[0])) {
+            } else if (!(isUpper(x[0]) or x[0] == '"')) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
                     "%wildcard argument \"{s}\" should be a token", .{x});
                 psp.errorcnt += 1;
@@ -5973,7 +6014,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
         .waiting_for_class_id => {
             if (!isLower(x[0])) {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "%token_class must be followed by an identifier: {s}", .{x});
+                    "%token_class must be followed by a nonterminal: {s}", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
             } else if (Symbol_find(x)) |_| {
@@ -5988,9 +6029,7 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
             }
         },
         .waiting_for_class_token => {
-            if (x[0] == '.') {
-                psp.state = .waiting_for_decl_or_rule;
-            } else if (isUpper(x[0]) or ((x[0] == '|' or x[0] == '/') and isUpper(x[1]))) {
+            if (isUpper(x[0]) or x[0] == '"') {
                 const msp = psp.tkclass;
                 msp.subsym = subsym: {
                     if (msp.subsym.len == 0)
@@ -5998,10 +6037,28 @@ fn parseonetoken(psp: *ParserState, x_init: []const u8) !void {
                     else
                         break :subsym try psp.allocator.realloc(msp.subsym, msp.subsym.len + 1);
                 };
-                msp.subsym[msp.subsym.len - 1] = try Symbol_new(if (isUpper(x[0])) x else x[1..]);
+                msp.subsym[msp.subsym.len - 1] = try Symbol_new(x);
+                psp.state = .waiting_for_class_separator;
             } else {
                 ErrorMsg(psp.filename, psp.tokenlineno, "" ++
-                    "%token_class argument \"{s}\" should be a token", .{x});
+                    "%token_class argument \"{s}\" should be a terminal", .{x});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+            }
+        },
+        .waiting_for_class_separator => {
+            if (x[0] == '.') {
+                psp.state = .waiting_for_decl_or_rule;
+            } else if (x[0] == '|') {
+                psp.state = .waiting_for_class_token;
+            } else if ((x[0] == '/')) {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "\"/\" is an invalid multiterminal separator, use \"|\"", .{});
+                psp.errorcnt += 1;
+                psp.state = .resync_after_decl_error;
+            } else {
+                ErrorMsg(psp.filename, psp.tokenlineno, "" ++
+                    "Expected | or . after a %token_class token, saw \"{s}\"", .{x});
                 psp.errorcnt += 1;
                 psp.state = .resync_after_decl_error;
             }
@@ -6188,13 +6245,17 @@ fn scan(ps: *ParserState, fb: [:0]const u8) !void {
         ps.tokenlineno = lineno; // Linenumber on which token begins
         if (fb[i] == '"') { // String literals
             i += 1;
-            while (fb[i] != 0 and fb[i] != '"') : (i += 1) {
+            string: while (fb[i] != 0 and fb[i] != '"') : (i += 1) {
+                if (fb[i] == '\\') {
+                    i += 1;
+                    if (fb[i] == 0) break :string;
+                }
                 if (fb[i] == '\n') lineno += 1;
             }
             if (fb[i] == 0) {
                 ErrorMsg(ps.filename, ps.tokenlineno, "" ++
                     "String starting on this line is not terminated before " ++
-                    "the end of the file.", .{});
+                    "the end of the file", .{});
                 ps.errorcnt += 1;
                 break :scanning;
             } else {
@@ -6238,7 +6299,7 @@ fn scan(ps: *ParserState, fb: [:0]const u8) !void {
                         if (fb[i] == '\n') {
                             ErrorMsg(ps.filename, ps.tokenlineno, "" ++
                                 "Zig code on this line contains an un-terminated string, or " ++
-                                "botched character literal.", .{});
+                                "botched character literal", .{});
                             ps.errorcnt += 1;
                             // Line number is incremented here:
                             continue :scanning;
@@ -6253,7 +6314,7 @@ fn scan(ps: *ParserState, fb: [:0]const u8) !void {
             if (i == fb.len and fb[i - 1] != '}') {
                 ErrorMsg(ps.filename, ps.tokenlineno, "" ++
                     "Zig code starting on this line is not terminated before " ++
-                    "the end of the file.", .{});
+                    "the end of the file", .{});
                 ps.errorcnt += 1;
             } else {
                 skip = true; // Clip end of C blocks also
@@ -6263,9 +6324,6 @@ fn scan(ps: *ParserState, fb: [:0]const u8) !void {
             while (fb[i] != 0 and (isAlnum(fb[i]) or fb[i] == '_')) : (i += 1) {}
         } else if (i + 2 < fb.len and fb[i] == ':' and fb[i + 1] == ':' and fb[i + 2] == '=') {
             i += 3;
-        } else if (fb[i] == '/' or fb[i] == '|' and isAlpha(fb[i + 1])) {
-            i += 2;
-            while (fb[i] != 0 and (isAlnum(fb[i]) or fb[i] == '_')) : (i += 1) {}
         } else if (fb[i] == '`' and fb[i + 1] == '`') { // 'Ditto' operator
             i += 2;
         } else { //  All other (one character) operators
@@ -7073,7 +7131,7 @@ fn optionsInit(opt: *Options, args: []const [:0]const u8, allocator: Allocator) 
         i = 0;
     }
     if (errcnt > 0) {
-        dprint("Try `{s} --help` to print valid options.\n", .{shortProgramName(args)});
+        dprint("Try `{s} --help` to print valid options\n", .{shortProgramName(args)});
         exit(1);
     }
     fixupDependentOptions(opt);
@@ -7262,7 +7320,7 @@ pub fn main(init: std.process.Init) !void {
         exit(0);
     }
     if (file_index != args.len - 1) {
-        dprint("Exactly one filename argument is required.\n", .{});
+        dprint("Exactly one filename argument is required\n", .{});
         errline(args, @min(file_index + 1, args.len), 0);
         if (opt.clean_exit) exit(0) else exit(1);
     }
@@ -7332,7 +7390,7 @@ pub fn main(init: std.process.Init) !void {
         if (opt.clean_exit) exit(0) else exit(@truncate(zyt.errorcnt));
     }
     if (zyt.nrule == 0) {
-        logger.err("Empty grammar.", .{});
+        logger.err("Empty grammar", .{});
         if (opt.clean_exit) exit(0) else exit(1);
     }
 
@@ -7354,7 +7412,7 @@ pub fn main(init: std.process.Init) !void {
         dbgassert(strcmp(zyt.symbols[i - 1].name, "{default}"));
         zyt.nsymbol = i - 1;
         i = 1;
-        while (isUpper(zyt.symbols[i].name[0])) : (i += 1) {}
+        while (zyt.symbols[i].type == .terminal) : (i += 1) {}
         zyt.nterminal = i;
     }
     sequenceRules(zyt);
@@ -7482,7 +7540,7 @@ pub fn main(init: std.process.Init) !void {
         try out.flush();
     }
     if (zyt.nconflict > 0) {
-        dprint("{d} parsing conflicts.\n", .{zyt.nconflict});
+        dprint("{d} parsing conflicts\n", .{zyt.nconflict});
     }
     // return 0 on success, 1 on failure.
     if (zyt.errorcnt > 0 or zyt.nconflict > 0) {
@@ -7800,11 +7858,11 @@ fn Symbol_arrayof() []*Symbol {
 /// zero, or positive if a is less then, equal to, or greater
 /// than b.
 ///
-/// Symbols that begin with upper case letters (terminals or tokens)
-/// must sort before symbols that begin with lower case letters
-/// (non-terminals).  And MULTITERMINAL symbols (created using the
-/// %token_class directive) must sort at the very end. Other than
-/// that, the order does not matter.
+/// Symbols that begin with upper case letters or double quotes
+/// (terminals or tokens) must sort before symbols that begin with
+/// lower case letters (non-terminals).  And MULTITERMINAL symbols
+/// (created using the %token_class directive) must sort at the very end.
+/// Other than that, the order does not matter.
 ///
 /// We find experimentally that leaving the symbols in their original
 /// order (the order they appeared in the grammar file) gives the
@@ -7981,7 +8039,7 @@ fn Configlist_closure(zyt: *Zitron) !void {
         if (sp.type == .nonterminal) {
             if (sp.rule == null and sp != zyt.errsym) {
                 ErrorMsg(zyt.filename, 0, "" ++
-                    "Nonterminal \"{s}\" has no rules.", .{sp.name});
+                    "Nonterminal \"{s}\" has no rules", .{sp.name});
                 zyt.errorcnt += 1;
             }
             var this_newrp = sp.rule;
@@ -8073,6 +8131,147 @@ fn Configlist_freesets(cfp: ?*Config, allocator: Allocator) void {
         nextcfp = this_cfp.next;
         if (this_cfp.fws.len > 0) allocator.free(this_cfp.fws);
         this_cfp.fws.len = 0;
+    }
+}
+
+test "quoted tokens, multiterminal scanning, terminal members, and slash recovery" {
+    try warmup(std.testing.allocator);
+    defer teardown(std.testing.allocator);
+    for ([_][]const u8{
+        "plain",
+        "\\\"",
+        "\\\\",
+        "\\\\\\\"",
+        "\\\\\\\\",
+        "a\\\"b",
+        "\\x22",
+        "\\t",
+        "\\u{03bb}",
+        "// /* {} |",
+        "line\nbreak",
+        "line\\\nbreak",
+    }) |body| {
+        const input = try std.fmt.allocPrintSentinel(std.testing.allocator, "\"{s}\"NEXT", .{body}, 0);
+        defer std.testing.allocator.free(input);
+        var gp: Zitron = .empty;
+        gp.allocator = std.testing.allocator;
+        var ps: ParserState = .empty;
+        try ps.setup(&gp);
+        defer ps.deinit();
+        ps.state = .in_rhs;
+
+        try scan(&ps, input);
+
+        try std.testing.expectEqual(@as(usize, 0), ps.errorcnt);
+        try std.testing.expectEqual(@as(usize, 2), ps.nrhs);
+        try std.testing.expectEqualStrings(input[0 .. body.len + 1], ps.rhs[0].name);
+        try std.testing.expectEqualStrings("NEXT", ps.rhs[1].name);
+        try std.testing.expectEqual(@as(usize, 1) + mem.count(u8, body, "\n"), ps.tokenlineno);
+    }
+    for ([_][:0]const u8{
+        "\"",
+        "\"plain",
+        "\"\\",
+        "\"\\\"",
+        "\"\\\\",
+        "\"\\\\\\",
+    }) |input| {
+        var gp: Zitron = .empty;
+        gp.allocator = std.testing.allocator;
+        var ps: ParserState = .empty;
+        try ps.setup(&gp);
+        defer ps.deinit();
+        ps.state = .in_rhs;
+
+        try scan(&ps, input);
+
+        try std.testing.expectEqual(@as(usize, 1), ps.errorcnt);
+        try std.testing.expectEqual(@as(usize, 0), ps.nrhs);
+    }
+    for ([_][:0]const u8{
+        "FOO|BAR|BAZ(value) NEXT",
+        "FOO |BAR |BAZ(value) NEXT",
+        "FOO| BAR| BAZ(value) NEXT",
+        "FOO | BAR | BAZ(value) NEXT",
+        "FOO\n| /* member */ BAR | // member\nBAZ(value) NEXT",
+        "\"FOO\" | \"BAR\" | \"BAZ\"(value) NEXT",
+    }) |input| {
+        var gp: Zitron = .empty;
+        gp.allocator = std.testing.allocator;
+        var ps: ParserState = .empty;
+        try ps.setup(&gp);
+        defer ps.deinit();
+        ps.state = .in_rhs;
+
+        try scan(&ps, input);
+
+        try std.testing.expectEqual(@as(usize, 0), ps.errorcnt);
+        try std.testing.expectEqual(E_State.in_rhs, ps.state);
+        try std.testing.expectEqual(@as(usize, 2), ps.nrhs);
+        try std.testing.expectEqual(SymbolType.multiterminal, ps.rhs[0].type);
+        try std.testing.expectEqual(@as(usize, 3), ps.rhs[0].subsym.len);
+        const names: []const []const u8 = if (input[0] == '"')
+            &.{ "\"FOO", "\"BAR", "\"BAZ" }
+        else
+            &.{ "FOO", "BAR", "BAZ" };
+        for (ps.rhs[0].subsym, names) |symbol, name| {
+            try std.testing.expectEqualStrings(name, symbol.name);
+        }
+        try std.testing.expectEqualStrings("value", ps.alias[0]);
+        try std.testing.expectEqualStrings("NEXT", ps.rhs[1].name);
+    }
+    for ([_]struct { input: [:0]const u8, initial: E_State = .in_rhs, state: E_State, nrhs: usize }{
+        .{ .input = "FOO/BAR", .state = .in_rhs, .nrhs = 2 },
+        .{ .input = "FOO / BAR", .state = .in_rhs, .nrhs = 2 },
+        .{ .input = "FOO/", .state = .in_rhs, .nrhs = 1 },
+        .{ .input = "/", .state = .in_rhs, .nrhs = 0 },
+        .{ .input = "| FOO", .state = .resync_after_rule_error, .nrhs = 0 },
+        .{ .input = "FOO | lower", .state = .resync_after_rule_error, .nrhs = 1 },
+        .{ .input = "lower | FOO", .state = .resync_after_rule_error, .nrhs = 1 },
+        .{ .input = "FOO | | BAR", .state = .resync_after_rule_error, .nrhs = 1 },
+        .{ .input = "FOO | / BAR", .state = .resync_after_rule_error, .nrhs = 1 },
+        .{ .input = "%token_class bars FOO/BAR", .initial = .initialize, .state = .resync_after_decl_error, .nrhs = 0 },
+        .{ .input = "%token_class leading | FOO", .initial = .initialize, .state = .resync_after_decl_error, .nrhs = 0 },
+        .{ .input = "%token_class repeated FOO | | BAR", .initial = .initialize, .state = .resync_after_decl_error, .nrhs = 0 },
+        .{ .input = "%token_class trailing FOO | .", .initial = .initialize, .state = .resync_after_decl_error, .nrhs = 0 },
+        .{ .input = "%token_class slash FOO | / BAR", .initial = .initialize, .state = .resync_after_decl_error, .nrhs = 0 },
+        .{ .input = "%token_class plain FOO BAR BAZ .", .initial = .initialize, .state = .waiting_for_decl_or_rule, .nrhs = 0 },
+        .{ .input = "%token_class mixed FOO | BAR BAZ .", .initial = .initialize, .state = .waiting_for_decl_or_rule, .nrhs = 0 },
+    }) |case| {
+        var gp: Zitron = .empty;
+        gp.allocator = std.testing.allocator;
+        var ps: ParserState = .empty;
+        try ps.setup(&gp);
+        defer ps.deinit();
+        ps.state = case.initial;
+
+        try scan(&ps, case.input);
+
+        try std.testing.expectEqual(@as(usize, 1), ps.errorcnt);
+        try std.testing.expectEqual(case.state, ps.state);
+        try std.testing.expectEqual(case.nrhs, ps.nrhs);
+    }
+    for ([_][:0]const u8{
+        "%token_class spaced FOO | BAR | BAZ .",
+        "%token_class compact FOO|BAR|BAZ.",
+        "%token_class before FOO |BAR |BAZ .",
+        "%token_class after FOO| BAR| BAZ .",
+        "%token_class comments FOO | /* member */ BAR | // member\nBAZ .",
+    }) |input| {
+        var gp: Zitron = .empty;
+        gp.allocator = std.testing.allocator;
+        var ps: ParserState = .empty;
+        try ps.setup(&gp);
+        defer ps.deinit();
+
+        try scan(&ps, input);
+
+        try std.testing.expectEqual(@as(usize, 0), ps.errorcnt);
+        try std.testing.expectEqual(E_State.waiting_for_decl_or_rule, ps.state);
+        try std.testing.expectEqual(@as(usize, 3), ps.tkclass.subsym.len);
+        for (ps.tkclass.subsym, [_][]const u8{ "FOO", "BAR", "BAZ" }) |symbol, name| {
+            try std.testing.expectEqualStrings(name, symbol.name);
+        }
     }
 }
 

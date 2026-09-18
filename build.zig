@@ -268,6 +268,16 @@ pub fn build(b: *std.Build) void {
         "safe-wildcard",
         "samples/compression_safe_wildcard.zy",
     );
+    addZitronCompressionTests(
+        b,
+        zitron_exe,
+        target,
+        optimize,
+        test_step,
+        test_filters,
+        "quoted-tokens",
+        "samples/quoted_tokens.zy",
+    );
     addLemonCompressionTests(
         b,
         lemon_exe,

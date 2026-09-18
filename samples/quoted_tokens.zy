@@ -1,0 +1,50 @@
+%token_type "i32"
+%extra_context {answer: i32}
+%token "{" "}" NUMBER "+" "*".
+%left "+".
+%left "*".
+%fallback "name" "keyword".
+%wildcard "any".
+%token_class quote "\"" | "\\" | "\t" | "\x41" | "\\\"".
+%type expr i32
+%type "+" i32
+%destructor "+" {}
+
+%syntax_error {
+    return error.SyntaxError;
+}
+
+start ::= "{" expr(A) "}". { answer = A; }
+start ::= "name". { answer = 7; }
+start ::= "[" "any" "]". { answer = 8; }
+start ::= quote. { answer = 9; }
+start ::= "("|LT ")"|GT. { answer = 10; }
+expr(A) ::= NUMBER(B). { A = B; }
+expr(A) ::= expr(B) "+" expr(C). { A = B + C; }
+expr(A) ::= expr(B) "*" expr(C). ["*"] { A = B * C; }
+
+%code {
+fn parseTokens(tokens: []const TokenKind) !i32 {
+    var parser = try Parser.create(std.testing.allocator, 0);
+    defer parser.destroy();
+
+    for (tokens) |token| try parser.parse(token, 2);
+    try parser.finalize();
+    return parser.answer;
+}
+
+test "quoted terminals in generated parsers" {
+    try std.testing.expectEqualStrings("\"{\"", yyTokenName[@intFromEnum(TokenKind.@"{")]);
+    try std.testing.expectEqualStrings("start ::= \"{\" expr \"}\"", yyRuleName[0]);
+    try std.testing.expectEqual(@as(i32, 6), try parseTokens(&.{ .@"{", .NUMBER, .@"+", .NUMBER, .@"*", .NUMBER, .@"}" }));
+    try std.testing.expectEqual(@as(i32, 7), try parseTokens(&.{.@"keyword"}));
+    try std.testing.expectEqual(@as(i32, 8), try parseTokens(&.{ .@"[", .@"+", .@"]" }));
+    try std.testing.expectEqual(@as(i32, 9), try parseTokens(&.{.@"\""}));
+    try std.testing.expectEqual(@as(i32, 9), try parseTokens(&.{.@"\\"}));
+    try std.testing.expectEqual(@as(i32, 9), try parseTokens(&.{.@"\t"}));
+    try std.testing.expectEqual(@as(i32, 9), try parseTokens(&.{.@"A"}));
+    try std.testing.expectEqual(@as(i32, 9), try parseTokens(&.{.@"\\\""}));
+    try std.testing.expectEqual(@as(i32, 10), try parseTokens(&.{ .@"(", .@")" }));
+    try std.testing.expectEqual(@as(i32, 10), try parseTokens(&.{ .LT, .GT }));
+}
+}
