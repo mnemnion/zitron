@@ -7150,7 +7150,7 @@ const help_string =
     \\
     \\ Options:
     \\
-    \\   -b, --basis               Show only the basis for each parser state in the report file.
+    \\   -b, --only-basis          Show only the basis for each parser state in the report file.
     \\   -c, --no-compress         Do not compress the generated action tables. The parser will be
     \\                             a little larger and slower, but it will detect syntax errors sooner.
     \\   -d, --directory directory Write all output files into "directory". Normally,
@@ -7165,14 +7165,14 @@ const help_string =
     \\   -g --grammar              Do not generate a parser.  Instead write the input grammar to
     \\                             standard output with all comments, actions, and other extraneous
     \\                             text removed.
-    \\   -l --lines                Add "// #line" comments in the generated parser's Zig code.
+    \\   -l --line-numbers         Add "// #line" comments in the generated parser's Zig code.
     \\   -P --pp-only              Run the "%if" preprocessor step only and print the revised
     \\                             grammar file.
-    \\   -p --precedence           Display all conflicts that are resolved by [precedence rules].
+    \\   -C --show-conflicts       Display all conflicts that are resolved by [precedence rules].
     \\   -q --quiet                Suppress generation of the report file.
-    \\   -r --no-renumber          Do not sort or renumber the parser states as part of
+    \\   -r --no-resort            Do not sort or renumber the parser states as part of
     \\                             optimization.
-    \\   -s --show-stats           Show parser statistics before exiting.
+    \\   -s --statistics           Show parser statistics before exiting.
     \\   -S --sql                  Generate the *.sql file describing the parser tables.
     \\   -T, --template file       Use "file" as the template for the generated Zig
     \\                             parser implementation.

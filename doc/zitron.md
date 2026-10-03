@@ -151,7 +151,7 @@ back to `false`.  The `-h --help` documentation assumes a default build,
 on the probably-reasonable assumption that build-configured `zitron`
 binaries will be used directly via the Zig build system.
 
-The string-taking options such as `-T`, `-o`, and `-d`, simply override
+The string-taking options such as `-T`, `-f`, and `-d`, simply override
 any analogous build option.  The odd case is `-D` and `-U`, which define
 and undefine preprocessor macros (see [`%if`](#pifdef) for the details
 here).  The build only allows _defining_ macros, which can be undefined
@@ -163,7 +163,7 @@ with a brief explanation of what each does by typing
 
        zitron -h
 
-- **-b, --basis** Show only the basis for each parser state in the
+- **-b, --only-basis** Show only the basis for each parser state in the
   report file.
 - **-C --show-conflicts** Display all conflicts that are resolved by
   [precedence rules](#precrules).
@@ -186,15 +186,15 @@ with a brief explanation of what each does by typing
   grammar to standard output with all comments, actions, and other
   extraneous text removed.
 - **-h --help** Print this help and exit.
-- **-l --lines** Add "#line" comments in the generated parser's Zig
+- **-l --line-numbers** Add "#line" comments in the generated parser's Zig
   code.
 - **-P --pp-only** Run the "%if" preprocessor step only and print the
   revised grammar file.
 - **-q --quiet** Suppress generation of the report file.
 - **-r --no-resort** Do not sort or renumber the parser states as part
   of optimization.
-- **-s --show-stats** Show parser statistics before exiting.
-- **-S** Generate the *.sql file describing the parser tables.
+- **-s --statistics** Show parser statistics before exiting.
+- **-S --sql** Generate the *.sql file describing the parser tables.
 - **-T, --template _file_** Use *file* as the template for the generated
   Zig-code parser implementation.
 - **-u, --unbundle** Do not bundle identical generated code blocks.
