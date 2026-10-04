@@ -1,0 +1,5 @@
+start ::= stmt.
+stmt ::= IF expr THEN stmt ELSE stmt.
+stmt ::= IF expr THEN stmt.
+stmt ::= OTHER.
+expr ::= ID.

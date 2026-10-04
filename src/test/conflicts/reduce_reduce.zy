@@ -1,0 +1,4 @@
+start ::= x.
+start ::= y.
+x ::= ID.
+y ::= ID.

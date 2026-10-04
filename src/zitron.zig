@@ -23,6 +23,7 @@ const ArrayList = std.ArrayListUnmanaged;
 const StringArrayHashMap = std.StringArrayHashMapUnmanaged;
 const AllocatingWriter = std.Io.Writer.Allocating;
 const File = std.Io.File;
+const conflicts = @import("conflicts.zig");
 
 const OOM = Allocator.Error;
 
@@ -195,7 +196,7 @@ const E_Assoc = enum {
 };
 
 /// Symbols (terminals and nonterminals) of the grammar are stored in the following:
-const Symbol = struct {
+pub const Symbol = struct {
     /// Name of the symbol
     name: []const u8,
     /// Index number for this symbol
@@ -364,7 +365,7 @@ const Impl = struct {
 };
 
 /// Each production rule in the grammar is stored in the following structure.
-const Rule = struct {
+pub const Rule = struct {
     /// Left-hand side of the rule
     lhs: *Symbol,
     /// Alias for the LHS (empty if none)
@@ -480,7 +481,7 @@ const ConfigStatus = enum {
 // symbols which are allowed to immediately follow the end of the rule.
 // Every configuration is recorded as an instance of the following:
 
-const Config = struct {
+pub const Config = struct {
     /// The rule upon which the configuration is based
     rp: *Rule,
     /// The parse point
@@ -576,6 +577,20 @@ const Action = struct {
     /// Tie-breaker in sorting
     age: usize,
 
+    pub fn maybeRule(ap: *const Action) ?*Rule {
+        return switch (ap.type) {
+            .reduce, .srconflict, .rrconflict, .rd_resolved, .shiftreduce => ap.x.rp,
+            else => null,
+        };
+    }
+
+    pub fn maybeState(ap: *const Action) ?*State {
+        return switch (ap.type) {
+            .shift, .ssconflict, .sh_resolved => ap.x.stp,
+            else => null,
+        };
+    }
+
     // [490]
     pub fn new() !*Action {
         const act = try action_allocator.create();
@@ -637,7 +652,7 @@ const Action = struct {
 
 /// Each state of the generated parser's finite state machine
 /// is encoded as an instance of the following structure.
-const State = struct {
+pub const State = struct {
     /// The basis configurations for this state
     bp: ?*Config = null,
     /// All configurations in this set
@@ -769,6 +784,7 @@ fn State_arrayof() []*State {
 }
 
 fn State_free() void {
+    defer is_state_map = false;
     for (state_map.safe.values()) |st| {
         Configlist_freesets(st.cfp, state_map.allocator);
         Configlist_freesets(st.bp, state_map.allocator);
@@ -3606,7 +3622,8 @@ fn ReportHeader(zyt: *Zitron) !void {
 }
 
 /// The God Object handling state for the parser generator.
-const Zitron = struct {
+pub const Zitron = struct {
+    conflicts: ArrayList(conflicts.Conflict) = .empty,
     /// Allocator
     allocator: Allocator,
     /// Command-line options
@@ -3829,6 +3846,7 @@ const Zitron = struct {
     }
 
     pub fn destroy(gp: *Zitron, allocator: Allocator) void {
+        gp.conflicts.deinit(allocator);
         var m_rp: ?*Rule = gp.rule;
         var rp_next = m_rp;
         while (m_rp) |rp| : (m_rp = rp_next) {
@@ -4597,7 +4615,16 @@ fn FindActions(zyt: *Zitron) !void {
                 if (p_check1) {
                     dprint("find state: before .{s} .{s}\n", .{ @tagName(ap.type), @tagName(nap.?.type) });
                 }
-                zyt.nconflict += resolve_conflict(ap, nap.?);
+                const count = resolve_conflict(ap, nap.?);
+                zyt.nconflict += count;
+                if (count != 0 and zyt.opt.explain_conflicts) {
+                    try zyt.conflicts.append(zyt.allocator, .{
+                        .state = stp,
+                        .token = ap.sp,
+                        .rules = .{ ap.maybeRule(), nap.?.maybeRule() },
+                        .shifts = .{ ap.maybeState(), nap.?.maybeState() },
+                    });
+                }
                 if (p_check1) {
                     dprint("find state: after .{s} .{s}\n", .{ @tagName(ap.type), @tagName(nap.?.type) });
                 }
@@ -6738,6 +6765,7 @@ const Options = struct {
     print_pp: bool = false,
     linenos: bool = config.line_numbers,
     show_conflicts: bool = config.show_conflicts,
+    explain_conflicts: bool = config.explain_conflicts,
     clean_exit: bool = config.clean_exit,
     quiet: bool = config.quiet,
     statistics: bool = config.statistics,
@@ -6768,6 +6796,7 @@ const OptionKind = enum {
     print_pp,
     linenos,
     show_conflicts,
+    explain_conflicts,
     clean_exit,
     quiet,
     statistics,
@@ -6804,6 +6833,7 @@ const OptionKind = enum {
             'U' => .undefine,
             'v' => .version,
             'x' => .clean_exit,
+            'X' => .explain_conflicts,
             else => null,
         };
     }
@@ -6819,6 +6849,7 @@ const OptionKind = enum {
             .print_pp,
             .linenos,
             .show_conflicts,
+            .explain_conflicts,
             .clean_exit,
             .quiet,
             .statistics,
@@ -6847,6 +6878,7 @@ const option_list = [_]struct { []const u8, OptionKind }{
     .{ "pp-only", .print_pp },
     .{ "line-numbers", .linenos },
     .{ "show-conflicts", .show_conflicts },
+    .{ "explain-conflicts", .explain_conflicts },
     .{ "clean-exit", .clean_exit },
     .{ "quiet", .quiet },
     .{ "statistics", .statistics },
@@ -6980,6 +7012,7 @@ fn assignFlag(opt: *Options, opt_kind: OptionKind) void {
         .print_pp => opt.print_pp = !opt.print_pp,
         .linenos => opt.linenos = !opt.linenos,
         .show_conflicts => opt.show_conflicts = !opt.show_conflicts,
+        .explain_conflicts => opt.explain_conflicts = !opt.explain_conflicts,
         .clean_exit => opt.clean_exit = !opt.clean_exit,
         .quiet => opt.quiet = !opt.quiet,
         .statistics => opt.statistics = !opt.statistics,
@@ -7153,6 +7186,7 @@ const help_string =
     \\   -b, --only-basis          Show only the basis for each parser state in the report file.
     \\   -c, --no-compress         Do not compress the generated action tables. The parser will be
     \\                             a little larger and slower, but it will detect syntax errors sooner.
+    \\   -C --show-conflicts       Display all conflicts that are resolved by precedence rules.
     \\   -d, --directory directory Write all output files into "directory". Normally,
     \\                             output files are written into the directory that contains the input
     \\                             grammar file.
@@ -7168,7 +7202,6 @@ const help_string =
     \\   -l --line-numbers         Add "// #line" comments in the generated parser's Zig code.
     \\   -P --pp-only              Run the "%if" preprocessor step only and print the revised
     \\                             grammar file.
-    \\   -C --show-conflicts       Display all conflicts that are resolved by [precedence rules].
     \\   -q --quiet                Suppress generation of the report file.
     \\   -r --no-resort            Do not sort or renumber the parser states as part of
     \\                             optimization.
@@ -7181,6 +7214,8 @@ const help_string =
     \\                             undefine a nonexistent name.
     \\   -v, --version             Print the Zitron version number.
     \\   -x, --clean-exit          Always exit with code 0, despite errors.
+    \\   -X, --explain-conflicts   Generate counterexamples for unresolved parsing conflicts.
+    \\
 ;
 
 fn OptPrint(out: anytype, args: []const [:0]const u8) !void {
@@ -7517,6 +7552,12 @@ pub fn main(init: std.process.Init) !void {
         // occur at the end.  This is an optimization that helps make the
         // generated parser tables smaller.
         if (!opt.no_resort) ResortStates(zyt);
+        if (opt.explain_conflicts and zyt.conflicts.items.len != 0) {
+            var stderr_buffer: [4096]u8 = undefined;
+            var stderr_writer = std.Io.File.stderr().writerStreaming(zyt.io, &stderr_buffer);
+            try conflicts.explain(zyt, &stderr_writer.interface, try std.Io.File.stderr().isTty(zyt.io));
+            try stderr_writer.interface.flush();
+        }
         // Generate a report of the parser generated.  (the "y.output" file)
         if (!opt.quiet) try ReportOutput(zyt);
         // Generate the source code for the parser.
@@ -8458,4 +8499,156 @@ test "define sorting comparator is lexicographic for equal-length names" {
     try std.testing.expect(strLessThan({}, "ab", "ba"));
     try std.testing.expect(!strLessThan({}, "ba", "ab"));
     try std.testing.expect(!strLessThan({}, "ab", "ab"));
+}
+
+fn conflictTestReport(input: [:0]const u8, optimized: bool) ![]u8 {
+    const allocator = std.testing.allocator;
+    try warmup(allocator);
+    defer teardown(allocator);
+    const gp = try Zitron.create(allocator);
+    defer gp.destroy(allocator);
+    gp.opt = .{ .explain_conflicts = true };
+    gp.filename = "conflict-test.zy";
+    _ = try Symbol_new("$");
+    var ps: ParserState = .empty;
+    try ps.setup(gp);
+    defer ps.deinit();
+    try scan(&ps, input);
+    try std.testing.expectEqual(@as(usize, 0), ps.errorcnt);
+    gp.rule = ps.firstrule.?;
+    _ = try Symbol_new("{default}");
+    gp.symbols = Symbol_arrayof();
+    sort(*Symbol, gp.symbols, {}, Symbol_lessThanFn);
+    for (gp.symbols, 0..) |sp, i| sp.index = @intCast(i);
+    gp.nsymbol = @intCast(gp.symbols.len);
+    while (gp.symbols[gp.nsymbol - 1].type == .multiterminal) gp.nsymbol -= 1;
+    gp.nsymbol -= 1;
+    gp.nterminal = 1;
+    while (gp.symbols[gp.nterminal].type == .terminal) gp.nterminal += 1;
+    sequenceRules(gp);
+    SetSize(gp.nterminal + 1);
+    FindRulePrecedences(gp);
+    try FindFirstSets(gp);
+    try FindStates(gp);
+    gp.sorted = State_arrayof();
+    try FindLinks(gp);
+    FindFollowSets(gp);
+    try FindActions(gp);
+    if (optimized) {
+        try CompressTables(gp);
+        ResortStates(gp);
+    }
+    var out: AllocatingWriter = .init(allocator);
+    defer out.deinit();
+    try conflicts.explain(gp, &out.writer, false);
+    try std.testing.expectEqual(gp.nconflict, mem.count(u8, out.written(), "\nConflict "));
+    return out.toOwnedSlice();
+}
+
+test "conflict explanations parse short long and bundled flags" {
+    for ([_][:0]const u8{ "-X", "--explain-conflicts", "-qX" }) |flag| {
+        const args = [_][:0]const u8{ "zitron", flag, "grammar.zy" };
+        var opt: Options = .{};
+        defer opt.deinit(std.testing.allocator);
+        try std.testing.expectEqual(@as(usize, 2), try optionsInit(&opt, &args, std.testing.allocator));
+        try std.testing.expectEqual(!config.explain_conflicts, opt.explain_conflicts);
+    }
+}
+
+test "conflict explanations find two parses including outward prefix growth" {
+    const cases = .{
+        .{ @embedFile("test/conflicts/expression.zy"), "expr PLUS expr • PLUS expr", @as(usize, 1) },
+        .{ @embedFile("test/conflicts/dangling_else.zy"), "IF expr THEN IF expr THEN stmt • ELSE stmt", @as(usize, 1) },
+        .{ @embedFile("test/conflicts/reduce_reduce.zy"), "ID •", @as(usize, 1) },
+        .{ @embedFile("test/conflicts/nullable.zy"), "• ID", @as(usize, 3) },
+        .{ @embedFile("test/conflicts/outward.zy"), "N N A • B D C", @as(usize, 1) },
+        .{ @embedFile("test/conflicts/challenging.zy"), "num • DIGIT DIGIT QUESTION stmt stmt", @as(usize, 3) },
+    };
+    inline for (cases) |case| {
+        for ([_]bool{ false, true }) |optimized| {
+            const report = try conflictTestReport(case[0], optimized);
+            defer std.testing.allocator.free(report);
+            try std.testing.expectEqual(case[2], mem.count(u8, report, "Unifying counterexample:"));
+            try std.testing.expect(mem.indexOf(u8, report, case[1]) != null);
+            try std.testing.expectEqual(2 * case[2], mem.count(u8, report, "derivation:"));
+        }
+    }
+}
+
+test "conflict explanations distinguish LR2 from merged LALR contexts" {
+    const lr2 = try conflictTestReport(@embedFile("test/conflicts/lr2.zy"), true);
+    defer std.testing.allocator.free(lr2);
+    try std.testing.expect(mem.indexOf(u8, lr2, "Unifying counterexample:") == null);
+    try std.testing.expect(mem.indexOf(u8, lr2, "common prefix") != null);
+    try std.testing.expect(mem.indexOf(u8, lr2, "A • A B") != null);
+    try std.testing.expect(mem.indexOf(u8, lr2, "A • A \n") != null);
+    const lalr = try conflictTestReport(@embedFile("test/conflicts/lalr_merge.zy"), true);
+    defer std.testing.allocator.free(lalr);
+    try std.testing.expect(mem.indexOf(u8, lalr, "Unifying counterexample:") == null);
+    try std.testing.expectEqual(@as(usize, 2), mem.count(u8, lalr, "Separate contexts"));
+    try std.testing.expect(mem.indexOf(u8, lalr, "A C • D") != null);
+    try std.testing.expect(mem.indexOf(u8, lalr, "B C • D") != null);
+}
+
+test "conflict explanations exclude precedence resolutions and clean grammars" {
+    for ([_][:0]const u8{
+        "start ::= ID.",
+        "%left PLUS. start ::= expr. expr ::= expr PLUS expr. expr ::= ID.",
+    }) |grammar| {
+        const report = try conflictTestReport(grammar, true);
+        defer std.testing.allocator.free(report);
+        try std.testing.expectEqualStrings("", report);
+    }
+}
+
+test "conflict explanations complete nullable and multiterminal lookahead paths" {
+    const nullable = try conflictTestReport(@embedFile("test/conflicts/nullable_follow.zy"), true);
+    defer std.testing.allocator.free(nullable);
+    try std.testing.expect(mem.indexOf(u8, nullable, "A • A B") != null);
+    try std.testing.expect(mem.indexOf(u8, nullable, "// L4   empty ::= .\n") != null);
+    try std.testing.expect(mem.indexOf(u8, nullable, "// empty: consumes no input\n") != null);
+    const multiterminal = try conflictTestReport(@embedFile("test/conflicts/multiterminal.zy"), true);
+    defer std.testing.allocator.free(multiterminal);
+    try std.testing.expectEqual(@as(usize, 2), mem.count(u8, multiterminal, "common prefix"));
+    try std.testing.expect(mem.indexOf(u8, multiterminal, "A • Z B") != null);
+    try std.testing.expect(mem.indexOf(u8, multiterminal, "A • Z \n") != null);
+}
+
+test "conflict explanations bound recursive search and retain complete witnesses" {
+    var grammar: AllocatingWriter = .init(std.testing.allocator);
+    defer grammar.deinit();
+    try grammar.writer.writeAll("start ::= p tail A. start ::= q tail B. p ::= T. q ::= T. tail ::= n0.\n");
+    for (0..140) |i| try grammar.writer.print("n{d} ::= n{d}.\n", .{ i, i + 1 });
+    try grammar.writer.writeAll("n140 ::= U.\n");
+    const input = try std.testing.allocator.dupeZ(u8, grammar.written());
+    defer std.testing.allocator.free(input);
+    const report = try conflictTestReport(input, true);
+    defer std.testing.allocator.free(report);
+    try std.testing.expect(mem.indexOf(u8, report, "Search limit reached") != null);
+    try std.testing.expect(mem.indexOf(u8, report, "Unifying counterexample:") == null);
+    try std.testing.expect(mem.indexOf(u8, report, "T • U A") != null);
+    try std.testing.expect(mem.indexOf(u8, report, "T • U B") != null);
+}
+
+test "conflict explanation trees show the empty alternative at the conflict" {
+    const report = try conflictTestReport(
+        "start ::= parts.\nparts ::= part parts.\nparts ::= part.\nparts ::= .\npart ::= ID.\n",
+        true,
+    );
+    defer std.testing.allocator.free(report);
+    const start = mem.indexOf(u8, report, "  First reduce derivation:") orelse return error.MissingDerivations;
+    try std.testing.expectEqualStrings(
+        \\  First reduce derivation:
+        \\    parts  // L3   parts ::= part.
+        \\    ├── part
+        \\    └── •  // reduce here; lookahead: $ (end of input)
+        \\
+        \\  Second reduce derivation:
+        \\    parts      // L2   parts ::= part parts.
+        \\    ├── part
+        \\    └── parts  // L4   parts ::= .
+        \\        ├── ε  // empty: consumes no input
+        \\        └── •  // reduce here; lookahead: $ (end of input)
+        \\
+    , report[start..]);
 }

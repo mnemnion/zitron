@@ -69,6 +69,11 @@ pub fn build(b: *std.Build) void {
     );
     z_opt.addOption(
         bool,
+        "explain_conflicts",
+        b.option(bool, "explain_conflicts", "Generate parsing conflict counterexamples") orelse false,
+    );
+    z_opt.addOption(
+        bool,
         "clean_exit",
         b.option(bool, "clean_exit", "Always exit with 0") orelse false,
     );

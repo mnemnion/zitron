@@ -1,0 +1,6 @@
+start ::= A x D.
+start ::= B x E.
+start ::= A y E.
+start ::= B y D.
+x ::= C.
+y ::= C.

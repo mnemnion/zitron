@@ -1,0 +1,9 @@
+start ::= stmt.
+stmt ::= IF expr THEN stmt ELSE stmt.
+stmt ::= IF expr THEN stmt.
+stmt ::= expr QUESTION stmt stmt.
+stmt ::= ARR LBRACKET expr RBRACKET ASSIGN expr.
+expr ::= num.
+expr ::= expr PLUS expr.
+num ::= DIGIT.
+num ::= num DIGIT.

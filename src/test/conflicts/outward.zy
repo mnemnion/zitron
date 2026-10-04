@@ -1,0 +1,8 @@
+start ::= n.
+start ::= n C.
+n ::= N n D.
+n ::= N n C.
+n ::= N a B.
+n ::= N b.
+a ::= A.
+b ::= A B D.

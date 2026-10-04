@@ -1,0 +1,5 @@
+start ::= xs.
+xs ::= x xs.
+xs ::= x.
+x ::= .
+x ::= ID.
