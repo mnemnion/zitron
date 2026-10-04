@@ -61,11 +61,11 @@ repo without any `ERROR` or `MISSING` productions.  `zitron-ls` provides
 semantic highlighting for Zig code, so this may be less important if you
 use it, which I recommend.
 
-[custom Zig tree-sitter]: https://github.com/mnemnion/tree-sitter-zig
+[custom Zig tree-sitter]: https://github.com/mnemnion/tree-sitter-zig/tree/fragment-refactor
 
-[zitron-ls]: https://github.com/mnmemnion/zitron-ls
+[zitron-ls]: https://github.com/mnemnion/zitron-ls
 
-[tree-sitter]: https://github.com/mnmemnion/tree-sitter-zitron
+[tree-sitter]: https://github.com/mnemnion/tree-sitter-zitron
 
 
 ### Licensing
@@ -111,6 +111,8 @@ promises, no warranty, as the Lemon manual puts it:
   much like the EU, is guaranteed to please no one.
 
 [^2]: Which I suppose makes me yet another yet another compiler-compiler
-  compiler.  Hazard of the trade!  Quite the yacc shave, I must admit.
+  compiler.  Hazard of the trade!  Quite the [yacc shave], it must be said.
 
 [^3]: Safe bet
+
+[yacc shave]: https://blog.mnemnion.com/posts/zitron/part-one/
