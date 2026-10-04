@@ -1,0 +1,8 @@
+start ::= seq.
+seq ::= term.
+seq ::= seq empty term.
+empty ::= .
+term ::= x.
+term ::= y.
+x ::= A.
+y ::= A A B.
