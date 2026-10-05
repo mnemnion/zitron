@@ -99,11 +99,6 @@ pub fn build(b: *std.Build) void {
     );
     z_opt.addOption(
         bool,
-        "no_resort",
-        b.option(bool, "no_resort", "Do not sort or renumber states") orelse false,
-    );
-    z_opt.addOption(
-        bool,
         "unbundle",
         b.option(bool, "unbundle", "Do not bundle identical generated code blocks") orelse false,
     );

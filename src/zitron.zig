@@ -6771,7 +6771,6 @@ const Options = struct {
     statistics: bool = config.statistics,
     sql_flag: bool = config.sql,
     only_basis: bool = config.only_basis,
-    no_resort: bool = config.no_resort,
     unbundle: bool = config.unbundle,
     user_templatename: []const u8 = "",
     output_directory: []const u8 = "",
@@ -6802,7 +6801,6 @@ const OptionKind = enum {
     statistics,
     sql_flag,
     only_basis,
-    no_resort,
     unbundle,
     user_template,
     output_directory,
@@ -6825,7 +6823,6 @@ const OptionKind = enum {
             'l' => .linenos,
             'P' => .print_pp,
             'q' => .quiet,
-            'r' => .no_resort,
             's' => .statistics,
             'S' => .sql_flag,
             'T' => .user_template,
@@ -6855,7 +6852,6 @@ const OptionKind = enum {
             .statistics,
             .sql_flag,
             .only_basis,
-            .no_resort,
             .unbundle,
             => false,
             .user_template,
@@ -6884,7 +6880,6 @@ const option_list = [_]struct { []const u8, OptionKind }{
     .{ "statistics", .statistics },
     .{ "sql", .sql_flag },
     .{ "only-basis", .only_basis },
-    .{ "no-resort", .no_resort },
     .{ "unbundle", .unbundle },
     .{ "template", .user_template },
     .{ "directory", .output_directory },
@@ -7018,7 +7013,6 @@ fn assignFlag(opt: *Options, opt_kind: OptionKind) void {
         .statistics => opt.statistics = !opt.statistics,
         .sql_flag => opt.sql_flag = !opt.sql_flag,
         .only_basis => opt.only_basis = !opt.only_basis,
-        .no_resort => opt.no_resort = !opt.no_resort,
         .unbundle => opt.unbundle = !opt.unbundle,
         else => |k| std.debug.panic("Option {t} is not a flag (internal error)", .{k}),
     }
@@ -7203,8 +7197,6 @@ const help_string =
     \\   -P --pp-only              Run the "%if" preprocessor step only and print the revised
     \\                             grammar file.
     \\   -q --quiet                Suppress generation of the report file.
-    \\   -r --no-resort            Do not sort or renumber the parser states as part of
-    \\                             optimization.
     \\   -s --statistics           Show parser statistics before exiting.
     \\   -S --sql                  Generate the *.sql file describing the parser tables.
     \\   -T, --template file       Use "file" as the template for the generated Zig
@@ -7551,7 +7543,7 @@ pub fn main(init: std.process.Init) !void {
         // Reorder and renumber the states so that states with fewer choices
         // occur at the end.  This is an optimization that helps make the
         // generated parser tables smaller.
-        if (!opt.no_resort) ResortStates(zyt);
+        ResortStates(zyt);
         if (opt.explain_conflicts and zyt.conflicts.items.len != 0) {
             var stderr_buffer: [4096]u8 = undefined;
             var stderr_writer = std.Io.File.stderr().writerStreaming(zyt.io, &stderr_buffer);

@@ -5140,7 +5140,6 @@ const Options = struct {
     statistics: bool = false,
     sql_flag: bool = false,
     only_basis: bool = false,
-    no_resort: bool = false,
     user_templatename: []const u8 = "",
     output_directory: []const u8 = "",
     azDefine: [][]const u8 = undefined,
@@ -5240,7 +5239,6 @@ fn handleflags(opt: *Options, flag: u8, arg: []const u8, set: bool, allocator: A
         'O' => {},
         'p' => opt.show_precedence_conflict = set,
         'q' => opt.quiet = set,
-        'r' => opt.no_resort = set,
         's' => opt.statistics = set,
         'S' => opt.sql_flag = set,
         'x' => opt.version = set,
@@ -5303,7 +5301,6 @@ const help_string =
     \\  -O<string>   Ignored.  (Placeholder for '-O' compiler options.)
     \\  -p           Show conflicts resolved by precedence rules
     \\  -q           (Quiet) Don't print the report file.
-    \\  -r           Do not sort or renumber states
     \\  -s           Print parser stats to standard output.
     \\  -S           Generate the *.sql file describing the parser tables.
     \\  -x           Print the version number.
@@ -5593,7 +5590,7 @@ pub fn main(init: std.process.Init) !void {
         // Reorder and renumber the states so that states with fewer choices
         // occur at the end.  This is an optimization that helps make the
         // generated parser tables smaller.
-        if (!opt.no_resort) ResortStates(lem);
+        ResortStates(lem);
         // Generate a report of the parser generated.  (the "y.output" file)
         if (!opt.quiet) try ReportOutput(lem);
         // Generate the source code for the parser.

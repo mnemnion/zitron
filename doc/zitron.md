@@ -193,8 +193,6 @@ with a brief explanation of what each does by typing
 - **-P --pp-only** Run the "%if" preprocessor step only and print the
   revised grammar file.
 - **-q --quiet** Suppress generation of the report file.
-- **-r --no-resort** Do not sort or renumber the parser states as part
-  of optimization.
 - **-s --statistics** Show parser statistics before exiting.
 - **-S --sql** Generate the *.sql file describing the parser tables.
 - **-T, --template _file_** Use *file* as the template for the generated
