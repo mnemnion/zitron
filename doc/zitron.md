@@ -463,7 +463,7 @@ less convenient to access.  But to ship a grammar?  Read on.
 Do the needful:
 
 ```sh
-zig fetch --save "https://github.com/mnemnion/zitron/archive/refs/tags/v0.3.2.tar.gz"
+zig fetch --save "https://github.com/mnemnion/zitron/archive/refs/tags/v0.3.3.tar.gz"
 ```
 
 Then in your `build.zig`, things are moderately complex.  We'll

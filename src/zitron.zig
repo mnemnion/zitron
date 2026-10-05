@@ -7342,7 +7342,7 @@ pub fn main(init: std.process.Init) !void {
     if (opt.version) {
         var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
         const stdout = &stdout_writer.interface;
-        stdout.print("{s} version 0.3.2\n", .{shortProgramName(args)}) catch {};
+        stdout.print("{s} version 0.3.3\n", .{shortProgramName(args)}) catch {};
         stdout.flush() catch {};
         exit(0);
     }
