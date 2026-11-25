@@ -2,7 +2,7 @@
 .{
     .name = .zitron,
 
-    .version = "0.3.3",
+    .version = "0.3.4",
 
     .minimum_zig_version = "0.17.1",
 
