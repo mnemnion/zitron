@@ -18,7 +18,7 @@ const config = @import("config");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArrayHashMap = std.ArrayHashMapUnmanaged;
-const MemoryPool = std.heap.memory_pool.Managed;
+const MemoryPool = std.heap.MemoryPool;
 const ArrayList = std.ArrayListUnmanaged;
 const StringArrayHashMap = std.StringArrayHashMapUnmanaged;
 const AllocatingWriter = std.Io.Writer.Allocating;
@@ -41,8 +41,8 @@ const exit = std.process.exit;
 
 const logger = std.log.scoped(.lemon);
 
-const is_debug = builtin.mode == .Debug;
-const is_safe = is_debug or builtin.mode == .ReleaseSafe;
+const is_debug = builtin.mode == .debug;
+const is_safe = is_debug or builtin.mode == .safe;
 
 fn dbgassert(ok: bool) void {
     if (is_debug) {
@@ -593,7 +593,7 @@ const Action = struct {
 
     // [490]
     pub fn new() !*Action {
-        const act = try action_allocator.create();
+        const act = try action_allocator.create(cf_ls.allocator);
         act.* = .{ .age = action_age };
         action_age += 1;
         return act;
@@ -632,8 +632,8 @@ const Action = struct {
     fn actioncmp(ap1: *Action, ap2: *Action) bool {
         if (ap1.sp.index < ap2.sp.index) return true;
         if (ap1.sp.index > ap2.sp.index) return false;
-        if (@intFromEnum(ap1.type) < @intFromEnum(ap2.type)) return true;
-        if (@intFromEnum(ap1.type) > @intFromEnum(ap2.type)) return false;
+        if (@backingInt(ap1.type) < @backingInt(ap2.type)) return true;
+        if (@backingInt(ap1.type) > @backingInt(ap2.type)) return false;
         // ap2.x will cast identically because they have the same type:
         if (ap1.type == .reduce or ap1.type == .shiftreduce) {
             if (p_debug) dprint("ap1.type {s} ap2.type {s}\n", .{ @tagName(ap1.type), @tagName(ap2.type) });
@@ -808,7 +808,7 @@ threadlocal var is_plink_freelist = false;
 
 fn Plink_new() !*PLink {
     dbgassert(is_plink_freelist);
-    return try plink_freelist.create();
+    return try plink_freelist.create(cf_ls.allocator);
 }
 
 /// Add a plink to a plink list
@@ -832,7 +832,7 @@ fn Plink_copy(to: *?*PLink, from_in: ?*PLink) void {
 }
 
 fn Plink_deinit() void {
-    plink_freelist.deinit();
+    plink_freelist.deinit(cf_ls.allocator);
 }
 
 /// Delete every plink on the list
@@ -903,13 +903,13 @@ fn file_makename(zyt: *Zitron, suffix: []const u8) OOM![]const u8 {
 /// Open a file with a name based on the name of the input file,
 /// but with a different (specified) suffix, and return a pointer
 /// to the stream.
-fn file_open(zyt: *Zitron, suffix: []const u8, escape: bool, mode: File.CreateFlags) OOM!?File {
+fn file_open(zyt: *Zitron, suffix: []const u8, escape: bool, mode: std.Io.Dir.CreateFileOptions) OOM!?File {
     try assign_outname(zyt, suffix, escape);
     const fh = open_file(zyt, zyt.outname, mode);
     return fh;
 }
 
-fn open_file(zyt: *Zitron, name: []const u8, mode: File.CreateFlags) OOM!?File {
+fn open_file(zyt: *Zitron, name: []const u8, mode: std.Io.Dir.CreateFileOptions) OOM!?File {
     return std.Io.Dir.cwd().createFile(zyt.io, name, mode) catch |err| {
         zyt.errorcnt += 1;
         switch (err) {
@@ -1140,7 +1140,7 @@ fn reportOutputImpl(zyt: *Zitron, writer: anytype) !void {
         try writer.print("State {d}:\n", .{stp.statenum});
         var m_cfp: ?*Config = if (!zyt.opt.only_basis) stp.cfp else stp.bp;
         while (m_cfp) |cfp| {
-            var buf: [20]u8 = .{0} ** 20;
+            var buf: [20]u8 = @splat(0);
             if (cfp.dot == cfp.rp.rhs.len) {
                 const dot_s = try std.fmt.bufPrint(&buf, "({d})", .{cfp.rp.iRule});
                 try writer.print("    {s:>5} ", .{dot_s});
@@ -1459,8 +1459,9 @@ fn translate_code(zyt: *Zitron, rp: *Rule) !bool {
         @memset(&used, UseType.empty);
     }
     const alloc = zyt.allocator;
-    var fallback = std.heap.stackFallback(2048, alloc);
-    const f_alloc = fallback.get();
+    var fallback_buf: [2048]u8 = undefined;
+    var fallback: std.heap.BufferFirstAllocator = .init(&fallback_buf, alloc);
+    const f_alloc = fallback.allocator();
     var string_builder: AllocatingWriter = .init(f_alloc);
     defer string_builder.deinit();
     const writer = &string_builder.writer;
@@ -7273,12 +7274,12 @@ fn stats_line(in: anytype, zLabel: []const u8, iValue: usize) !void {
 
 fn warmup(allocator: Allocator) !void {
     // Set up pools.
-    action_allocator = .init(allocator);
-    Configlist_init(allocator, .init(allocator));
+    action_allocator = .empty;
+    Configlist_init(allocator, .empty);
     cf_ls.allocator = allocator;
-    plink_freelist = .init(allocator);
+    plink_freelist = .empty;
     is_plink_freelist = true;
-    try plink_freelist.addCapacity(100);
+    try plink_freelist.addCapacity(allocator, 100);
     errdefer Plink_deinit();
     Strsafe_init(allocator);
     Symbol_init(allocator);
@@ -7304,7 +7305,7 @@ fn teardown(allocator: Allocator) void {
     is_plink_freelist = false;
     Configlist_deinit();
     impl_safe.deinit();
-    action_allocator.deinit();
+    action_allocator.deinit(allocator);
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -7609,7 +7610,7 @@ fn mergeSortFn(
         /// in list.
         pub fn msort(a: *T) *T {
             var ep: ?*T = null;
-            var set: [LISTSIZE]?*T = .{null} ** LISTSIZE;
+            var set: [LISTSIZE]?*T = @splat(null);
             var maybe_list: ?*T = a;
             var before: usize = 0;
             if (is_debug) {
@@ -7744,7 +7745,7 @@ fn sequenceRules(zyt: *Zitron) void {
         action_tail.?.next = no_act_head;
     } // Sorted!
     rp = zyt.startRule;
-    if (builtin.mode == .Debug) while (rp) |rule| : (rp = rule.next) {
+    if (builtin.mode == .debug) while (rp) |rule| : (rp = rule.next) {
         if (rule.next) |next| {
             dbgassert(rule.iRule + 1 == next.iRule);
         }
@@ -7944,7 +7945,7 @@ threadlocal var is_a_configlists = false;
 
 fn newconfig() !*Config {
     dbgassert(is_a_configlists);
-    const cp = try cf_ls.pool.create();
+    const cp = try cf_ls.pool.create(cf_ls.allocator);
     cp.* = .empty;
     return cp;
 }
@@ -7970,7 +7971,7 @@ fn Configlist_deinit() void {
     dbgassert(is_a_configlists);
     defer is_a_configlists = false;
     cf_ls.config_table.clearAndFree(cf_ls.allocator);
-    cf_ls.pool.deinit();
+    cf_ls.pool.deinit(cf_ls.allocator);
 }
 
 fn Configlist_reset() void {
@@ -8355,7 +8356,7 @@ test "preprocessor keeps nested else inside an excluded branch excluded" {
     defer opt.deinit(std.testing.allocator);
     _ = try optionsInit(&opt, &args, std.testing.allocator);
 
-    const input = try std.testing.allocator.dupeZ(u8,
+    const input = try std.testing.allocator.dupeSentinel(u8,
         \\%ifdef OUTER
         \\outer
         \\%ifdef INNER
@@ -8369,7 +8370,7 @@ test "preprocessor keeps nested else inside an excluded branch excluded" {
         \\%endif
         \\visible
         \\
-    );
+    , 0);
     defer std.testing.allocator.free(input);
 
     var errcnt: usize = 0;
@@ -8612,7 +8613,7 @@ test "conflict explanations bound recursive search and retain complete witnesses
     try grammar.writer.writeAll("start ::= p tail A. start ::= q tail B. p ::= T. q ::= T. tail ::= n0.\n");
     for (0..140) |i| try grammar.writer.print("n{d} ::= n{d}.\n", .{ i, i + 1 });
     try grammar.writer.writeAll("n140 ::= U.\n");
-    const input = try std.testing.allocator.dupeZ(u8, grammar.written());
+    const input = try std.testing.allocator.dupeSentinel(u8, grammar.written(), 0);
     defer std.testing.allocator.free(input);
     const report = try conflictTestReport(input, true);
     defer std.testing.allocator.free(report);

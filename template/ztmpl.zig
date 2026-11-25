@@ -21,7 +21,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const NDEBUG = builtin.mode != .Debug;
+const NDEBUG = builtin.mode != .debug;
 
 /// This specifies the token enum.  If generated separately this is an import of
 ///  that file.
@@ -94,13 +94,13 @@ const YY_VOIDTOKEN = @TypeOf(YY_TOKEN_TYPE) == void;
 
 const YY_NLOOKAHEAD = yy_lookahead.len;
 
-/// Set a value for zitron_no_error_recovery to disable error recovery.
+/// Declare pub const zitron_no_error_recovery to disable error recovery.
 const YYNOERRORRECOVERY = @hasDecl(@This(), "zitron_no_error_recovery");
 
-/// Set a value for zitron_track_max_stack_depth to track the maximum stack depth on the Parser instance.
+/// Declare pub const zitron_track_max_stack_depth to track the maximum stack depth on the Parser instance.
 const YYTRACKMAXSTACKDEPTH = @hasDecl(@This(), "zitron_track_max_stack_depth");
 
-/// Set a value for zitron_coverage to enable coverage tracing.
+/// Declare pub const zitron_coverage to enable coverage tracing.
 const YYCOVERAGE = @hasDecl(@This(), "zitron_coverage");
 
 const yyTracePrompt = if (@hasDecl(@This(), "zitron_trace_prompt")) @This().zitron_trace_prompt else "";
@@ -399,7 +399,7 @@ threadlocal var yycoverage: (if (YYCOVERAGE)
                                 [YYNSTATE][YYNTOKEN]bool
                             else
                                 void) = if (YYCOVERAGE)
-                                           .{ .{false} ** YYNTOKEN } ** YYNSTATE
+                                           @splat(@splat(false))
                                         else {};
 
 //// Write into `out` a description of every state/lookahead combination that

@@ -1,5 +1,5 @@
 %include {
-const zitron_no_error_recovery = {};
+pub const zitron_no_error_recovery = {};
 
 const Stats = struct {
     syntax_errors: usize = 0,

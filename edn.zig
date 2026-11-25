@@ -760,7 +760,7 @@ threadlocal var yycoverage: (if (YYCOVERAGE)
                                 [YYNSTATE][YYNTOKEN]bool
                             else
                                 void) = if (YYCOVERAGE)
-                                           .{ .{false} ** YYNTOKEN } ** YYNSTATE
+                                           @splat(@splat(false))
                                         else {};
 
 //// Write into `out` a description of every state/lookahead combination that
@@ -903,10 +903,7 @@ fn yyTraceShift(yypParser: *Parser, yyNewState: usize, zTag: []const u8) void {
     }
 }
 
-inline fn yy_sint(i: anytype) @Type(.{ .int = .{
-    .bits = @typeInfo(@TypeOf(i)).int.bits + 1,
-    .signedness = .signed,
-} }) {
+inline fn yy_sint(i: anytype) @Int(.signed, @typeInfo(@TypeOf(i)).int.bits + 1) {
     if (@typeInfo(@TypeOf(i)).int.signedness == .signed) {
         @compileError("Value is already a signed type");
     }

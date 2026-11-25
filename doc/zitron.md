@@ -2150,6 +2150,9 @@ undocumented) macros in Lemon.  In Zitron, these are accessed through
 magic: defining a declaration with a certain name within the parser
 file will activate them.
 
+These declarations must be `pub const` on Zig 0.17.1: `@hasDecl`
+only discovers public declarations, including in the parser's own file.
+
 `zitron_trace_prompt` has already been mentioned, at present the others
 are:
 

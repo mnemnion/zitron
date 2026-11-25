@@ -33,9 +33,7 @@ pub fn build(b: *std.Build) void {
 
     lemon_run_cmd.step.dependOn(b.getInstallStep());
 
-    if (b.args) |args| {
-        lemon_run_cmd.addArgs(args);
-    }
+    lemon_run_cmd.addPassthruArgs();
 
     //| Zitron: the port of Lemon to emit Zig.
 
@@ -136,9 +134,7 @@ pub fn build(b: *std.Build) void {
 
     zitron_run_cmd.step.dependOn(b.getInstallStep());
 
-    if (b.args) |args| {
-        zitron_run_cmd.addArgs(args);
-    }
+    zitron_run_cmd.addPassthruArgs();
     const test_filters = b.option(
         []const []const u8,
         "test-filter",
@@ -324,9 +320,9 @@ pub fn build(b: *std.Build) void {
     const run_kcov = b.addSystemCommand(&.{
         "kcov",
         "--clean",
-        "--exclude-line=unreachable,expect(false)",
+        "--exclude-line=unreachable,expect(false),@panic,kcov-defer-error,kcov-test-cleanup,kcov-miss",
     });
-    run_kcov.addPrefixedDirectoryArg("--include-pattern=", b.path("."));
+    run_kcov.addDirectoryArg2(b.path("src"), .{ .prefix = "--include-pattern=", .make_absolute = true });
     const coverage_output = run_kcov.addOutputDirectoryArg(".");
     run_kcov.addArtifactArg(zitron_unit_tests);
 

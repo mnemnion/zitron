@@ -19,7 +19,7 @@ pub const Token = struct {
 %ifdef TRACE && !NO_TRACE
 threadlocal var trace_me: *std.Io.Writer = undefined;
 
-const zitron_trace_prompt = "-> ";
+pub const zitron_trace_prompt = "-> ";
 %endif
 }
 

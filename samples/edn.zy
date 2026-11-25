@@ -59,7 +59,7 @@ fn freeMap(map: *Map, allocator: Allocator) void {
 %ifdef TRACE
 threadlocal var trace_me: *std.Io.Writer = undefined;
 
-const zitron_trace_prompt = "-> ";
+pub const zitron_trace_prompt = "-> ";
 %endif
 
 } /* end include */
